@@ -2,6 +2,7 @@ package com.ttt.safevault.adapter;
 
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.format.DateUtils;
 import android.view.LayoutInflater;
@@ -23,6 +24,7 @@ import com.google.android.material.color.MaterialColors;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.PasswordItem;
+import com.ttt.safevault.utils.FaviconLoader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -143,14 +145,48 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
 
         /**
          * 设置图标
+         * 加载网站 favicon，失败时回退到首字母图标或默认图标
          */
         private void setupIcon(PasswordItem item) {
             if (iconImage == null) return;
 
-            // 如果有URL，可以尝试加载网站图标（这里暂时使用默认图标）
-            // TODO: 实现网站图标加载
             iconImage.setVisibility(View.VISIBLE);
-            iconImage.setImageResource(R.drawable.ic_password);
+
+            // 从 URL 或标题提取首字母作为回退
+            char fallbackLetter = extractFallbackLetter(item);
+
+            // 尝试加载网站图标
+            if (item.getUrl() != null && !item.getUrl().isEmpty()) {
+                FaviconLoader.loadIcon(itemView.getContext(), item.getUrl(), iconImage, fallbackLetter);
+            } else {
+                // 无 URL，直接显示首字母图标
+                Drawable letterDrawable = FaviconLoader.createLetterDrawable(
+                        itemView.getContext(), fallbackLetter);
+                if (letterDrawable != null) {
+                    iconImage.setImageDrawable(letterDrawable);
+                } else {
+                    iconImage.setImageResource(R.drawable.ic_password);
+                }
+            }
+        }
+
+        /**
+         * 提取回退字母（优先使用首字母，否则使用标题首字母）
+         */
+        private char extractFallbackLetter(PasswordItem item) {
+            // 优先使用用户名首字母
+            if (item.getUsername() != null && !item.getUsername().isEmpty()) {
+                return item.getUsername().charAt(0);
+            }
+            // 其次使用标题首字母
+            if (item.getTitle() != null && !item.getTitle().isEmpty()) {
+                return item.getTitle().charAt(0);
+            }
+            // 最后使用 URL 首字母
+            if (item.getUrl() != null && !item.getUrl().isEmpty()) {
+                return item.getUrl().charAt(0);
+            }
+            return 0;
         }
 
         /**

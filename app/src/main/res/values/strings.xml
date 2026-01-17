@@ -7,6 +7,7 @@
     <string name="unlock_safevault">解锁 SafeVault</string>
     <string name="set_master_password">设置主密码</string>
     <string name="enter_master_password">输入主密码</string>
+    <string name="email">邮箱</string>
     <string name="master_password">主密码</string>
     <string name="confirm_master_password">确认主密码</string>
     <string name="unlock">解锁</string>
@@ -478,5 +479,83 @@
     <string name="error_share_revoked">分享已被撤销</string>
     <string name="error_invalid_share">无效的分享</string>
     <string name="retry">重试</string>
+
+    <!-- ========== 数据导出/导入功能 ========== -->
+
+    <!-- 导出功能 -->
+    <string name="export_data">导出数据</string>
+    <string name="export_data_summary">将密码数据导出为加密文件</string>
+    <string name="export_success">导出成功</string>
+    <string name="export_failed">导出失败</string>
+    <string name="export_progress">正在导出…</string>
+    <string name="export_complete">导出完成</string>
+    <string name="export_file_saved">文件已保存至: %s</string>
+    <string name="export_password_description">设置一个用于加密导出文件的密码。导出的文件将使用此密码加密，确保只有知道密码的人才能访问。</string>
+    <string name="export_password_warning">重要：请妥善保管导出密码。丢失密码将无法恢复备份文件中的数据。</string>
+    <string name="export_confirm">开始导出</string>
+
+    <!-- 导入功能 -->
+    <string name="import_data">导入数据</string>
+    <string name="import_data_summary">从加密文件导入密码数据</string>
+    <string name="import_success">导入成功</string>
+    <string name="import_failed">导入失败</string>
+    <string name="import_progress">正在导入…</string>
+    <string name="import_complete">导入完成</string>
+    <string name="import_items_count">已导入 %d 条密码</string>
+
+    <!-- 导出/导入设置 -->
+    <string name="data_management">数据管理</string>
+    <string name="backup_settings_title">备份与还原</string>
+    <string name="backup_settings_description">导出或导入加密的密码数据</string>
+    <string name="select_backup_file">选择备份文件</string>
+    <string name="backup_files">备份文件 (*.vault)</string>
+    <string name="no_backup_files_found">未找到备份文件</string>
+    <string name="invalid_backup_file">无效的备份文件</string>
+    <string name="backup_file_corrupted">备份文件已损坏</string>
+    <string name="backup_password_required">需要输入备份密码</string>
+    <string name="enter_backup_password">输入备份密码</string>
+    <string name="backup_password_hint">用于加密备份文件的密码</string>
+    <string name="confirm_backup_password">确认备份密码</string>
+    <string name="set_backup_password">设置备份密码</string>
+    <string name="use_master_password_as_backup">使用主密码作为备份密码</string>
+    <string name="import_warning">导入警告</string>
+    <string name="import_warning_message">导入数据将覆盖现有密码。是否继续？</string>
+    <string name="import_merge_option">合并选项</string>
+    <string name="import_merge">合并到现有数据</string>
+    <string name="import_replace">替换现有数据</string>
+
+    <!-- 备份信息 -->
+    <string name="backup_info">备份信息</string>
+    <string name="backup_time">备份时间</string>
+    <string name="backup_item_count">密码数量</string>
+    <string name="backup_device">备份设备</string>
+    <string name="backup_version">备份版本</string>
+    <string name="backup_file_name">文件名</string>
+
+    <!-- 冲突处理对话框 -->
+    <string name="import_conflict_strategy">冲突处理策略</string>
+    <string name="conflict_strategy_skip">跳过</string>
+    <string name="conflict_strategy_skip_desc">保留现有条目，仅导入新条目</string>
+    <string name="conflict_strategy_override">覆盖</string>
+    <string name="conflict_strategy_override_desc">用备份文件覆盖现有条目</string>
+    <string name="conflict_strategy_merge">合并</string>
+    <string name="conflict_strategy_merge_desc">为冲突条目生成新ID并导入</string>
+    <string name="import_new_items">新条目</string>
+    <string name="import_conflict_items">冲突条目</string>
+    <string name="import_confirm">开始导入</string>
+
+    <!-- ========== Phase 4: UI/UX 改进 ========== -->
+
+    <!-- 传输进度 -->
+    <string name="transferring">正在传输…</string>
+    <string name="sending">正在发送…</string>
+    <string name="receiving">正在接收…</string>
+    <string name="transfer_progress">传输进度: %d%%</string>
+
+    <!-- 重复凭据对话框 -->
+    <string name="duplicate_credential_title">检测到重复凭据</string>
+    <string name="duplicate_credential_message">已存在相同网站和用户名的密码：\n标题: %s\n用户名: %s\n是否覆盖现有凭据？</string>
+    <string name="button_overwrite">覆盖</string>
+    <string name="credential_overwritten">凭据已覆盖</string>
 
 </resources>

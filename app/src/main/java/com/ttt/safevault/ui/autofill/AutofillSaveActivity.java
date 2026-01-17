@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.ttt.safevault.R;
@@ -202,12 +203,84 @@ public class AutofillSaveActivity extends AppCompatActivity {
     }
 
     /**
-     * 显示重复凭据警告
+     * 显示重复凭据警告（Material Design 3 对话框）
      */
     private void showDuplicateWarning() {
-        // TODO: 可以在这里显示一个对话框或警告消息
-        // 目前简单显示一个 Toast
-        Toast.makeText(this, R.string.autofill_duplicate_credential_warning, Toast.LENGTH_LONG).show();
+        if (existingItem == null) {
+            return;
+        }
+
+        String existingTitle = existingItem.getTitle() != null ? existingItem.getTitle() : "";
+        String existingUsername = existingItem.getUsername() != null ? existingItem.getUsername() : "";
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.duplicate_credential_title)
+                .setMessage(getString(R.string.duplicate_credential_message,
+                        existingTitle, existingUsername))
+                .setPositiveButton(R.string.button_overwrite, (d, which) -> {
+                    // 覆盖现有凭据
+                    overwriteExistingCredential();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .create();
+
+        // 设置 Material 3 样式
+        dialog.setOnShowListener(listener -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setTextColor(getColor(android.R.color.holo_red_dark));
+        });
+
+        dialog.show();
+    }
+
+    /**
+     * 覆盖现有凭据
+     */
+    private void overwriteExistingCredential() {
+        if (existingItem == null) {
+            return;
+        }
+
+        // 更新现有凭据的数据
+        String titleText = binding.titleInput.getText().toString().trim();
+        String usernameText = binding.usernameInput.getText().toString().trim();
+        String passwordText = binding.passwordInput.getText().toString().trim();
+        String websiteText = binding.websiteInput.getText().toString().trim();
+        String notesText = binding.notesInput.getText().toString().trim();
+
+        existingItem.setTitle(titleText.isEmpty() ? usernameText : titleText);
+        existingItem.setUsername(usernameText);
+        existingItem.setPassword(passwordText);
+        existingItem.setUrl(websiteText);
+        existingItem.setNotes(notesText);
+
+        // 异步保存
+        executor.execute(() -> {
+            try {
+                int updatedId = backendService.saveItem(existingItem);
+
+                runOnUiThread(() -> {
+                    if (updatedId > 0) {
+                        Toast.makeText(this, R.string.credential_overwritten, Toast.LENGTH_SHORT).show();
+                        setResult(RESULT_OK);
+                        // 保存成功后启动 MainActivity
+                        Intent intent = new Intent(this, com.ttt.safevault.ui.MainActivity.class);
+                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(intent);
+                    } else {
+                        Toast.makeText(this, R.string.autofill_save_failed, Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, R.string.autofill_save_failed, Toast.LENGTH_SHORT).show();
+                    binding.saveButton.setEnabled(true);
+                    binding.cancelButton.setEnabled(true);
+                    binding.saveButton.setText(R.string.button_save);
+                });
+            }
+        });
     }
 
     /**

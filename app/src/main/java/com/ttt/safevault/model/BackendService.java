@@ -421,4 +421,65 @@ public interface BackendService {
      * 登出云端服务
      */
     void logoutCloud();
+
+    /**
+     * 完成注册
+     * 邮箱验证后设置主密码并完成注册
+     * @param email 邮箱
+     * @param username 用户名
+     * @param masterPassword 主密码
+     * @return CompleteRegistrationResponse 完成注册响应
+     */
+    com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
+            String email, String username, String masterPassword);
+
+    // ========== 新增：统一邮箱认证加密数据接口 ==========
+
+    /**
+     * 上传加密的设备私钥到云端
+     * 用于新设备注册或更新设备信息
+     * @param encryptedPrivateKey 加密的私钥数据（Base64）
+     * @param iv 初始化向量（Base64）
+     * @param salt 盐值（Base64）
+     * @return true表示上传成功
+     */
+    boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt);
+
+    /**
+     * 从云端下载加密的设备私钥
+     * 用于登录时获取私钥数据
+     * @return 加密的私钥数据（包含 encryptedData, iv, salt），失败返回 null
+     */
+    com.ttt.safevault.security.KeyManager.EncryptedPrivateKey downloadEncryptedPrivateKey();
+
+    /**
+     * 上传加密的密码库数据到云端
+     * 用于同步密码数据到云端
+     * @param encryptedVaultData 加密的密码库数据（Base64）
+     * @param iv 初始化向量（Base64）
+     * @return true表示上传成功
+     */
+    boolean uploadEncryptedVaultData(String encryptedVaultData, String iv);
+
+    /**
+     * 从云端下载加密的密码库数据
+     * 用于同步密码数据到本地
+     * @return 加密的密码库数据（包含 encryptedData, iv），失败返回 null
+     */
+    EncryptedVaultData downloadEncryptedVaultData();
+
+    /**
+     * 加密后的密码库数据封装类
+     */
+    class EncryptedVaultData {
+        public String encryptedData;
+        public String iv;
+        public String version;
+
+        public EncryptedVaultData(String encryptedData, String iv, String version) {
+            this.encryptedData = encryptedData;
+            this.iv = iv;
+            this.version = version;
+        }
+    }
 }

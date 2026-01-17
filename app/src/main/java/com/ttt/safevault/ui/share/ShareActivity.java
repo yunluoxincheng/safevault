@@ -191,10 +191,11 @@ public class ShareActivity extends AppCompatActivity {
                 }
 
                 // 云端直接分享或离线分享，跳转到分享结果页面
-                viewModel.shareResult.observe(this, shareToken -> {
-                    if (shareToken != null) {
+                viewModel.cloudShareResponse.observe(this, shareResponse -> {
+                    if (shareResponse != null) {
                         Intent intent = new Intent(this, ShareResultActivity.class);
-                        intent.putExtra("SHARE_TOKEN", shareToken);
+                        intent.putExtra("SHARE_TOKEN", shareResponse.getShareToken());
+                        intent.putExtra("SHARE_ID", shareResponse.getShareId());
                         intent.putExtra("PASSWORD_ID", passwordId);
                         intent.putExtra("TRANSMISSION_METHOD", selectedTransmissionMethod.name());
 

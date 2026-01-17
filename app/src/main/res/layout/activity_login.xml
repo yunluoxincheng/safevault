@@ -2,6 +2,7 @@
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?attr/colorSurface"
@@ -47,6 +48,58 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/title_text" />
 
+    <!-- 注册第一步：邮箱输入框 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/email_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Modern"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="40dp"
+        android:hint="@string/email"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/subtitle_text">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/email_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textEmailAddress"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 注册第一步：用户名输入框 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/username_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Modern"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="@string/username"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/email_layout">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/username_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- 动态布局Barrier：根据邮箱和用户名输入框的可见性调整位置 -->
+    <androidx.constraintlayout.widget.Barrier
+        android:id="@+id/input_barrier"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:barrierDirection="bottom"
+        app:constraint_referenced_ids="username_layout,email_layout,subtitle_text" />
+
     <!-- 密码输入框容器 -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/password_card"
@@ -56,7 +109,7 @@
         android:layout_marginTop="40dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/subtitle_text">
+        app:layout_constraintTop_toBottomOf="@id/input_barrier">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -79,6 +132,54 @@
                     android:maxLines="1" />
 
             </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- 密码强度指示器（设置主密码时显示） -->
+            <LinearLayout
+                android:id="@+id/password_strength_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/password_strength_label"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="密码强度"
+                        android:textSize="12sp"
+                        android:textColor="?android:textColorSecondary" />
+
+                    <TextView
+                        android:id="@+id/password_strength_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="弱"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                </LinearLayout>
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/password_strength_bar"
+                    style="@style/Widget.Material3.LinearProgressIndicator"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:layout_marginTop="4dp"
+                    app:trackCornerRadius="2dp"
+                    app:indicatorColor="?attr/colorError"
+                    app:trackColor="@android:color/transparent" />
+
+            </LinearLayout>
 
             <!-- 确认密码输入框（初始化时显示） -->
             <LinearLayout
@@ -107,66 +208,6 @@
 
             </LinearLayout>
 
-            <!-- 云端登录区域 -->
-            <LinearLayout
-                android:id="@+id/cloud_login_section"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <!-- 云端登录提示文本（登录模式显示） -->
-                <TextView
-                    android:id="@+id/cloud_login_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="将使用已保存的云端账号直接登录"
-                    android:textAppearance="?attr/textAppearanceBodyMedium"
-                    android:textColor="?attr/colorOnSurfaceVariant"
-                    android:gravity="center"
-                    android:padding="16dp"
-                    android:visibility="gone" />
-
-                <!-- 用户名输入框 -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/username_layout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Modern"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="@string/username"
-                    android:visibility="gone">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/username_input"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="text"
-                        android:maxLines="1" />
-
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <!-- 显示名称输入框（仅注册时显示） -->
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/display_name_layout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Modern"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:hint="@string/display_name"
-                    android:visibility="gone">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/display_name_input"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="textPersonName"
-                        android:maxLines="1" />
-
-                </com.google.android.material.textfield.TextInputLayout>
-
-            </LinearLayout>
-
         </LinearLayout>
 
     </com.google.android.material.card.MaterialCardView>
@@ -180,8 +221,8 @@
         android:textColor="?attr/colorError"
         android:textSize="14sp"
         android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="@id/password_card"
-        app:layout_constraintStart_toStartOf="@id/password_card"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/password_card"
         tools:text="密码错误，请重试"
         tools:visibility="visible" />
@@ -195,9 +236,24 @@
         android:layout_marginTop="24dp"
         android:enabled="false"
         android:text="@string/unlock"
-        app:layout_constraintEnd_toEndOf="@id/password_card"
-        app:layout_constraintStart_toStartOf="@id/password_card"
-        app:layout_constraintTop_toBottomOf="@id/error_text" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/error_text"
+        app:layout_goneMarginTop="32dp" />
+
+    <!-- 重新发送验证邮件按钮 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/resend_verification_button"
+        style="@style/Widget.Material3.Button.OutlinedButton.Modern"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="重新发送验证邮件"
+        android:visibility="gone"
+        app:icon="@drawable/ic_email"
+        app:layout_constraintEnd_toEndOf="@id/login_button"
+        app:layout_constraintStart_toStartOf="@id/login_button"
+        app:layout_constraintTop_toBottomOf="@id/login_button" />
 
     <!-- 生物识别按钮 -->
     <com.google.android.material.button.MaterialButton
@@ -211,35 +267,7 @@
         app:icon="@drawable/ic_fingerprint"
         app:layout_constraintEnd_toEndOf="@id/login_button"
         app:layout_constraintStart_toStartOf="@id/login_button"
-        app:layout_constraintTop_toBottomOf="@id/login_button" />
-
-    <!-- 云端登录按钮 -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/cloud_login_button"
-        style="@style/Widget.Material3.Button.TextButton.Modern"
-        android:layout_width="0dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="12dp"
-        android:text="@string/cloud_login"
-        app:layout_constraintEnd_toEndOf="@id/login_button"
-        app:layout_constraintStart_toStartOf="@id/login_button"
-        app:layout_constraintTop_toBottomOf="@id/biometric_button" />
-
-    <!-- 切换注册/登录模式按钮 -->
-    <TextView
-        android:id="@+id/switch_mode_text"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="@string/switch_to_register"
-        android:textColor="?attr/colorPrimary"
-        android:textSize="14sp"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/cloud_login_button" />
+        app:layout_constraintTop_toBottomOf="@id/resend_verification_button" />
 
     <!-- 加载进度条 -->
     <ProgressBar

@@ -43,6 +43,7 @@ public class ShareResultActivity extends AppCompatActivity {
 
     private ActivityShareResultBinding binding;
     private String shareToken;
+    private String shareId;
     private boolean isOfflineShare;
     private int passwordId;
     private String transmissionMethod;
@@ -80,8 +81,9 @@ public class ShareResultActivity extends AppCompatActivity {
         // 初始化权限启动器
         initPermissionLaunchers();
 
-        // 获取分享Token
+        // 获取分享Token和ShareId
         shareToken = getIntent().getStringExtra("SHARE_TOKEN");
+        shareId = getIntent().getStringExtra("SHARE_ID");
         passwordId = getIntent().getIntExtra("PASSWORD_ID", -1);
         isOfflineShare = getIntent().getBooleanExtra("IS_OFFLINE_SHARE", false);
         transmissionMethod = getIntent().getStringExtra("TRANSMISSION_METHOD");
@@ -332,21 +334,31 @@ public class ShareResultActivity extends AppCompatActivity {
             @Override
             public void onTransferStarted() {
                 runOnUiThread(() -> {
+                    // 显示进度UI
+                    binding.layoutTransferProgress.setVisibility(View.VISIBLE);
+                    binding.textProgressLabel.setText(R.string.sending);
+                    binding.progressIndicator.setProgress(0);
+                    binding.textProgressPercent.setText("0%");
                     binding.btnDone.setEnabled(false);
-                    binding.btnDone.setText(R.string.bluetooth_connecting);
+                    binding.btnDone.setText(R.string.sending);
                 });
             }
 
             @Override
             public void onTransferProgress(int progress) {
                 runOnUiThread(() -> {
-                    binding.btnDone.setText(getString(R.string.bluetooth_sending));
+                    // 更新进度条
+                    binding.progressIndicator.setProgress(progress);
+                    binding.textProgressPercent.setText(progress + "%");
+                    binding.btnDone.setText(getString(R.string.transfer_progress, progress));
                 });
             }
 
             @Override
             public void onTransferSuccess(String data) {
                 runOnUiThread(() -> {
+                    // 隐藏进度UI
+                    binding.layoutTransferProgress.setVisibility(View.GONE);
                     Toast.makeText(ShareResultActivity.this,
                         R.string.bluetooth_send_success, Toast.LENGTH_SHORT).show();
                     finish();
@@ -356,6 +368,8 @@ public class ShareResultActivity extends AppCompatActivity {
             @Override
             public void onTransferFailed(String error) {
                 runOnUiThread(() -> {
+                    // 隐藏进度UI
+                    binding.layoutTransferProgress.setVisibility(View.GONE);
                     binding.btnDone.setEnabled(true);
                     binding.btnDone.setText(R.string.select_bluetooth_device);
                     Toast.makeText(ShareResultActivity.this,
@@ -426,17 +440,17 @@ public class ShareResultActivity extends AppCompatActivity {
         // 完成按钮改为分享链接
         binding.btnDone.setText(R.string.share_link);
         binding.btnDone.setOnClickListener(v -> shareCloudLink(cloudLink));
-
-        // 显示占位提示
-        Toast.makeText(this, R.string.cloud_share_placeholder_hint, Toast.LENGTH_LONG).show();
     }
 
     /**
-     * 生成云端分享链接（占位实现）
+     * 生成云端分享链接（使用后端返回的 shareId）
      */
     private String generateCloudShareLink(String shareToken) {
-        // TODO: 真实实现需要将shareToken上传到服务器，返回服务器生成的链接
-        // 当前仅为占位实现，生成本地模拟链接
+        // 使用后端返回的 shareId 生成真正的分享链接
+        if (shareId != null && !shareId.isEmpty()) {
+            return "https://safevault.app/share/" + shareId;
+        }
+        // 如果没有 shareId，回退到占位实现（理论上不应该发生）
         return "https://safevault.app/share/" + shareToken.substring(0, Math.min(8, shareToken.length()));
     }
 

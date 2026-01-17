@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder;
 import com.ttt.safevault.network.api.AuthServiceApi;
 import com.ttt.safevault.network.api.DiscoveryServiceApi;
 import com.ttt.safevault.network.api.ShareServiceApi;
+import com.ttt.safevault.network.api.VaultServiceApi;
 
 import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +35,7 @@ public class RetrofitClient {
     private AuthServiceApi authServiceApi;
     private ShareServiceApi shareServiceApi;
     private DiscoveryServiceApi discoveryServiceApi;
+    private VaultServiceApi vaultServiceApi;
 
     private RetrofitClient(Context context) {
         tokenManager = TokenManager.getInstance(context);
@@ -107,6 +109,7 @@ public class RetrofitClient {
         authServiceApi = retrofit.create(AuthServiceApi.class);
         shareServiceApi = retrofit.create(ShareServiceApi.class);
         discoveryServiceApi = retrofit.create(DiscoveryServiceApi.class);
+        vaultServiceApi = retrofit.create(VaultServiceApi.class);
         
         // 设置TokenManager的authApi
         tokenManager.setAuthApi(authServiceApi);
@@ -130,7 +133,11 @@ public class RetrofitClient {
     public DiscoveryServiceApi getDiscoveryServiceApi() {
         return discoveryServiceApi;
     }
-    
+
+    public VaultServiceApi getVaultServiceApi() {
+        return vaultServiceApi;
+    }
+
     public TokenManager getTokenManager() {
         return tokenManager;
     }

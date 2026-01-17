@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <!-- PIN码输入 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/pinLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="请输入PIN码"
+        app:prefixText="PIN码"
+        app:suffixText="4-6位数字">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/pinInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:maxLength="6"
+            android:textSize="16sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="16dp" />
+
+    <!-- 确认PIN码输入 -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/confirmPinLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="请再次输入PIN码"
+        app:prefixText="确认PIN码"
+        app:suffixText="4-6位数字">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/confirmPinInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:maxLength="6"
+            android:textSize="16sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+</LinearLayout>

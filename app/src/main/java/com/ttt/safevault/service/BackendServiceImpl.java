@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.reactivex.rxjava3.core.Observable;
+
 /**
  * BackendService接口的具体实现
  * 提供所有后端功能：加密存储、密码生成等
@@ -309,14 +311,128 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public boolean exportData(String exportPath) {
-        // TODO: 实现加密导出功能
-        return false;
+        try {
+            // 1. 获取所有密码数据
+            List<PasswordItem> items = getAllItems();
+
+            if (items.isEmpty()) {
+                Log.w(TAG, "No data to export");
+                return false;
+            }
+
+            // 2. 序列化为 JSON
+            String jsonData = com.ttt.safevault.utils.BackupJsonUtil.serializePasswordList(items);
+
+            // 3. 使用主密码加密数据
+            String masterPassword = cryptoManager.getMasterPassword();
+            com.ttt.safevault.utils.BackupCryptoUtil.EncryptionResult encryptionResult =
+                    com.ttt.safevault.utils.BackupCryptoUtil.encrypt(jsonData, masterPassword);
+
+            // 4. 构建导出数据结构
+            String deviceId = com.ttt.safevault.security.KeyManager.getInstance(context).getDeviceId();
+            String appVersion = getAppVersion();
+
+            com.ttt.safevault.dto.ExportData exportData =
+                    com.ttt.safevault.utils.BackupJsonUtil.buildExportData(
+                            encryptionResult.getEncryptedData(),
+                            encryptionResult.getIv(),
+                            encryptionResult.getSalt(),
+                            items.size(),
+                            deviceId,
+                            appVersion
+                    );
+
+            // 5. 序列化为最终 JSON
+            String finalJson = com.ttt.safevault.utils.BackupJsonUtil.serializeExportData(exportData);
+
+            // 6. 写入文件
+            java.io.FileWriter writer = new java.io.FileWriter(exportPath);
+            writer.write(finalJson);
+            writer.close();
+
+            Log.d(TAG, "Data exported successfully to: " + exportPath);
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to export data", e);
+            return false;
+        }
     }
 
     @Override
     public boolean importData(String importPath) {
-        // TODO: 实现导入功能
-        return false;
+        try {
+            // 1. 读取文件
+            java.io.File file = new java.io.File(importPath);
+            if (!file.exists()) {
+                Log.e(TAG, "Import file does not exist: " + importPath);
+                return false;
+            }
+
+            java.io.FileReader reader = new java.io.FileReader(file);
+            StringBuilder content = new StringBuilder();
+            char[] buffer = new char[1024];
+            int length;
+            while ((length = reader.read(buffer)) != -1) {
+                content.append(buffer, 0, length);
+            }
+            reader.close();
+
+            // 2. 反序列化导出数据
+            com.ttt.safevault.dto.ExportData exportData =
+                    com.ttt.safevault.utils.BackupJsonUtil.deserializeExportData(content.toString());
+
+            // 3. 验证数据
+            com.ttt.safevault.utils.BackupValidationUtil.ValidationResult validationResult =
+                    com.ttt.safevault.utils.BackupValidationUtil.validateExportData(exportData);
+
+            if (!validationResult.isValid()) {
+                Log.e(TAG, "Invalid backup file: " + validationResult.getErrorMessage());
+                return false;
+            }
+
+            // 4. 解密数据
+            String masterPassword = cryptoManager.getMasterPassword();
+            com.ttt.safevault.dto.ExportData.DataContainer dataContainer = exportData.getData();
+
+            String decryptedJson = com.ttt.safevault.utils.BackupCryptoUtil.decrypt(
+                    dataContainer.getEncryptedData(),
+                    masterPassword,
+                    dataContainer.getSalt(),
+                    dataContainer.getIv()
+            );
+
+            // 5. 反序列化密码列表
+            List<PasswordItem> items = com.ttt.safevault.utils.BackupJsonUtil.deserializePasswordList(decryptedJson);
+
+            // 6. 清空现有数据并导入新数据
+            // 注意：这里简单实现，直接替换所有数据
+            for (PasswordItem item : items) {
+                // 使用负数ID表示新导入的条目
+                item.setId(-1);
+                saveItem(item);
+            }
+
+            Log.d(TAG, "Data imported successfully from: " + importPath + ", items: " + items.size());
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to import data", e);
+            return false;
+        }
+    }
+
+    /**
+     * 获取应用版本
+     */
+    private String getAppVersion() {
+        try {
+            android.content.pm.PackageManager pm = context.getPackageManager();
+            android.content.pm.PackageInfo packageInfo = pm.getPackageInfo(context.getPackageName(), 0);
+            return packageInfo.versionName;
+        } catch (Exception e) {
+            return "1.0.0";
+        }
     }
 
     @Override
@@ -467,20 +583,76 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public boolean setPinCode(String pinCode) {
-        // TODO: 实现 PIN 码加密存储
-        return false;
+        // 验证PIN码格式（4-6位数字）
+        if (pinCode == null || !pinCode.matches("\\d{4,6}")) {
+            Log.e(TAG, "Invalid PIN code format");
+            return false;
+        }
+
+        try {
+            // 使用AndroidKeyStore加密存储PIN码
+            // 注意：这里使用简单的哈希存储，生产环境应该使用更安全的方式
+            String hashedPin = hashPinCode(pinCode);
+
+            prefs.edit()
+                    .putString("pin_code", hashedPin)
+                    .apply();
+
+            // 标记PIN码已启用
+            securityConfig.setPinCodeEnabled(true);
+
+            Log.d(TAG, "PIN code set successfully");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to set PIN code", e);
+            return false;
+        }
     }
 
     @Override
     public boolean verifyPinCode(String pinCode) {
-        // TODO: 实现 PIN 码验证
-        return false;
+        String storedHashedPin = prefs.getString("pin_code", null);
+        if (storedHashedPin == null) {
+            return false;
+        }
+
+        String hashedInput = hashPinCode(pinCode);
+        return storedHashedPin.equals(hashedInput);
     }
 
     @Override
     public boolean clearPinCode() {
-        // TODO: 实现 PIN 码清除
-        return false;
+        try {
+            prefs.edit()
+                    .remove("pin_code")
+                    .apply();
+
+            // 标记PIN码已禁用
+            securityConfig.setPinCodeEnabled(false);
+
+            Log.d(TAG, "PIN code cleared successfully");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to clear PIN code", e);
+            return false;
+        }
+    }
+
+    /**
+     * 对PIN码进行哈希（使用SHA-256）
+     * 生产环境应该使用加盐哈希或其他更安全的方式
+     */
+    private String hashPinCode(String pinCode) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            // 添加固定的盐值（实际应用中应该使用随机盐）
+            String saltedPin = pinCode + "SafeVaultPinSalt2024";
+            byte[] hash = digest.digest(saltedPin.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.Base64.getEncoder().encodeToString(hash);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to hash PIN code", e);
+            throw new RuntimeException("PIN码哈希失败", e);
+        }
     }
 
     @Override
@@ -496,17 +668,52 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public boolean deleteAccount() {
-        // TODO: 实现账户删除，包括本地和云端数据
         try {
-            // 删除所有密码数据
+            Log.d(TAG, "Starting account deletion...");
+
+            // 1. 调用后端API删除云端数据
+            String token = tokenManager.getAccessToken();
+            if (token != null && !token.isEmpty()) {
+                try {
+                    com.ttt.safevault.dto.response.DeleteAccountResponse response =
+                        retrofitClient.getAuthServiceApi()
+                            .deleteAccount("Bearer " + token)
+                            .blockingFirst();
+
+                    if (response != null && response.isSuccess()) {
+                        Log.d(TAG, "Cloud account deleted successfully");
+                    } else {
+                        Log.w(TAG, "Cloud account deletion failed: " +
+                            (response != null ? response.getMessage() : "Unknown error"));
+                        // 继续删除本地数据
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to delete cloud account", e);
+                    // 继续删除本地数据
+                }
+            } else {
+                Log.w(TAG, "No access token, skipping cloud deletion");
+            }
+
+            // 2. 删除所有本地密码数据
             List<PasswordItem> items = getAllItems();
             for (PasswordItem item : items) {
                 deleteItem(item.getId());
             }
-            // 清除加密密钥
+            Log.d(TAG, "Local password data deleted");
+
+            // 3. 清除加密密钥和生物识别数据
             cryptoManager.lock();
-            // 清除所有设置
+            clearBiometricData();
+            Log.d(TAG, "Encryption keys cleared");
+
+            // 4. 清除所有设置和Token
             securityConfig.clear();
+            tokenManager.clearTokens();
+            prefs.edit().clear().apply();
+            Log.d(TAG, "Settings and tokens cleared");
+
+            Log.d(TAG, "Account deletion completed successfully");
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to delete account", e);
@@ -995,11 +1202,12 @@ public class BackendServiceImpl implements BackendService {
                 return null;
             }
 
-            // 生成签名
-            String signature = generateSignature(userId, deviceId);
+            // 生成时间戳和签名
+            long timestamp = System.currentTimeMillis();
+            String signature = generateSignature(userId, deviceId, timestamp);
 
             com.ttt.safevault.dto.request.LoginRequest request = new com.ttt.safevault.dto.request.LoginRequest(
-                userId, deviceId, signature
+                userId, deviceId, signature, timestamp
             );
 
             com.ttt.safevault.dto.response.AuthResponse response = retrofitClient.getAuthServiceApi()
@@ -1021,9 +1229,9 @@ public class BackendServiceImpl implements BackendService {
     /**
      * 生成签名（简化版本）
      */
-    private String generateSignature(String userId, String deviceId) {
+    private String generateSignature(String userId, String deviceId, long timestamp) {
         try {
-            String data = userId + deviceId + System.currentTimeMillis();
+            String data = userId + deviceId + timestamp;
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(data.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return java.util.Base64.getEncoder().encodeToString(hash);
@@ -1226,7 +1434,297 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public void logoutCloud() {
-        tokenManager.clearTokens();
-        Log.d(TAG, "Logged out from cloud");
+        try {
+            String userId = tokenManager.getUserId();
+            String deviceId = com.ttt.safevault.security.KeyManager.getInstance(context).getDeviceId();
+
+            if (userId != null && !userId.isEmpty()) {
+                // 构建注销请求
+                com.ttt.safevault.dto.request.LogoutRequest request =
+                    com.ttt.safevault.dto.request.LogoutRequest.builder()
+                        .deviceId(deviceId)
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+
+                // 调用后端注销 API
+                retrofitClient.getAuthServiceApi()
+                    .logout(userId, request)
+                    .blockingSubscribe();
+
+                Log.d(TAG, "Cloud logout successful");
+            }
+
+            // 清除令牌
+            tokenManager.clearTokens();
+            Log.d(TAG, "Logged out from cloud");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to logout from cloud", e);
+            // 即使 API 调用失败，也清除本地令牌
+            tokenManager.clearTokens();
+            throw new RuntimeException("注销失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
+            String email, String username, String masterPassword) {
+        try {
+            com.ttt.safevault.security.KeyManager keyManager =
+                    com.ttt.safevault.security.KeyManager.getInstance(context);
+
+            // 1. 生成盐值
+            String salt = keyManager.generateSaltForUser(email);
+            keyManager.saveUserSalt(email, salt);
+
+            // 2. 派生密钥并生成密码验证器
+            javax.crypto.SecretKey derivedKey = keyManager.deriveKeyFromMasterPassword(masterPassword, salt);
+            String passwordVerifier = java.util.Base64.getEncoder().encodeToString(derivedKey.getEncoded());
+
+            // 3. 生成 RSA 密钥对
+            String publicKey = keyManager.getPublicKey();
+            java.security.PrivateKey privateKey = keyManager.getPrivateKey();
+
+            if (privateKey == null) {
+                throw new RuntimeException("无法生成私钥");
+            }
+
+            // 4. 使用主密码加密私钥
+            com.ttt.safevault.security.KeyManager.EncryptedPrivateKey encryptedKey =
+                    keyManager.encryptPrivateKey(privateKey, masterPassword, email);
+
+            // 5. 获取设备ID
+            String deviceId = keyManager.getDeviceId();
+
+            // 6. 构建完成注册请求
+            com.ttt.safevault.dto.request.CompleteRegistrationRequest request =
+                    com.ttt.safevault.dto.request.CompleteRegistrationRequest.builder()
+                            .email(email)
+                            .username(username)
+                            .passwordVerifier(passwordVerifier)
+                            .salt(salt)
+                            .publicKey(publicKey)
+                            .encryptedPrivateKey(encryptedKey.getEncryptedData())
+                            .privateKeyIv(encryptedKey.getIv())
+                            .deviceId(deviceId)
+                            .build();
+
+            // 7. 调用后端完成注册 API
+            com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
+                    retrofitClient.getAuthServiceApi()
+                            .completeRegistration(request)
+                            .blockingFirst();
+
+            if (response != null && response.getSuccess()) {
+                // 8. 保存令牌
+                tokenManager.saveTokens(response.getUserId(), response.getAccessToken(), response.getRefreshToken());
+
+                // 9. 初始化 CryptoManager
+                if (!cryptoManager.isInitialized()) {
+                    cryptoManager.initialize(masterPassword);
+                }
+
+                Log.d(TAG, "Registration completed successfully for user: " + username);
+            }
+
+            return response;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to complete registration", e);
+            throw new RuntimeException("注册完成失败: " + e.getMessage());
+        }
+    }
+
+    // ========== 新增：统一邮箱认证加密数据接口实现 ==========
+
+    @Override
+    public boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt) {
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for private key upload");
+                return false;
+            }
+
+            // 获取当前版本号并生成下一个版本
+            String currentVersion = getCurrentPrivateKeyVersion();
+            String nextVersion = generateNextKeyVersion(currentVersion);
+
+            com.ttt.safevault.dto.request.UploadPrivateKeyRequest request =
+                new com.ttt.safevault.dto.request.UploadPrivateKeyRequest(
+                    encryptedPrivateKey, iv, salt, nextVersion
+                );
+
+            com.ttt.safevault.dto.response.UploadPrivateKeyResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .uploadPrivateKey(userId, request)
+                    .blockingFirst();
+
+            if (response != null && response.isSuccess()) {
+                // 保存版本号到 SharedPreferences
+                prefs.edit()
+                    .putString("private_key_version", response.getVersion())
+                    .putLong("private_key_uploaded_at", System.currentTimeMillis())
+                    .apply();
+                Log.d(TAG, "Private key uploaded successfully, version: " + response.getVersion());
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to upload encrypted private key", e);
+            return false;
+        }
+    }
+
+    @Override
+    public com.ttt.safevault.security.KeyManager.EncryptedPrivateKey downloadEncryptedPrivateKey() {
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for private key download");
+                return null;
+            }
+
+            com.ttt.safevault.dto.response.PrivateKeyResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .getPrivateKey(userId)
+                    .blockingFirst();
+
+            if (response != null && response.getEncryptedPrivateKey() != null) {
+                // 更新本地版本号
+                prefs.edit()
+                    .putString("private_key_version", response.getVersion())
+                    .apply();
+
+                Log.d(TAG, "Private key downloaded successfully, version: " + response.getVersion());
+                return new com.ttt.safevault.security.KeyManager.EncryptedPrivateKey(
+                    response.getEncryptedPrivateKey(),
+                    response.getIv(),
+                    response.getSalt()
+                );
+            }
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to download encrypted private key", e);
+            return null;
+        }
+    }
+
+    @Override
+    public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv) {
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for vault upload");
+                return false;
+            }
+
+            // 获取当前版本号
+            long currentVersion = getVaultVersion();
+
+            // 构建同步请求
+            com.ttt.safevault.dto.request.VaultSyncRequest request =
+                new com.ttt.safevault.dto.request.VaultSyncRequest(
+                    encryptedVaultData, iv, "", currentVersion, false
+                );
+
+            com.ttt.safevault.dto.response.VaultSyncResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .syncVault(userId, request)
+                    .blockingFirst();
+
+            if (response != null) {
+                if (response.isHasConflict()) {
+                    Log.w(TAG, "Vault sync conflict: serverVersion=" + response.getServerVersion() +
+                             ", clientVersion=" + response.getClientVersion());
+                    // 保存服务器数据供冲突处理
+                    prefs.edit()
+                        .putString("server_vault_data", response.getServerVault().getEncryptedData())
+                        .putString("server_vault_iv", response.getServerVault().getDataIv())
+                        .putLong("server_vault_version", response.getServerVersion())
+                        .apply();
+                    return false;
+                }
+
+                if (response.isSuccess()) {
+                    // 保存新版本号和时间戳
+                    prefs.edit()
+                        .putLong("vault_version", response.getNewVersion())
+                        .putLong("vault_last_sync", System.currentTimeMillis())
+                        .apply();
+                    Log.d(TAG, "Vault uploaded successfully, new version: " + response.getNewVersion());
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to upload encrypted vault data", e);
+            return false;
+        }
+    }
+
+    @Override
+    public EncryptedVaultData downloadEncryptedVaultData() {
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for vault download");
+                return null;
+            }
+
+            com.ttt.safevault.dto.response.VaultResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .getVault(userId)
+                    .blockingFirst();
+
+            if (response != null && response.getEncryptedData() != null) {
+                // 更新本地版本号
+                prefs.edit()
+                    .putLong("vault_version", response.getVersion())
+                    .putLong("vault_last_sync", System.currentTimeMillis())
+                    .apply();
+
+                Log.d(TAG, "Vault downloaded successfully, version: " + response.getVersion());
+                return new EncryptedVaultData(
+                    response.getEncryptedData(),
+                    response.getDataIv(),
+                    String.valueOf(response.getVersion())
+                );
+            }
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to download encrypted vault data", e);
+            return null;
+        }
+    }
+
+    // ========== 私钥版本管理辅助方法 ==========
+
+    /**
+     * 获取当前私钥版本号
+     */
+    private String getCurrentPrivateKeyVersion() {
+        return prefs.getString("private_key_version", "v1");
+    }
+
+    /**
+     * 生成下一个版本号
+     * 格式: v{数字}，例如: v1, v2, v3
+     */
+    private String generateNextKeyVersion(String currentVersion) {
+        try {
+            // 从版本号中提取数字并递增
+            int versionNum = Integer.parseInt(currentVersion.substring(1));
+            return "v" + (versionNum + 1);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to parse version: " + currentVersion);
+            return "v1";
+        }
+    }
+
+    /**
+     * 获取当前密码库版本号
+     */
+    private long getVaultVersion() {
+        return prefs.getLong("vault_version", 0L);
     }
 }

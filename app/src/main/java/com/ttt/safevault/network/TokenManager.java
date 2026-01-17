@@ -20,6 +20,11 @@ public class TokenManager {
     private static final String KEY_REFRESH_TOKEN = "refresh_token";
     private static final String KEY_USER_ID = "user_id";
     private static final String KEY_DISPLAY_NAME = "display_name";
+
+    // 邮箱验证状态相关
+    private static final String KEY_EMAIL_VERIFIED = "email_verified";
+    private static final String KEY_VERIFIED_EMAIL = "verified_email";
+    private static final String KEY_VERIFIED_USERNAME = "verified_username";
     
     private final SharedPreferences prefs;
     private AuthServiceApi authApi;
@@ -48,15 +53,32 @@ public class TokenManager {
         if (response == null) {
             return;
         }
-        
+
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, response.getAccessToken())
             .putString(KEY_REFRESH_TOKEN, response.getRefreshToken())
             .putString(KEY_USER_ID, response.getUserId())
             .putString(KEY_DISPLAY_NAME, response.getDisplayName())
             .apply();
-        
+
         Log.d(TAG, "Tokens saved for user: " + response.getDisplayName());
+    }
+
+    /**
+     * 保存Token（使用单独的参数）
+     */
+    public void saveTokens(String userId, String accessToken, String refreshToken) {
+        if (userId == null || accessToken == null || refreshToken == null) {
+            return;
+        }
+
+        prefs.edit()
+            .putString(KEY_ACCESS_TOKEN, accessToken)
+            .putString(KEY_REFRESH_TOKEN, refreshToken)
+            .putString(KEY_USER_ID, userId)
+            .apply();
+
+        Log.d(TAG, "Tokens saved for user: " + userId);
     }
     
     /**
@@ -123,5 +145,67 @@ public class TokenManager {
      */
     public boolean isLoggedIn() {
         return getAccessToken() != null;
+    }
+
+    // ========== 邮箱验证状态管理 ==========
+
+    /**
+     * 保存邮箱验证状态
+     */
+    public void saveEmailVerificationStatus(String email, String username) {
+        Log.d(TAG, "saveEmailVerificationStatus called with email=" + email + ", username=" + username);
+        Log.d(TAG, "PREFS_NAME=" + PREFS_NAME);
+
+        prefs.edit()
+            .putBoolean(KEY_EMAIL_VERIFIED, true)
+            .putString(KEY_VERIFIED_EMAIL, email)
+            .putString(KEY_VERIFIED_USERNAME, username)
+            .commit();  // 使用 commit() 而不是 apply() 确保立即写入
+
+        // 验证保存是否成功
+        boolean saved = prefs.getBoolean(KEY_EMAIL_VERIFIED, false);
+        String savedEmail = prefs.getString(KEY_VERIFIED_EMAIL, null);
+        String savedUsername = prefs.getString(KEY_VERIFIED_USERNAME, null);
+        Log.d(TAG, "Email verification status saved. verified=" + saved + ", email=" + savedEmail + ", username=" + savedUsername);
+    }
+
+    /**
+     * 检查邮箱是否已验证
+     */
+    public boolean isEmailVerified() {
+        boolean verified = prefs.getBoolean(KEY_EMAIL_VERIFIED, false);
+        Log.d(TAG, "isEmailVerified: " + verified);
+        return verified;
+    }
+
+    /**
+     * 获取已验证的邮箱
+     */
+    public String getVerifiedEmail() {
+        String email = prefs.getString(KEY_VERIFIED_EMAIL, null);
+        Log.d(TAG, "getVerifiedEmail: " + email);
+        return email;
+    }
+
+    /**
+     * 获取已验证的用户名
+     */
+    public String getVerifiedUsername() {
+        String username = prefs.getString(KEY_VERIFIED_USERNAME, null);
+        Log.d(TAG, "getVerifiedUsername: " + username);
+        return username;
+    }
+
+    /**
+     * 清除邮箱验证状态
+     */
+    public void clearEmailVerificationStatus() {
+        prefs.edit()
+            .remove(KEY_EMAIL_VERIFIED)
+            .remove(KEY_VERIFIED_EMAIL)
+            .remove(KEY_VERIFIED_USERNAME)
+            .apply();
+
+        Log.d(TAG, "Email verification status cleared");
     }
 }

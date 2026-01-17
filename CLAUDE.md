@@ -264,6 +264,12 @@ The app integrates with `safevault-backend` REST APIs:
 - **Discovery**: `/v1/discovery/register`, `/v1/discovery/nearby`
 - **WebSocket**: Real-time notifications
 
+### LLM API Concurrency Limits
+- **最大并发请求数**: 5
+- 调用大模型API时，确保同时进行的请求数不超过5个
+- 如果需要发送超过5个请求，应使用适当的限流/队列机制
+- 此限制适用于所有大模型API调用（如OpenAI、Claude等）
+
 ### Security Considerations for Sharing
 - All cloud communication uses HTTPS
 - Tokens stored securely with AndroidKeyStore

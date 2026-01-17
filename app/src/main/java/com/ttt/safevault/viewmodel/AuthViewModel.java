@@ -1,6 +1,8 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
+import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -9,6 +11,9 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.dto.response.AuthResponse;
+import com.ttt.safevault.dto.response.EmailLoginResponse;
+import com.ttt.safevault.dto.response.EmailRegistrationResponse;
+import com.ttt.safevault.dto.response.VerifyEmailResponse;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
@@ -38,6 +43,11 @@ public class AuthViewModel extends AndroidViewModel {
     private final MutableLiveData<AuthResponse> authResponseLiveData = new MutableLiveData<>();
     private final MutableLiveData<String> errorLiveData = new MutableLiveData<>();
     private final MutableLiveData<Boolean> loadingLiveData = new MutableLiveData<>(false);
+
+    // 邮箱认证相关 LiveData
+    private final MutableLiveData<EmailRegistrationResponse> emailRegistrationLiveData = new MutableLiveData<>();
+    private final MutableLiveData<VerifyEmailResponse> emailVerificationLiveData = new MutableLiveData<>();
+    private final MutableLiveData<EmailLoginResponse> emailLoginLiveData = new MutableLiveData<>();
 
     public AuthViewModel(@NonNull Application application) {
         super(application);
@@ -107,11 +117,12 @@ public class AuthViewModel extends AndroidViewModel {
             return;
         }
 
-        // 生成签名（简化版本：使用userId和deviceId的哈希）
-        String signature = generateSignature(userId, deviceId);
+        // 生成时间戳和签名
+        long timestamp = System.currentTimeMillis();
+        String signature = generateSignature(userId, deviceId, timestamp);
 
         Disposable disposable = retrofitClient.getAuthServiceApi()
-            .login(new com.ttt.safevault.dto.request.LoginRequest(userId, deviceId, signature))
+            .login(new com.ttt.safevault.dto.request.LoginRequest(userId, deviceId, signature, timestamp))
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
@@ -146,11 +157,12 @@ public class AuthViewModel extends AndroidViewModel {
             return;
         }
 
-        // 生成签名（简化版本）
-        String signature = generateSignature(username, deviceId);
+        // 生成时间戳和签名
+        long timestamp = System.currentTimeMillis();
+        String signature = generateSignature(username, deviceId, timestamp);
 
         Disposable disposable = retrofitClient.getAuthServiceApi()
-            .loginByUsername(new com.ttt.safevault.dto.request.LoginByUsernameRequest(username, deviceId, signature))
+            .loginByUsername(new com.ttt.safevault.dto.request.LoginByUsernameRequest(username, signature, timestamp))
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
@@ -174,10 +186,15 @@ public class AuthViewModel extends AndroidViewModel {
     /**
      * 生成签名（简化版本）
      * 生产环境应该使用RSA私钥签名
+     *
+     * @param identifier 用户ID或用户名
+     * @param deviceId   设备ID
+     * @param timestamp  时间戳
+     * @return Base64编码的SHA-256签名
      */
-    private String generateSignature(String userId, String deviceId) {
+    private String generateSignature(String identifier, String deviceId, long timestamp) {
         try {
-            String data = userId + deviceId + System.currentTimeMillis();
+            String data = identifier + deviceId + timestamp;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(hash);
@@ -232,6 +249,220 @@ public class AuthViewModel extends AndroidViewModel {
         authResponseLiveData.setValue(null);
     }
 
+    // ========== 统一邮箱认证方法 ==========
+
+    /**
+     * 邮箱注册第一步：发起注册并发送验证邮件
+     *
+     * @param email    邮箱
+     * @param username 用户名
+     */
+    public void registerWithEmail(String email, String username) {
+        loadingLiveData.setValue(true);
+
+        Disposable disposable = retrofitClient.getAuthServiceApi()
+            .registerWithEmail(new com.ttt.safevault.dto.request.EmailRegistrationRequest(email, username))
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                response -> {
+                    loadingLiveData.setValue(false);
+                    emailRegistrationLiveData.setValue(response);
+                    Log.d(TAG, "Email registration success: " + response.getMessage());
+                },
+                error -> {
+                    loadingLiveData.setValue(false);
+                    String message = "注册失败: " + error.getMessage();
+                    errorLiveData.setValue(message);
+                    Log.e(TAG, "Email registration failed", error);
+                }
+            );
+
+        disposables.add(disposable);
+    }
+
+    /**
+     * 验证邮箱
+     *
+     * @param token 验证令牌
+     */
+    public void verifyEmail(String token) {
+        loadingLiveData.setValue(true);
+
+        Disposable disposable = retrofitClient.getAuthServiceApi()
+            .verifyEmail(new com.ttt.safevault.dto.request.VerifyEmailRequest(token))
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                response -> {
+                    loadingLiveData.setValue(false);
+                    emailVerificationLiveData.setValue(response);
+                    Log.d(TAG, "Email verification success: " + response.getMessage());
+                },
+                error -> {
+                    loadingLiveData.setValue(false);
+                    String message = "验证失败: " + error.getMessage();
+                    errorLiveData.setValue(message);
+                    Log.e(TAG, "Email verification failed", error);
+                }
+            );
+
+        disposables.add(disposable);
+    }
+
+    /**
+     * 重新发送验证邮件
+     *
+     * @param email 邮箱
+     */
+    public void resendVerificationEmail(String email) {
+        loadingLiveData.setValue(true);
+
+        Disposable disposable = retrofitClient.getAuthServiceApi()
+            .resendVerification(new com.ttt.safevault.dto.request.ResendVerificationRequest(email))
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                response -> {
+                    loadingLiveData.setValue(false);
+                    emailRegistrationLiveData.setValue(response);
+                    Log.d(TAG, "Resend verification success: " + response.getMessage());
+                },
+                error -> {
+                    loadingLiveData.setValue(false);
+                    String message = "重发失败: " + error.getMessage();
+                    errorLiveData.setValue(message);
+                    Log.e(TAG, "Resend verification failed", error);
+                }
+            );
+
+        disposables.add(disposable);
+    }
+
+    /**
+     * 邮箱登录（支持设备管理）
+     *
+     * @param email       邮箱
+     * @param masterPassword 主密码（用于生成签名）
+     */
+    public void loginWithEmail(String email, String masterPassword) {
+        loadingLiveData.setValue(true);
+
+        // 获取设备ID
+        String deviceId = keyManager.getDeviceId();
+        if (deviceId == null) {
+            loadingLiveData.setValue(false);
+            errorLiveData.setValue("设备ID获取失败");
+            return;
+        }
+
+        // 获取设备信息
+        String deviceName = getDeviceName();
+        String deviceType = "android";
+        String osVersion = "Android " + Build.VERSION.RELEASE;
+
+        // 生成时间戳和派生密钥签名
+        long timestamp = System.currentTimeMillis();
+        String signature = generateDerivedKeySignature(email, deviceId, masterPassword, timestamp);
+
+        Disposable disposable = retrofitClient.getAuthServiceApi()
+            .loginByEmail(new com.ttt.safevault.dto.request.LoginByEmailRequest(
+                email, deviceId, deviceName, signature, timestamp, deviceType, osVersion))
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                response -> {
+                    loadingLiveData.setValue(false);
+                    // 保存Token信息（转换EmailLoginResponse到AuthResponse格式）
+                    tokenManager.saveTokens(
+                        response.getUserId(),
+                        response.getAccessToken(),
+                        response.getRefreshToken()
+                    );
+                    emailLoginLiveData.setValue(response);
+                    Log.d(TAG, "Email login success: " + response.getUserId() +
+                               ", isNewDevice: " + response.getIsNewDevice());
+                },
+                error -> {
+                    loadingLiveData.setValue(false);
+                    String message = "登录失败: " + error.getMessage();
+                    errorLiveData.setValue(message);
+                    Log.e(TAG, "Email login failed", error);
+                }
+            );
+
+        disposables.add(disposable);
+    }
+
+    /**
+     * 生成派生密钥签名（使用 PBKDF2）
+     * 从主密码派生密钥，然后生成签名证明密钥派生正确
+     */
+    private String generateDerivedKeySignature(String email, String deviceId, String masterPassword, long timestamp) {
+        try {
+            // 1. 获取或生成用户盐值
+            String salt = keyManager.getUserSalt(email);
+            if (salt == null) {
+                // 如果是首次登录，使用临时盐值生成签名
+                // 实际使用中，盐值应该在注册时生成并保存
+                salt = keyManager.generateSaltForUser(email);
+            }
+
+            // 2. 从主密码派生密钥
+            javax.crypto.SecretKey derivedKey = keyManager.deriveKeyFromMasterPassword(masterPassword, salt);
+
+            // 3. 使用派生密钥生成签名（证明密钥派生正确）
+            // 签名内容：邮箱 + 设备ID + 时间戳的哈希
+            String data = email + deviceId + timestamp;
+            byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
+
+            // 使用派生密钥对数据进行HMAC签名
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(derivedKey);
+            byte[] signatureBytes = mac.doFinal(dataBytes);
+
+            // 返回 Base64 编码的签名
+            String signature = Base64.getEncoder().encodeToString(signatureBytes);
+
+            Log.d(TAG, "Derived key signature generated successfully");
+            return signature;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to generate derived key signature", e);
+            // 降级到简化版本（用于向后兼容）
+            try {
+                String data = email + deviceId + masterPassword + timestamp;
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
+                return Base64.getEncoder().encodeToString(hash);
+            } catch (Exception ex) {
+                Log.e(TAG, "Failed to generate fallback signature", ex);
+                return "";
+            }
+        }
+    }
+
+    /**
+     * 获取设备名称
+     */
+    private String getDeviceName() {
+        String manufacturer = Build.MANUFACTURER;
+        String model = Build.MODEL;
+        if (model.startsWith(manufacturer)) {
+            return capitalize(model);
+        }
+        return capitalize(manufacturer) + " " + model;
+    }
+
+    /**
+     * 首字母大写
+     */
+    private String capitalize(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+        return str.substring(0, 1).toUpperCase() + str.substring(1);
+    }
+
     // Getters for LiveData
     public LiveData<AuthResponse> getAuthResponse() {
         return authResponseLiveData;
@@ -243,6 +474,18 @@ public class AuthViewModel extends AndroidViewModel {
 
     public LiveData<Boolean> getLoading() {
         return loadingLiveData;
+    }
+
+    public LiveData<EmailRegistrationResponse> getEmailRegistrationResponse() {
+        return emailRegistrationLiveData;
+    }
+
+    public LiveData<VerifyEmailResponse> getEmailVerificationResponse() {
+        return emailVerificationLiveData;
+    }
+
+    public LiveData<EmailLoginResponse> getEmailLoginResponse() {
+        return emailLoginLiveData;
     }
 
     @Override

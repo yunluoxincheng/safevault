@@ -348,11 +348,18 @@ public class BluetoothTransferManager {
 
     /**
      * 数据传输线程
+     * 支持接收数据时的进度回调
      */
     private class TransferThread extends Thread {
         private final BluetoothSocket socket;
         private final InputStream inputStream;
         private final OutputStream outputStream;
+
+        // 进度跟踪
+        private long totalBytesRead = 0;
+        private long lastProgressUpdate = 0;
+        private static final long PROGRESS_THROTTLE_MS = 100; // 每100ms更新一次进度
+        private static final int MIN_PROGRESS_PERCENT = 10; // 最小进度百分比（避免小文件跳动）
 
         public TransferThread(BluetoothSocket socket) {
             this.socket = socket;
@@ -377,22 +384,49 @@ public class BluetoothTransferManager {
 
             try {
                 notifyStarted();
-                
+
                 int bytes;
+                // 估算最大数据大小用于进度计算（实际大小未知）
+                long estimatedMaxSize = MAX_DATA_SIZE;
+
                 while ((bytes = inputStream.read(buffer)) != -1) {
                     String chunk = new String(buffer, 0, bytes);
                     dataBuilder.append(chunk);
-                    
-                    // TODO: 实现进度回调
+
+                    // 更新进度
+                    totalBytesRead += bytes;
+                    notifyProgressThrottled(estimatedMaxSize);
                 }
 
                 String receivedData = dataBuilder.toString();
                 Log.d(TAG, "Data received: " + receivedData.length() + " bytes");
+
+                // 确保进度达到100%
+                notifyProgress(100);
                 notifySuccess(receivedData);
-                
+
             } catch (IOException e) {
                 Log.e(TAG, "Failed to read data", e);
                 notifyError("接收数据失败");
+            }
+        }
+
+        /**
+         * 节流的进度更新（避免过于频繁）
+         */
+        private void notifyProgressThrottled(long estimatedMaxSize) {
+            long now = System.currentTimeMillis();
+
+            // 计算进度百分比
+            int progress = (int) ((totalBytesRead * 100) / estimatedMaxSize);
+
+            // 限制在合理范围内
+            progress = Math.max(MIN_PROGRESS_PERCENT, Math.min(95, progress));
+
+            // 节流：只有过了足够时间或进度显著变化才更新
+            if (now - lastProgressUpdate >= PROGRESS_THROTTLE_MS || progress >= 95) {
+                notifyProgress(progress);
+                lastProgressUpdate = now;
             }
         }
 
@@ -430,21 +464,46 @@ public class BluetoothTransferManager {
     private void sendDataThroughSocket(BluetoothSocket socket, String data) {
         try {
             notifyStarted();
-            
+
             OutputStream outputStream = socket.getOutputStream();
             byte[] bytes = data.getBytes("UTF-8");
-            outputStream.write(bytes);
+            int totalBytes = bytes.length;
+
+            // 分块发送以支持进度显示
+            int chunkSize = 1024; // 每块1KB
+            int bytesSent = 0;
+            long lastProgressUpdate = 0;
+
+            while (bytesSent < totalBytes) {
+                int currentChunkSize = Math.min(chunkSize, totalBytes - bytesSent);
+                outputStream.write(bytes, bytesSent, currentChunkSize);
+                bytesSent += currentChunkSize;
+
+                // 计算并通知进度
+                int progress = (int) ((bytesSent * 100) / totalBytes);
+                long now = System.currentTimeMillis();
+
+                // 节流：每100ms或完成时更新
+                if (now - lastProgressUpdate >= PROGRESS_THROTTLE_MS || bytesSent >= totalBytes) {
+                    notifyProgress(progress);
+                    lastProgressUpdate = now;
+                }
+            }
+
             outputStream.flush();
-            
-            Log.d(TAG, "Data sent: " + bytes.length + " bytes");
+
+            Log.d(TAG, "Data sent: " + totalBytes + " bytes");
+            notifyProgress(100); // 确保显示100%
             notifySuccess(null);
-            
+
             socket.close();
         } catch (IOException e) {
             Log.e(TAG, "Failed to send data", e);
             notifyError("发送数据失败：" + e.getMessage());
         }
     }
+
+    private static final long PROGRESS_THROTTLE_MS = 100; // 发送进度节流时间
 
     private void notifyStarted() {
         if (callback != null) {

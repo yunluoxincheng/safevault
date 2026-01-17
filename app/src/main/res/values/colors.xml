@@ -59,6 +59,8 @@
     <color name="strength_medium">#FF9800</color>
     <color name="strength_strong">#4CAF50</color>
     <color name="strength_very_strong">#2E7D32</color>
+    <color name="success_green">#4CAF50</color>
+    <color name="error_red">#F44336</color>
 
     <!-- Material Design 3 Dark Theme Colors (Purple) -->
     <!-- Primary -->

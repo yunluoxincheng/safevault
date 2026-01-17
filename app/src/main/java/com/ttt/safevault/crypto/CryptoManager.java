@@ -55,6 +55,7 @@ public class CryptoManager {
     private final SharedPreferences prefs;
     private SecretKey masterKey;
     private boolean isUnlocked = false;
+    private String sessionPassword; // 临时会话密码（仅用于导出/导入操作）
 
     public CryptoManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
@@ -94,6 +95,7 @@ public class CryptoManager {
             // 设置为已解锁
             this.masterKey = key;
             this.isUnlocked = true;
+            this.sessionPassword = masterPassword; // 临时存储密码用于导出/导入
 
             // 持久化会话密钥，供自动填充服务使用
             persistSessionKey(key);
@@ -128,6 +130,7 @@ public class CryptoManager {
             // 派生主密钥
             this.masterKey = deriveKey(masterPassword, salt);
             this.isUnlocked = true;
+            this.sessionPassword = masterPassword; // 临时存储密码用于导出/导入
 
             // 清除锁定标志（允许会话恢复）
             prefs.edit().remove(PREF_IS_LOCKED).apply();
@@ -152,6 +155,7 @@ public class CryptoManager {
 
         this.masterKey = null;
         this.isUnlocked = false;
+        this.sessionPassword = null; // 清除会话密码
 
         // 先设置锁定标志（同步），防止会话恢复
         SharedPreferences.Editor editor = prefs.edit();
@@ -197,13 +201,27 @@ public class CryptoManager {
         if (masterKey != null) {
             return masterKey;
         }
-        
+
         // 尝试恢复会话
         if (tryRestoreSession()) {
             return masterKey;
         }
-        
+
         return null;
+    }
+
+    /**
+     * 获取会话密码（用于导出/导入操作）
+     * 注意：密码仅在内存中临时存储，锁定后会被清除
+     */
+    @Nullable
+    public String getMasterPassword() {
+        if (!isUnlocked()) {
+            throw new IllegalStateException("CryptoManager is locked");
+        }
+
+        // 会话恢复后，密码可能为空
+        return sessionPassword;
     }
 
     /**

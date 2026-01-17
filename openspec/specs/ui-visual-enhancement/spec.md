@@ -148,3 +148,44 @@ RecyclerView 列表项 SHALL 具有流畅的进入和退出动画。
 - **AND** 单选按钮 SHALL 在深色背景下清晰可见
 - **AND** 文本颜色 SHALL 适配深色主题
 
+### Requirement: 网站图标自动加载
+密码列表 SHALL 自动加载并显示网站对应的 favicon 图标，提升视觉识别度。
+
+#### Scenario: 从 URL 加载网站图标
+- **GIVEN** 用户保存了一个包含 URL 的密码项
+- **WHEN** 密码列表页面显示该密码项
+- **THEN** 系统 SHALL 从 URL 提取域名
+- **AND** 系统 SHALL 尝试加载网站的 favicon.ico
+- **AND** 系统 SHALL 在图标位置显示加载的网站图标
+- **AND** 图标 SHALL 使用圆形裁剪显示
+
+#### Scenario: 网站图标加载失败回退到首字母
+- **GIVEN** 用户保存了一个密码项但网站没有 favicon
+- **WHEN** 密码列表尝试加载网站图标
+- **THEN** 系统 SHALL 加载失败后显示首字母图标
+- **AND** 首字母图标 SHALL 使用密码标题的第一个字符
+- **AND** 首字母图标 SHALL 使用 Material Design 3 的配色方案
+
+#### Scenario: 网站图标多层回退机制
+- **GIVEN** 用户保存了一个密码项
+- **WHEN** 系统尝试加载网站图标
+- **THEN** 系统 SHALL 按优先级尝试以下 URL：
+  - `https://domain.com/favicon.ico`
+  - `https://domain.com/apple-touch-icon.png`
+  - Google Favicon Service（最后回退）
+- **AND** 如果所有尝试失败，系统 SHALL 显示首字母或默认图标
+
+#### Scenario: 网站图标缓存
+- **GIVEN** 用户已查看过密码列表
+- **WHEN** 用户再次打开密码列表
+- **THEN** 系统 SHALL 从缓存加载已显示过的网站图标
+- **AND** 系统 SHALL 减少网络请求，提升加载速度
+- **AND** 缓存 SHALL 在 7 天后过期
+
+#### Scenario: 离线状态下的图标显示
+- **GIVEN** 用户设备处于离线状态
+- **WHEN** 密码列表页面加载
+- **THEN** 系统 SHALL 显示缓存中的网站图标（如果有）
+- **AND** 如果没有缓存，系统 SHALL 显示首字母或默认图标
+- **AND** 系统 SHALL NOT 阻塞列表显示等待图标加载
+

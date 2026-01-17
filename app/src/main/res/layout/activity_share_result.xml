@@ -67,6 +67,43 @@
                 android:layout_marginBottom="16dp"
                 android:gravity="center" />
 
+            <!-- 传输进度指示器 -->
+            <LinearLayout
+                android:id="@+id/layoutTransferProgress"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/textProgressLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/transferring"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center" />
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressIndicator"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:indeterminate="false"
+                    app:trackCornerRadius="4dp"
+                    app:trackThickness="8dp" />
+
+                <TextView
+                    android:id="@+id/textProgressPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:layout_marginTop="8dp"
+                    android:layout_gravity="center" />
+
+            </LinearLayout>
+
             <!-- 分享Token显示 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardShareToken"
@@ -74,7 +111,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardElevation="2dp"
-                app:cardCornerRadius="12dp">
+                app:cardCornerRadius="12dp"
+                android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"

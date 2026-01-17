@@ -5,11 +5,13 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.constraintlayout.widget.ConstraintSet;
 
 import java.util.ArrayList;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Patterns;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
@@ -17,47 +19,53 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
 
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
+import com.ttt.safevault.model.PasswordStrength;
 import com.ttt.safevault.security.BiometricAuthHelper;
 import com.ttt.safevault.utils.AnimationUtils;
+import com.ttt.safevault.utils.PasswordStrengthCalculator;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.LoginViewModel;
 
 /**
  * 登录/解锁页面
- * 处理主密码输入、生物识别解锁和云端账号登录
+ * 统一认证模式：邮箱+主密码
  */
 public class LoginActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private LoginViewModel viewModel;
     private AuthViewModel authViewModel;
+    private TextInputEditText emailInput;
+    private TextInputEditText usernameInput;
     private TextInputEditText passwordInput;
     private TextInputEditText confirmPasswordInput;
-    private TextInputEditText usernameInput;
-    private TextInputEditText displayNameInput;
+    private TextInputLayout emailLayout;
+    private TextInputLayout usernameLayout;
     private TextInputLayout passwordLayout;
     private TextInputLayout confirmPasswordLayout;
-    private TextInputLayout usernameLayout;
-    private TextInputLayout displayNameLayout;
     private Button loginButton;
     private Button biometricButton;
-    private Button cloudLoginButton;
+    private Button resendVerificationButton;
     private TextView errorText;
     private TextView titleText;
     private TextView subtitleText;
-    private TextView switchModeText;
-    private TextView cloudLoginHint;
     private ProgressBar progressBar;
     private View confirmPasswordSection;
-    private View cloudLoginSection;
+    private View passwordStrengthContainer;
+    private View passwordCard;
+    private ConstraintLayout constraintLayout;
+    private TextView passwordStrengthText;
+    private LinearProgressIndicator passwordStrengthBar;
 
     // 状态标志
     private boolean isInitializing = false;
@@ -65,8 +73,8 @@ public class LoginActivity extends AppCompatActivity {
     private boolean isConfirmPasswordVisible = false;
     private boolean fromAutofill = false;  // 是否从自动填充跳转过来
     private boolean fromAutofillSave = false;  // 是否从自动填充保存跳转过来
-    private boolean isCloudLoginMode = false;  // 是否为云端登录模式
-    private boolean isRegisterMode = false;  // 是否为注册模式
+    private boolean isRegistrationStep = false;  // 是否为注册第一步（邮箱验证）
+    private boolean isSetPasswordStep = false;  // 是否为设置主密码步骤
     private boolean biometricAutoTriggered = false;  // 是否已自动触发生物识别
 
     // 生物识别认证助手
@@ -93,6 +101,16 @@ public class LoginActivity extends AppCompatActivity {
         if (getIntent() != null) {
             fromAutofill = getIntent().getBooleanExtra("from_autofill", false);
             fromAutofillSave = getIntent().getBooleanExtra("from_autofill_save", false);
+
+            // 检查是否从邮箱验证页面跳转过来（设置主密码步骤）
+            String action = getIntent().getStringExtra("action");
+            if ("set_password".equals(action)) {
+                isSetPasswordStep = true;
+                String email = getIntent().getStringExtra("email");
+                String username = getIntent().getStringExtra("username");
+                // 进入设置主密码模式
+                updateUiForSetPasswordStep(email, username);
+            }
         }
 
         // 获取BackendService实例
@@ -108,28 +126,33 @@ public class LoginActivity extends AppCompatActivity {
         setupClickListeners();
         setupTextWatchers();
         initBiometricAuth();
+
+        // 检查用户状态并显示相应界面
+        checkUserStatusAndShowUi();
     }
 
     private void initViews() {
+        emailInput = findViewById(R.id.email_input);
+        usernameInput = findViewById(R.id.username_input);
         passwordInput = findViewById(R.id.password_input);
         confirmPasswordInput = findViewById(R.id.confirm_password_input);
-        usernameInput = findViewById(R.id.username_input);
-        displayNameInput = findViewById(R.id.display_name_input);
+        emailLayout = findViewById(R.id.email_layout);
+        usernameLayout = findViewById(R.id.username_layout);
         passwordLayout = findViewById(R.id.password_layout);
         confirmPasswordLayout = findViewById(R.id.confirm_password_layout);
-        usernameLayout = findViewById(R.id.username_layout);
-        displayNameLayout = findViewById(R.id.display_name_layout);
         loginButton = findViewById(R.id.login_button);
         biometricButton = findViewById(R.id.biometric_button);
-        cloudLoginButton = findViewById(R.id.cloud_login_button);
+        resendVerificationButton = findViewById(R.id.resend_verification_button);
         errorText = findViewById(R.id.error_text);
         titleText = findViewById(R.id.title_text);
         subtitleText = findViewById(R.id.subtitle_text);
-        switchModeText = findViewById(R.id.switch_mode_text);
-        cloudLoginHint = findViewById(R.id.cloud_login_hint);
         progressBar = findViewById(R.id.progress_bar);
         confirmPasswordSection = findViewById(R.id.confirm_password_section);
-        cloudLoginSection = findViewById(R.id.cloud_login_section);
+        passwordStrengthContainer = findViewById(R.id.password_strength_container);
+        passwordCard = findViewById(R.id.password_card);
+        constraintLayout = findViewById(R.id.root_layout);
+        passwordStrengthText = findViewById(R.id.password_strength_text);
+        passwordStrengthBar = findViewById(R.id.password_strength_bar);
 
         // 设置密码输入框默认图标为闭眼
         if (passwordLayout != null) {
@@ -162,65 +185,91 @@ public class LoginActivity extends AppCompatActivity {
             updateLoadingState(isLoading);
         });
 
-        // 观察初始化状态
-        viewModel.isInitialized.observe(this, isInitialized -> {
-            if (isInitialized != null) {
-                updateUiForInitializationState(!isInitialized);
-            }
-        });
+        // 观察初始化状态 - 已禁用，改用邮箱认证模式
+        // viewModel.isInitialized.observe(this, isInitialized -> {
+        //     if (isInitialized != null) {
+        //         updateUiForInitializationState(!isInitialized);
+        //     }
+        // });
 
         // 观察生物识别支持
         viewModel.canUseBiometric.observe(this, canUse -> {
             if (canUse != null && biometricButton != null) {
-                biometricButton.setVisibility(canUse ? View.VISIBLE : View.GONE);
-
-                // 如果可以使用生物识别且未自动触发过，则自动触发生物识别验证
-                // 条件：不是初始化状态 + 不是云端登录模式
-                if (canUse && !biometricAutoTriggered && !isInitializing && !isCloudLoginMode) {
-                    biometricAutoTriggered = true;
-                    // 延迟一小段时间触发，确保UI已完全加载
-                    biometricButton.postDelayed(() -> performBiometricAuthentication(), 300);
+                // 在本地登录模式下，根据生物识别支持状态更新按钮可见性
+                if (!isRegistrationStep && !isSetPasswordStep) {
+                    // 本地登录模式：显示生物识别按钮（如果支持）
+                    boolean emailVisible = emailLayout != null && emailLayout.getVisibility() == View.VISIBLE;
+                    if (!emailVisible) {
+                        biometricButton.setVisibility(canUse ? View.VISIBLE : View.GONE);
+                    }
                 }
             }
         });
 
-        // 观察云端认证状态
-        authViewModel.getAuthResponse().observe(this, authResponse -> {
-            if (authResponse != null) {
-                Toast.makeText(this, isRegisterMode ? "注册成功" : "登录成功", Toast.LENGTH_SHORT).show();
-                // 云端登录成功后，也需要完成本地解锁
-                if (!isInitializing) {
-                    navigateToMain();
+        // 观察邮箱注册响应
+        authViewModel.getEmailRegistrationResponse().observe(this, response -> {
+            if (response != null) {
+                Toast.makeText(this, response.getMessage(), Toast.LENGTH_SHORT).show();
+                if (response.isEmailSent()) {
+                    // 邮件已发送，提示用户检查邮箱
+                    showMessage("验证邮件已发送到 " + response.getEmail() + "，请查收");
                 }
             }
         });
 
-        // 观察云端认证错误
+        // 观察邮箱验证响应
+        authViewModel.getEmailVerificationResponse().observe(this, response -> {
+            if (response != null && response.isSuccess()) {
+                // 验证成功，进入设置主密码步骤
+                isSetPasswordStep = true;
+                updateUiForSetPasswordStep(response.getEmail(), response.getUsername());
+            }
+        });
+
+        // 观察认证错误
         authViewModel.getError().observe(this, error -> {
             if (error != null && !error.isEmpty()) {
                 showError(error);
             }
         });
 
-        // 观察云端加载状态
+        // 观察加载状态
         authViewModel.getLoading().observe(this, isLoading -> {
             if (isLoading != null) {
                 updateLoadingState(isLoading);
+            }
+        });
+
+        // 观察邮箱登录响应
+        authViewModel.getEmailLoginResponse().observe(this, response -> {
+            if (response != null) {
+                // 邮箱登录成功
+                if (response.getIsNewDevice() != null && response.getIsNewDevice()) {
+                    // 新设备登录，显示提示
+                    showMessage("新设备登录成功");
+                }
+                navigateToMain();
             }
         });
     }
 
     private void setupClickListeners() {
         loginButton.setOnClickListener(v -> {
-            if (isCloudLoginMode) {
-                handleCloudLogin();
+            if (isRegistrationStep) {
+                // 注册第一步：邮箱+用户名验证
+                handleEmailRegistration();
+            } else if (isSetPasswordStep) {
+                // 设置主密码步骤
+                handleSetMasterPassword();
             } else {
-                String password = passwordInput.getText().toString().trim();
-                if (isInitializing) {
-                    String confirmPassword = confirmPasswordInput.getText().toString().trim();
-                    viewModel.initializeWithPassword(password, confirmPassword);
+                // 检查是本地登录模式还是邮箱登录模式
+                boolean emailVisible = emailLayout != null && emailLayout.getVisibility() == View.VISIBLE;
+                if (emailVisible) {
+                    // 邮箱登录模式
+                    handleEmailLogin();
                 } else {
-                    viewModel.loginWithPassword(password);
+                    // 本地登录模式：只使用密码
+                    handleLocalLogin();
                 }
             }
         });
@@ -229,15 +278,13 @@ public class LoginActivity extends AppCompatActivity {
             performBiometricAuthentication();
         });
 
-        // 云端登录按钮
-        if (cloudLoginButton != null) {
-            cloudLoginButton.setOnClickListener(v -> toggleCloudLoginMode());
-        }
-
-        // 切换注册/登录模式
-        if (switchModeText != null) {
-            switchModeText.setOnClickListener(v -> toggleRegisterMode());
-        }
+        // 重发验证邮件按钮
+        resendVerificationButton.setOnClickListener(v -> {
+            String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+            if (!TextUtils.isEmpty(email) && isValidEmail(email)) {
+                authViewModel.resendVerificationEmail(email);
+            }
+        });
 
         // 清除错误
         passwordInput.setOnFocusChangeListener((v, hasFocus) -> {
@@ -276,17 +323,103 @@ public class LoginActivity extends AppCompatActivity {
             public void afterTextChanged(Editable s) {}
         };
 
+        if (emailInput != null) {
+            emailInput.addTextChangedListener(textWatcher);
+        }
+        if (usernameInput != null) {
+            usernameInput.addTextChangedListener(textWatcher);
+        }
         passwordInput.addTextChangedListener(textWatcher);
         if (confirmPasswordInput != null) {
             confirmPasswordInput.addTextChangedListener(textWatcher);
         }
-        // 添加云端登录相关输入框的监听
-        if (usernameInput != null) {
-            usernameInput.addTextChangedListener(textWatcher);
+
+        // 添加密码强度监听器（仅在设置主密码步骤时显示）
+        if (passwordInput != null) {
+            passwordInput.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    // 仅在设置主密码步骤时更新密码强度
+                    if (isSetPasswordStep) {
+                        updatePasswordStrength(s.toString());
+                    }
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {}
+            });
         }
-        if (displayNameInput != null) {
-            displayNameInput.addTextChangedListener(textWatcher);
+    }
+
+    /**
+     * 更新密码强度指示器
+     */
+    private void updatePasswordStrength(String password) {
+        if (passwordStrengthContainer == null || passwordStrengthText == null || passwordStrengthBar == null) {
+            return;
         }
+
+        if (password.isEmpty()) {
+            passwordStrengthContainer.setVisibility(View.GONE);
+            return;
+        }
+
+        passwordStrengthContainer.setVisibility(View.VISIBLE);
+
+        // 计算密码强度
+        PasswordStrength strength = PasswordStrengthCalculator.calculate(password);
+        int percentage = PasswordStrengthCalculator.getStrengthPercentage(password);
+
+        // 更新文本
+        passwordStrengthText.setText(strength.level().getLabel());
+
+        // 更新进度条
+        passwordStrengthBar.setProgressCompat(percentage, true);
+
+        // 更新颜色
+        int colorRes = getStrengthColor(strength.level());
+        passwordStrengthBar.setIndicatorColor(getColor(colorRes));
+        passwordStrengthText.setTextColor(getColor(colorRes));
+    }
+
+    /**
+     * 更新约束：注册步骤时 error_text 约束到 input_barrier
+     */
+    private void updateConstraintsForRegistration() {
+        if (constraintLayout == null || errorText == null) return;
+
+        ConstraintSet constraintSet = new ConstraintSet();
+        constraintSet.clone(constraintLayout);
+        // 将 error_text 的 top 约束到 input_barrier
+        constraintSet.connect(R.id.error_text, ConstraintSet.TOP, R.id.input_barrier, ConstraintSet.BOTTOM, 0);
+        constraintSet.applyTo(constraintLayout);
+    }
+
+    /**
+     * 更新约束：设置主密码步骤时 error_text 约束到 password_card
+     */
+    private void updateConstraintsForSetPassword() {
+        if (constraintLayout == null || errorText == null) return;
+
+        ConstraintSet constraintSet = new ConstraintSet();
+        constraintSet.clone(constraintLayout);
+        // 将 error_text 的 top 约束到 password_card
+        constraintSet.connect(R.id.error_text, ConstraintSet.TOP, R.id.password_card, ConstraintSet.BOTTOM, 0);
+        constraintSet.applyTo(constraintLayout);
+    }
+
+    /**
+     * 获取强度等级对应的颜色资源 ID
+     */
+    private int getStrengthColor(PasswordStrength.Level level) {
+        return switch (level) {
+            case WEAK -> R.color.strength_weak;
+            case MEDIUM -> R.color.strength_medium;
+            case STRONG -> R.color.strength_strong;
+        };
     }
 
     private void updateUiForInitializationState(boolean initializing) {
@@ -319,27 +452,34 @@ public class LoginActivity extends AppCompatActivity {
     private void updateLoginButtonState() {
         boolean enabled = false;
 
-        if (isCloudLoginMode) {
-            // 云端模式
-            if (isRegisterMode) {
-                // 云端注册：需要用户名和显示名称
-                String username = usernameInput != null ? usernameInput.getText().toString().trim() : "";
-                String displayName = displayNameInput != null ? displayNameInput.getText().toString().trim() : "";
-                enabled = !TextUtils.isEmpty(username) && !TextUtils.isEmpty(displayName);
-            } else {
-                // 云端登录：总是启用（使用已保存的userId）
-                enabled = true;
+        if (isRegistrationStep) {
+            // 注册第一步：需要邮箱和用户名
+            String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+            String username = usernameInput != null ? usernameInput.getText().toString().trim() : "";
+            enabled = isValidEmail(email) && !TextUtils.isEmpty(username);
+
+            // 更新重发按钮状态：邮箱有效时启用
+            if (resendVerificationButton != null) {
+                boolean emailValid = isValidEmail(email);
+                resendVerificationButton.setEnabled(emailValid);
+                resendVerificationButton.setAlpha(emailValid ? 1.0f : 0.5f);
             }
-        } else {
-            // 本地模式
-            if (isInitializing) {
-                // 本地初始化：需要密码和确认密码
-                String password = passwordInput.getText().toString().trim();
-                String confirmPassword = confirmPasswordInput.getText().toString().trim();
-                enabled = !TextUtils.isEmpty(password) && !TextUtils.isEmpty(confirmPassword);
+        } else if (isSetPasswordStep) {
+            // 设置主密码：需要密码和确认密码
+            String password = passwordInput.getText().toString().trim();
+            String confirmPassword = confirmPasswordInput.getText().toString().trim();
+            enabled = !TextUtils.isEmpty(password) && !TextUtils.isEmpty(confirmPassword);
+        } else if (!isRegistrationStep && !isSetPasswordStep) {
+            // 本地登录模式或邮箱登录模式
+            // 如果邮箱输入框可见，需要邮箱和密码；否则只需要密码
+            String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+            String password = passwordInput.getText().toString().trim();
+            boolean emailVisible = emailLayout != null && emailLayout.getVisibility() == View.VISIBLE;
+
+            if (emailVisible) {
+                enabled = isValidEmail(email) && !TextUtils.isEmpty(password);
             } else {
-                // 本地解锁：需要主密码
-                enabled = !TextUtils.isEmpty(passwordInput.getText().toString().trim());
+                enabled = !TextUtils.isEmpty(password);
             }
         }
 
@@ -550,14 +690,34 @@ public class LoginActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 每次返回登录页面时，如果条件满足则自动触发生物识别验证
-        // 条件：可以使用生物识别 + 不是初始化状态 + 不是云端登录模式
-        Boolean canUseBiometric = viewModel.canUseBiometric.getValue();
-        if (canUseBiometric != null && canUseBiometric && !isInitializing && !isCloudLoginMode && !biometricAutoTriggered) {
-            biometricAutoTriggered = true;
-            // 延迟一小段时间触发，确保UI已完全恢复
-            if (biometricButton != null) {
-                biometricButton.postDelayed(() -> performBiometricAuthentication(), 300);
+        // 在邮箱认证模式下，生物识别由具体的登录步骤控制
+        // 不再自动触发生物识别验证
+
+        // 检查邮箱验证状态，如果已验证则跳转到设置主密码步骤
+        checkEmailVerificationAndNavigate();
+    }
+
+    /**
+     * 检查邮箱验证状态并跳转
+     */
+    private void checkEmailVerificationAndNavigate() {
+        // 如果已经在设置主密码步骤，不需要检查
+        if (isSetPasswordStep) {
+            return;
+        }
+
+        com.ttt.safevault.network.TokenManager tokenManager =
+            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
+
+        // 检查邮箱是否已验证
+        if (tokenManager.isEmailVerified()) {
+            String email = tokenManager.getVerifiedEmail();
+            String username = tokenManager.getVerifiedUsername();
+
+            if (email != null && username != null) {
+                // 跳转到设置主密码步骤
+                isSetPasswordStep = true;
+                updateUiForSetPasswordStep(email, username);
             }
         }
     }
@@ -566,205 +726,463 @@ public class LoginActivity extends AppCompatActivity {
     @SuppressLint("MissingSuperCall")
     public void onBackPressed() {
         // 如果正在加载，不允许返回
-        Boolean isLoading = viewModel.isLoading.getValue();
-        if (isLoading != null && isLoading) {
+        Boolean localLoading = viewModel.isLoading.getValue();
+        Boolean cloudLoading = authViewModel.getLoading().getValue();
+        if ((localLoading != null && localLoading) || (cloudLoading != null && cloudLoading)) {
             return;
         }
 
-        // 如果是初始化界面，允许退出应用
-        if (isInitializing) {
+        // 在邮箱认证模式下的返回逻辑
+        if (isRegistrationStep) {
+            // 注册步骤：允许退出应用
             finish();
+        } else if (isSetPasswordStep) {
+            // 设置主密码步骤：不允许返回
+            return;
         } else {
-            // 否则最小化应用
+            // 邮箱登录步骤：最小化应用
             moveTaskToBack(true);
         }
     }
 
+    // ========== 统一邮箱认证相关方法 ==========
+
     /**
-     * 切换云端登录模式
+     * 验证邮箱格式
      */
-    private void toggleCloudLoginMode() {
-        isCloudLoginMode = !isCloudLoginMode;
-        updateUiForCloudLoginMode();
+    private boolean isValidEmail(String email) {
+        return !TextUtils.isEmpty(email) && Patterns.EMAIL_ADDRESS.matcher(email).matches();
     }
 
     /**
-     * 切换注册/登录模式
+     * 处理邮箱注册第一步
      */
-    private void toggleRegisterMode() {
-        isRegisterMode = !isRegisterMode;
-        updateUiForRegisterMode();
-    }
-
-    /**
-     * 更新UI以显示云端登录模式
-     */
-    private void updateUiForCloudLoginMode() {
-        if (cloudLoginSection == null) return;
-
-        if (isCloudLoginMode) {
-            // 显示云端登录界面
-            cloudLoginSection.setVisibility(View.VISIBLE);
-            confirmPasswordSection.setVisibility(View.GONE);
-            biometricButton.setVisibility(View.GONE);
-
-            // 根据注册/登录模式显示/隐藏用户名和密码输入框
-            // 在云端登录模式下，passwordLayout 不在 cloudLoginSection 内，需要单独处理
-            if (isRegisterMode) {
-                // 注册模式：显示用户名、显示名称和密码输入框
-                if (usernameLayout != null) {
-                    usernameLayout.setVisibility(View.VISIBLE);
-                }
-                if (displayNameLayout != null) {
-                    displayNameLayout.setVisibility(View.VISIBLE);
-                }
-                if (passwordLayout != null) {
-                    passwordLayout.setVisibility(View.VISIBLE);
-                }
-                // 隐藏提示文本
-                if (cloudLoginHint != null) {
-                    cloudLoginHint.setVisibility(View.GONE);
-                }
-            } else {
-                // 登录模式：显示用户名输入框（支持多账号切换）
-                // 隐藏显示名称和密码输入框
-                if (cloudLoginHint != null) {
-                    cloudLoginHint.setVisibility(View.GONE);
-                }
-                if (usernameLayout != null) {
-                    usernameLayout.setVisibility(View.VISIBLE);
-                }
-                if (displayNameLayout != null) {
-                    displayNameLayout.setVisibility(View.GONE);
-                }
-                if (passwordLayout != null) {
-                    passwordLayout.setVisibility(View.GONE);
-                }
-            }
-
-            titleText.setText(isRegisterMode ? R.string.cloud_register : R.string.cloud_login);
-            // 更新副标题
-            if (subtitleText != null) {
-                if (isRegisterMode) {
-                    subtitleText.setText("创建云端账号");
-                } else {
-                    subtitleText.setText("输入用户名登录");
-                }
-            }
-            loginButton.setText(isRegisterMode ? R.string.register : R.string.login);
-            cloudLoginButton.setText(R.string.local_unlock);
-            if (switchModeText != null) {
-                switchModeText.setVisibility(View.VISIBLE);
-                switchModeText.setText(isRegisterMode ? R.string.switch_to_login : R.string.switch_to_register);
-            }
-
-            // 更新按钮状态
-            updateLoginButtonState();
-        } else {
-            // 显示本地解锁界面
-            cloudLoginSection.setVisibility(View.GONE);
-            if (usernameLayout != null) usernameLayout.setVisibility(View.GONE);
-            if (displayNameLayout != null) displayNameLayout.setVisibility(View.GONE);
-            // 确保 passwordLayout 可见（本地模式总是需要密码输入）
-            if (passwordLayout != null) {
-                passwordLayout.setVisibility(View.VISIBLE);
-            }
-            updateUiForInitializationState(isInitializing);
-            cloudLoginButton.setText(R.string.cloud_login);
-            if (switchModeText != null) {
-                switchModeText.setVisibility(View.GONE);
-            }
-            // 恢复副标题
-            if (subtitleText != null) {
-                subtitleText.setText(R.string.enter_master_password);
-            }
-            // 注意：不要重置 isRegisterMode，这样当用户再次切换回云端模式时能恢复之前的状态
-        }
-    }
-
-    /**
-     * 更新UI以显示注册/登录模式
-     */
-    private void updateUiForRegisterMode() {
-        if (!isCloudLoginMode) return;
-
-        if (isRegisterMode) {
-            // 注册模式 - 需要用户名、显示名称和密码
-            titleText.setText(R.string.cloud_register);
-            // 更新副标题
-            if (subtitleText != null) {
-                subtitleText.setText("创建云端账号");
-            }
-            loginButton.setText(R.string.register);
-            if (usernameLayout != null) {
-                usernameLayout.setVisibility(View.VISIBLE);
-            }
-            if (displayNameLayout != null) {
-                displayNameLayout.setVisibility(View.VISIBLE);
-            }
-            if (passwordLayout != null) {
-                passwordLayout.setVisibility(View.VISIBLE);
-            }
-            // 隐藏提示文本
-            if (cloudLoginHint != null) {
-                cloudLoginHint.setVisibility(View.GONE);
-            }
-            if (switchModeText != null) {
-                switchModeText.setText(R.string.switch_to_login);
-            }
-        } else {
-            // 登录模式 - 需要用户名输入框（支持多账号切换）
-            titleText.setText(R.string.cloud_login);
-            // 更新副标题
-            if (subtitleText != null) {
-                subtitleText.setText("输入用户名登录");
-            }
-            loginButton.setText(R.string.login);
-            if (usernameLayout != null) {
-                usernameLayout.setVisibility(View.VISIBLE);
-            }
-            if (passwordLayout != null) {
-                passwordLayout.setVisibility(View.GONE);
-            }
-            if (displayNameLayout != null) {
-                displayNameLayout.setVisibility(View.GONE);
-            }
-            // 隐藏提示文本
-            if (cloudLoginHint != null) {
-                cloudLoginHint.setVisibility(View.GONE);
-            }
-            if (switchModeText != null) {
-                switchModeText.setText(R.string.switch_to_register);
-            }
-        }
-
-        // 更新按钮状态
-        updateLoginButtonState();
-    }
-
-    /**
-     * 处理云端登录/注册
-     */
-    private void handleCloudLogin() {
-        // 获取用户名
+    private void handleEmailRegistration() {
+        String email = emailInput != null ? emailInput.getText().toString().trim() : "";
         String username = usernameInput != null ? usernameInput.getText().toString().trim() : "";
 
-        if (username.isEmpty()) {
+        // 验证邮箱格式
+        if (!isValidEmail(email)) {
+            showError("请输入有效的邮箱地址");
+            return;
+        }
+
+        // 验证用户名
+        if (TextUtils.isEmpty(username)) {
             showError("用户名不能为空");
             return;
         }
 
-        if (isRegisterMode) {
-            // 注册模式 - 需要显示名称
-            String displayName = displayNameInput != null ? displayNameInput.getText().toString().trim() : "";
-            if (displayName.isEmpty()) {
-                showError(getString(R.string.display_name_required));
+        // 调用注册 API
+        authViewModel.registerWithEmail(email, username);
+    }
+
+    /**
+     * 处理本地登录（只使用密码，不需要邮箱）
+     */
+    private void handleLocalLogin() {
+        String password = passwordInput.getText().toString().trim();
+
+        // 验证密码
+        if (TextUtils.isEmpty(password)) {
+            showError("请输入主密码");
+            return;
+        }
+
+        // 调用本地登录
+        viewModel.loginWithPassword(password);
+    }
+
+    /**
+     * 处理设置主密码步骤
+     */
+    private void handleSetMasterPassword() {
+        String password = passwordInput.getText().toString().trim();
+        String confirmPassword = confirmPasswordInput.getText().toString().trim();
+
+        // 验证密码
+        if (TextUtils.isEmpty(password)) {
+            showError("主密码不能为空");
+            return;
+        }
+
+        // 验证密码长度
+        if (password.length() < 8) {
+            showError("主密码至少需要8个字符");
+            return;
+        }
+
+        // 验证确认密码
+        if (!password.equals(confirmPassword)) {
+            showError("两次输入的密码不一致");
+            return;
+        }
+
+        // 获取保存的验证状态
+        com.ttt.safevault.network.TokenManager tokenManager =
+            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
+
+        // 调试日志
+        android.util.Log.d("LoginActivity", "TokenManager instance: " + tokenManager);
+        android.util.Log.d("LoginActivity", "isEmailVerified: " + tokenManager.isEmailVerified());
+        String email = tokenManager.getVerifiedEmail();
+        String username = tokenManager.getVerifiedUsername();
+        android.util.Log.d("LoginActivity", "verifiedEmail: " + email);
+        android.util.Log.d("LoginActivity", "verifiedUsername: " + username);
+
+        if (email == null || email.isEmpty() || username == null || username.isEmpty()) {
+            android.util.Log.e("LoginActivity", "验证状态为空！email=" + email + ", username=" + username);
+            showError("验证状态已过期，请重新验证邮箱");
+            // 跳转到注册界面
+            showRegistrationStep();
+            return;
+        }
+
+        // 显示进度提示
+        if (progressBar != null) {
+            progressBar.setVisibility(View.VISIBLE);
+        }
+        if (loginButton != null) {
+            loginButton.setEnabled(false);
+        }
+
+        // 在后台线程执行注册完成
+        new android.os.Handler().post(() -> {
+            try {
+                // 调用后端服务完成注册
+                com.ttt.safevault.model.BackendService backendService =
+                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+                com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
+                        backendService.completeRegistration(email, username, password);
+
+                // 注册成功
+                runOnUiThread(() -> {
+                    if (progressBar != null) {
+                        progressBar.setVisibility(View.GONE);
+                    }
+                    if (loginButton != null) {
+                        loginButton.setEnabled(true);
+                    }
+
+                    // 清除验证状态
+                    tokenManager.clearEmailVerificationStatus();
+
+                    showMessage("注册成功！正在进入应用...");
+
+                    // 延迟跳转到主界面
+                    new android.os.Handler().postDelayed(() -> {
+                        navigateToMain();
+                    }, 1000);
+                });
+
+            } catch (Exception e) {
+                // 注册失败
+                runOnUiThread(() -> {
+                    if (progressBar != null) {
+                        progressBar.setVisibility(View.GONE);
+                    }
+                    if (loginButton != null) {
+                        loginButton.setEnabled(true);
+                    }
+                    showError("注册失败: " + e.getMessage());
+                });
+            }
+        });
+    }
+
+    /**
+     * 更新 UI 以显示设置主密码步骤
+     */
+    private void updateUiForSetPasswordStep(String email, String username) {
+        isSetPasswordStep = true;
+        isRegistrationStep = false;
+
+        // 更新约束：error_text 约束到 password_card
+        updateConstraintsForSetPassword();
+
+        // 隐藏邮箱和用户名输入框
+        if (emailLayout != null) {
+            emailLayout.setVisibility(View.GONE);
+        }
+        if (usernameLayout != null) {
+            usernameLayout.setVisibility(View.GONE);
+        }
+
+        // 显示密码卡片
+        if (passwordCard != null) {
+            passwordCard.setVisibility(View.VISIBLE);
+        }
+
+        // 显示密码输入框和确认密码输入框
+        if (passwordLayout != null) {
+            passwordLayout.setVisibility(View.VISIBLE);
+        }
+        if (confirmPasswordSection != null) {
+            confirmPasswordSection.setVisibility(View.VISIBLE);
+        }
+
+        // 显示密码强度指示器
+        if (passwordStrengthContainer != null) {
+            passwordStrengthContainer.setVisibility(View.VISIBLE);
+        }
+
+        // 更新标题和按钮文本
+        if (titleText != null) {
+            titleText.setText(R.string.set_master_password);
+        }
+        if (subtitleText != null) {
+            subtitleText.setText("请设置您的主密码，用于加密和解密数据");
+        }
+        if (loginButton != null) {
+            loginButton.setText(R.string.initialize);
+        }
+
+        // 隐藏生物识别按钮和重发验证邮件按钮
+        if (biometricButton != null) {
+            biometricButton.setVisibility(View.GONE);
+        }
+        if (resendVerificationButton != null) {
+            resendVerificationButton.setVisibility(View.GONE);
+        }
+
+        updateLoginButtonState();
+    }
+
+    /**
+     * 显示消息提示（非错误）
+     */
+    private void showMessage(String message) {
+        if (errorText != null) {
+            errorText.setText(message);
+            errorText.setVisibility(View.VISIBLE);
+            errorText.setTextColor(getColor(R.color.success_green));
+        }
+
+        // 3秒后自动隐藏
+        errorText.postDelayed(() -> {
+            hideError();
+        }, 3000);
+    }
+
+    /**
+     * 处理邮箱登录
+     */
+    private void handleEmailLogin() {
+        String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+        String password = passwordInput.getText().toString().trim();
+
+        // 验证邮箱格式
+        if (!isValidEmail(email)) {
+            showError("请输入有效的邮箱地址");
+            return;
+        }
+
+        // 验证密码
+        if (TextUtils.isEmpty(password)) {
+            showError("请输入主密码");
+            return;
+        }
+
+        // 调用邮箱登录 API
+        authViewModel.loginWithEmail(email, password);
+    }
+
+    /**
+     * 切换到邮箱登录步骤（显示邮箱和密码输入）
+     * 此方法可由外部调用（例如检测到已注册用户时）
+     */
+    public void showEmailLoginStep() {
+        isRegistrationStep = false;
+        isSetPasswordStep = false;
+
+        // 显示邮箱和密码输入框
+        if (emailLayout != null) {
+            emailLayout.setVisibility(View.VISIBLE);
+        }
+        if (passwordLayout != null) {
+            passwordLayout.setVisibility(View.VISIBLE);
+        }
+
+        // 隐藏用户名和确认密码输入框
+        if (usernameLayout != null) {
+            usernameLayout.setVisibility(View.GONE);
+        }
+        if (confirmPasswordSection != null) {
+            confirmPasswordSection.setVisibility(View.GONE);
+        }
+
+        // 更新标题和按钮文本
+        if (titleText != null) {
+            titleText.setText("登录 SafeVault");
+        }
+        if (subtitleText != null) {
+            subtitleText.setText("输入邮箱和主密码登录");
+        }
+        if (loginButton != null) {
+            loginButton.setText("登录");
+        }
+
+        // 显示生物识别按钮（如果支持）
+        Boolean canUseBiometric = viewModel.canUseBiometric.getValue();
+        if (biometricButton != null) {
+            biometricButton.setVisibility(canUseBiometric != null && canUseBiometric ? View.VISIBLE : View.GONE);
+        }
+        // 隐藏重发验证邮件按钮
+        if (resendVerificationButton != null) {
+            resendVerificationButton.setVisibility(View.GONE);
+        }
+
+        updateLoginButtonState();
+    }
+
+    /**
+     * 切换到注册步骤（显示邮箱和用户名输入）
+     * 此方法可由外部调用（例如检测到新用户时）
+     */
+    public void showRegistrationStep() {
+        isRegistrationStep = true;
+        isSetPasswordStep = false;
+
+        // 更新约束：error_text 约束到 input_barrier（因为 password_card 会隐藏）
+        updateConstraintsForRegistration();
+
+        // 显示邮箱和用户名输入框
+        if (emailLayout != null) {
+            emailLayout.setVisibility(View.VISIBLE);
+        }
+        if (usernameLayout != null) {
+            usernameLayout.setVisibility(View.VISIBLE);
+        }
+
+        // 隐藏密码卡片（包括密码输入框和密码强度指示器）
+        if (passwordCard != null) {
+            passwordCard.setVisibility(View.GONE);
+        }
+
+        // 更新标题和按钮文本
+        if (titleText != null) {
+            titleText.setText("创建账号");
+        }
+        if (subtitleText != null) {
+            subtitleText.setText("输入邮箱和用户名开始注册");
+        }
+        if (loginButton != null) {
+            loginButton.setText("继续");
+        }
+
+        // 隐藏生物识别按钮
+        if (biometricButton != null) {
+            biometricButton.setVisibility(View.GONE);
+        }
+
+        // 显示重发验证邮件按钮（但初始禁用，需要在输入有效邮箱后才启用）
+        if (resendVerificationButton != null) {
+            resendVerificationButton.setVisibility(View.VISIBLE);
+            resendVerificationButton.setEnabled(false);
+            resendVerificationButton.setAlpha(0.5f);
+        }
+
+        updateLoginButtonState();
+    }
+
+    /**
+     * 切换到本地登录步骤（只显示密码输入框，不显示邮箱）
+     * 用于已注册用户快速登录
+     */
+    private void showLocalLoginStep() {
+        isRegistrationStep = false;
+        isSetPasswordStep = false;
+
+        // 更新约束：error_text 约束到 password_card
+        updateConstraintsForSetPassword();
+
+        // 隐藏邮箱和用户名输入框
+        if (emailLayout != null) {
+            emailLayout.setVisibility(View.GONE);
+        }
+        if (usernameLayout != null) {
+            usernameLayout.setVisibility(View.GONE);
+        }
+
+        // 显示密码卡片和密码输入框
+        if (passwordCard != null) {
+            passwordCard.setVisibility(View.VISIBLE);
+        }
+        if (passwordLayout != null) {
+            passwordLayout.setVisibility(View.VISIBLE);
+        }
+
+        // 隐藏确认密码输入框和密码强度指示器
+        if (confirmPasswordSection != null) {
+            confirmPasswordSection.setVisibility(View.GONE);
+        }
+        if (passwordStrengthContainer != null) {
+            passwordStrengthContainer.setVisibility(View.GONE);
+        }
+
+        // 更新标题和按钮文本
+        if (titleText != null) {
+            titleText.setText(R.string.unlock_safevault);
+        }
+        if (subtitleText != null) {
+            subtitleText.setText("请输入主密码解锁应用");
+        }
+        if (loginButton != null) {
+            loginButton.setText(R.string.unlock);
+        }
+
+        // 显示生物识别按钮（如果支持）
+        Boolean canUseBiometric = viewModel.canUseBiometric.getValue();
+        if (biometricButton != null) {
+            biometricButton.setVisibility(canUseBiometric != null && canUseBiometric ? View.VISIBLE : View.GONE);
+        }
+
+        // 隐藏重发验证邮件按钮
+        if (resendVerificationButton != null) {
+            resendVerificationButton.setVisibility(View.GONE);
+        }
+
+        updateLoginButtonState();
+    }
+
+    /**
+     * 检查用户状态并显示相应界面
+     * - 如果从邮箱验证跳转来（action=set_password） → 显示设置主密码界面
+     * - 如果已有登录凭证 → 显示邮箱登录界面
+     * - 否则 → 显示注册界面
+     */
+    private void checkUserStatusAndShowUi() {
+        // 如果已经设置了特定的步骤（从 Intent 跳转），则不处理
+        if (isSetPasswordStep) {
+            return;
+        }
+
+        // 检查是否从邮箱验证页面跳转来（带有 action=set_password 参数）
+        String action = getIntent() != null ? getIntent().getStringExtra("action") : null;
+        if ("set_password".equals(action)) {
+            String email = getIntent().getStringExtra("email");
+            String username = getIntent().getStringExtra("username");
+            if (email != null && username != null) {
+                isSetPasswordStep = true;
+                updateUiForSetPasswordStep(email, username);
                 return;
             }
-            authViewModel.register(username, displayName);
+        }
+
+        // 获取本地初始化状态
+        boolean isLocallyInitialized = viewModel.isInitialized.getValue() != null && viewModel.isInitialized.getValue();
+        boolean hasCloudToken = authViewModel.isLoggedIn();
+
+        // 检查是否可以使用生物识别
+        Boolean canUseBiometric = viewModel.canUseBiometric.getValue();
+
+        if (isLocallyInitialized || hasCloudToken) {
+            // 已注册用户：优先显示本地登录模式（无邮箱输入框）
+            showLocalLoginStep();
         } else {
-            // 登录模式 - 使用用户名登录
-            authViewModel.loginWithUsername(username);
+            // 新用户：显示注册界面
+            showRegistrationStep();
         }
     }
 }

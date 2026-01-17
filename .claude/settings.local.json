@@ -7,7 +7,9 @@
       "Bash(./gradlew:*)",
       "Bash(echo:*)",
       "Bash(findstr:*)",
-      "Bash(npx openspec validate:*)"
+      "Bash(npx openspec validate:*)",
+      "Skill(openspec:apply)",
+      "Bash(cat:*)"
     ]
   }
 }
