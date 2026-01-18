@@ -55,9 +55,11 @@ public class LoginViewModel extends AndroidViewModel {
                 _isInitialized.postValue(initialized);
 
                 // 检查是否可以使用生物识别
-                // 条件：设备支持 + 已初始化 + 后端服务确认可用
+                // 条件：设备支持 + 后端服务确认可用（有保存的生物识别凭证）
+                // 注意：移除了对 initialized 的依赖，因为在云端登录模式下，
+                // 本地可能未初始化，但仍可能使用生物识别（凭证独立存储）
                 boolean biometricSupported = checkBiometricSupport();
-                boolean canUseBiometric = initialized && biometricSupported && backendService.canUseBiometricAuthentication();
+                boolean canUseBiometric = biometricSupported && backendService.canUseBiometricAuthentication();
                 _canUseBiometric.postValue(canUseBiometric);
             } catch (Exception e) {
                 _errorMessage.postValue("检查初始化状态失败: " + e.getMessage());

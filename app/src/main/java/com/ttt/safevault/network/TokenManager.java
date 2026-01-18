@@ -59,7 +59,7 @@ public class TokenManager {
             .putString(KEY_REFRESH_TOKEN, response.getRefreshToken())
             .putString(KEY_USER_ID, response.getUserId())
             .putString(KEY_DISPLAY_NAME, response.getDisplayName())
-            .apply();
+            .commit();  // 使用 commit() 确保同步保存，避免后续读取时 Token 未就绪
 
         Log.d(TAG, "Tokens saved for user: " + response.getDisplayName());
     }
@@ -76,7 +76,7 @@ public class TokenManager {
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .putString(KEY_REFRESH_TOKEN, refreshToken)
             .putString(KEY_USER_ID, userId)
-            .apply();
+            .commit();  // 使用 commit() 确保同步保存，避免后续读取时 Token 未就绪
 
         Log.d(TAG, "Tokens saved for user: " + userId);
     }
@@ -207,5 +207,38 @@ public class TokenManager {
             .apply();
 
         Log.d(TAG, "Email verification status cleared");
+    }
+
+    // ========== 登录邮箱记忆 ==========
+
+    private static final String KEY_LAST_LOGIN_EMAIL = "last_login_email";
+
+    /**
+     * 保存上次登录的邮箱
+     */
+    public void saveLastLoginEmail(String email) {
+        prefs.edit()
+            .putString(KEY_LAST_LOGIN_EMAIL, email)
+            .apply();
+
+        Log.d(TAG, "Last login email saved: " + email);
+    }
+
+    /**
+     * 获取上次登录的邮箱
+     */
+    public String getLastLoginEmail() {
+        return prefs.getString(KEY_LAST_LOGIN_EMAIL, null);
+    }
+
+    /**
+     * 清除上次登录的邮箱
+     */
+    public void clearLastLoginEmail() {
+        prefs.edit()
+            .remove(KEY_LAST_LOGIN_EMAIL)
+            .apply();
+
+        Log.d(TAG, "Last login email cleared");
     }
 }

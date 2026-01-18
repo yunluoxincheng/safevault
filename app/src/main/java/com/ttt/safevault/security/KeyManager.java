@@ -10,11 +10,14 @@ import androidx.annotation.NonNull;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.KeySpec;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
 import javax.crypto.Cipher;
@@ -142,14 +145,26 @@ public class KeyManager {
      * 从字符串加载密钥对
      */
     private KeyPair loadKeyPair(String publicKeyStr, String privateKeyStr) throws Exception {
-        // 简化实现，实际项目中需要更完整的密钥加载逻辑
-        byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyStr);
-        byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyStr);
+        try {
+            byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyStr);
+            byte[] privateKeyBytes = Base64.getDecoder().decode(privateKeyStr);
 
-        // 这里需要使用 KeyFactory 来重建密钥
-        // 由于实现较复杂，这里返回 null，实际使用时会重新生成
-        // 生产环境应该实现完整的密钥加载逻辑
-        throw new UnsupportedOperationException("Key loading not implemented");
+            // 使用 KeyFactory 重建密钥
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+
+            // 重建公钥 (X509 编码)
+            X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+            PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+
+            // 重建私钥 (PKCS8 编码)
+            PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKeyBytes);
+            PrivateKey privateKey = keyFactory.generatePrivate(privateKeySpec);
+
+            return new KeyPair(publicKey, privateKey);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to load key pair, generating new ones", e);
+            throw e;
+        }
     }
 
     /**
@@ -395,14 +410,35 @@ public class KeyManager {
             byte[] privateKeyBytes = decryptWithDerivedKey(encryptedPrivateKey, derivedKey, iv);
 
             // 4. 重建RSA私钥对象
-            // 注意：这里需要使用KeyFactory重建密钥对象
-            // 由于实现较复杂，这里返回null
-            // 生产环境需要完整的PKCS8编码密钥重建逻辑
-            Log.d(TAG, "Private key decrypted for user: " + email);
-            throw new UnsupportedOperationException("RSA私钥重建尚未实现");
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(privateKeyBytes);
+            PrivateKey privateKey = keyFactory.generatePrivate(spec);
+
+            // 5. 更新内存中的密钥对
+            if (this.keyPair != null) {
+                // 保留公钥，更新私钥
+                this.keyPair = new KeyPair(this.keyPair.getPublic(), privateKey);
+            }
+
+            // 6. 保存到本地存储
+            String privateKeyStr = Base64.getEncoder().encodeToString(privateKey.getEncoded());
+            String publicKeyStr = Base64.getEncoder().encodeToString(this.keyPair.getPublic().getEncoded());
+            prefs.edit()
+                    .putString(KEY_PUBLIC_KEY, publicKeyStr)
+                    .putString(KEY_PRIVATE_KEY, privateKeyStr)
+                    .apply();
+
+            // 7. 保存加密的私钥和IV到本地（用于后续解密）
+            prefs.edit()
+                    .putString(KEY_ENCRYPTED_PRIVATE_KEY, encryptedPrivateKey)
+                    .putString(KEY_PRIVATE_KEY_IV, iv)
+                    .apply();
+
+            Log.d(TAG, "Private key decrypted and imported for user: " + email);
+            return privateKey;
         } catch (Exception e) {
             Log.e(TAG, "Failed to decrypt private key", e);
-            throw new RuntimeException("私钥解密失败", e);
+            throw new RuntimeException("私钥解密失败: " + e.getMessage(), e);
         }
     }
 

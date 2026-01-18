@@ -478,7 +478,15 @@
     <string name="error_share_expired">分享已过期</string>
     <string name="error_share_revoked">分享已被撤销</string>
     <string name="error_invalid_share">无效的分享</string>
+    <string name="error_title">错误</string>
     <string name="retry">重试</string>
+
+    <!-- 数据同步 -->
+    <string name="sync_conflict_title">检测到数据冲突</string>
+    <string name="sync_conflict_message">云端数据版本：%1$d\n本地数据版本：%2$d\n\n请选择同步方式：</string>
+    <string name="sync_use_cloud">使用云端数据（覆盖本地）</string>
+    <string name="sync_use_local">保留本地数据（覆盖云端）</string>
+    <string name="sync_cancel">取消</string>
 
     <!-- ========== 数据导出/导入功能 ========== -->
 

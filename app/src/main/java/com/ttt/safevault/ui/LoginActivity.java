@@ -25,12 +25,13 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.LoginViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
 /**
  * 登录/解锁页面
- * 只处理登录功能，注册功能已移至 RegisterActivity
+ * 使用完全云端登录模式，通过邮箱+主密码进行云端验证
  */
 public class LoginActivity extends AppCompatActivity {
 
@@ -38,7 +39,9 @@ public class LoginActivity extends AppCompatActivity {
     private static final String TAG = "LoginActivity";
 
     // UI组件
+    private TextInputEditText emailInput;
     private TextInputEditText passwordInput;
+    private TextInputLayout emailLayout;
     private TextInputLayout passwordLayout;
     private Button loginButton;
     private Button biometricButton;
@@ -49,7 +52,8 @@ public class LoginActivity extends AppCompatActivity {
     private ProgressBar progressBar;
 
     // ViewModel
-    private LoginViewModel viewModel;
+    private AuthViewModel authViewModel;
+    private LoginViewModel loginViewModel;
 
     // 状态标志
     private boolean isPasswordVisible = false;
@@ -85,7 +89,8 @@ public class LoginActivity extends AppCompatActivity {
 
         // 初始化ViewModel
         ViewModelProvider.Factory factory = new ViewModelFactory(getApplication());
-        viewModel = new ViewModelProvider(this, factory).get(LoginViewModel.class);
+        authViewModel = new ViewModelProvider(this, factory).get(AuthViewModel.class);
+        loginViewModel = new ViewModelProvider(this, factory).get(LoginViewModel.class);
 
         initViews();
         setupObservers();
@@ -95,7 +100,9 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void initViews() {
+        emailInput = findViewById(R.id.email_input);
         passwordInput = findViewById(R.id.password_input);
+        emailLayout = findViewById(R.id.email_layout);
         passwordLayout = findViewById(R.id.password_layout);
         loginButton = findViewById(R.id.login_button);
         biometricButton = findViewById(R.id.biometric_button);
@@ -109,19 +116,31 @@ public class LoginActivity extends AppCompatActivity {
         if (passwordLayout != null) {
             passwordLayout.setEndIconDrawable(R.drawable.ic_visibility);
         }
+
+        // 预填充上次登录的邮箱
+        String lastEmail = com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
+                .getTokenManager().getLastLoginEmail();
+        if (emailInput != null && lastEmail != null && !lastEmail.isEmpty()) {
+            emailInput.setText(lastEmail);
+        }
     }
 
     private void setupObservers() {
-        // 观察认证状态
-        viewModel.isAuthenticated.observe(this, isAuthenticated -> {
-            if (isAuthenticated) {
-                navigateToMain();
+        // 移除对不存在的 canUseBiometric 的观察
+        // 生物识别按钮的可见性将直接在 onResume() 和 checkAndRequestBiometricPermission() 中检查
+
+        // 观察邮箱登录响应
+        authViewModel.getEmailLoginResponse().observe(this, response -> {
+            // 检查响应是否有效（userId 不为空表示登录成功）
+            if (response != null && response.getUserId() != null) {
+                // 登录成功，初始化 CryptoManager 并进入主页
+                handleCloudLoginSuccess(response);
             }
         });
 
         // 观察错误信息
-        viewModel.errorMessage.observe(this, error -> {
-            if (error != null) {
+        authViewModel.getError().observe(this, error -> {
+            if (error != null && !error.isEmpty()) {
                 showError(error);
             } else {
                 hideError();
@@ -129,14 +148,9 @@ public class LoginActivity extends AppCompatActivity {
         });
 
         // 观察加载状态
-        viewModel.isLoading.observe(this, isLoading -> {
-            updateLoadingState(isLoading);
-        });
-
-        // 观察生物识别支持
-        viewModel.canUseBiometric.observe(this, canUse -> {
-            if (canUse != null && biometricButton != null) {
-                biometricButton.setVisibility(canUse ? View.VISIBLE : View.GONE);
+        authViewModel.getLoading().observe(this, isLoading -> {
+            if (isLoading != null) {
+                updateLoadingState(isLoading);
             }
         });
     }
@@ -144,7 +158,7 @@ public class LoginActivity extends AppCompatActivity {
     private void setupClickListeners() {
         // 登录按钮
         loginButton.setOnClickListener(v -> {
-            handleLogin();
+            handleCloudLogin();
         });
 
         // 生物识别按钮
@@ -164,12 +178,20 @@ public class LoginActivity extends AppCompatActivity {
         });
 
         // 清除错误
-        passwordInput.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                viewModel.clearError();
-                hideError();
-            }
-        });
+        if (emailInput != null) {
+            emailInput.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    hideError();
+                }
+            });
+        }
+        if (passwordInput != null) {
+            passwordInput.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    hideError();
+                }
+            });
+        }
 
         // 密码显示/隐藏按钮
         if (passwordLayout != null) {
@@ -193,15 +215,25 @@ public class LoginActivity extends AppCompatActivity {
             public void afterTextChanged(Editable s) {}
         };
 
-        passwordInput.addTextChangedListener(textWatcher);
+        if (emailInput != null) {
+            emailInput.addTextChangedListener(textWatcher);
+        }
+        if (passwordInput != null) {
+            passwordInput.addTextChangedListener(textWatcher);
+        }
     }
 
     private void updateLoginButtonState() {
+        String email = emailInput != null ? emailInput.getText().toString().trim() : "";
         String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
-        boolean enabled = !TextUtils.isEmpty(password);
+
+        // 验证邮箱格式和密码非空
+        boolean emailValid = !TextUtils.isEmpty(email) && android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches();
+        boolean passwordValid = !TextUtils.isEmpty(password);
+        boolean enabled = emailValid && passwordValid;
 
         if (loginButton != null) {
-            Boolean isLoading = viewModel.isLoading.getValue();
+            Boolean isLoading = authViewModel.getLoading().getValue();
             loginButton.setEnabled(enabled && (isLoading == null || !isLoading));
         }
     }
@@ -252,10 +284,22 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     /**
-     * 处理登录
+     * 处理云端登录
      */
-    private void handleLogin() {
-        String password = passwordInput.getText().toString().trim();
+    private void handleCloudLogin() {
+        String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+        String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
+
+        // 验证邮箱
+        if (TextUtils.isEmpty(email)) {
+            showError("请输入邮箱");
+            return;
+        }
+
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            showError("请输入有效的邮箱地址");
+            return;
+        }
 
         // 验证密码
         if (TextUtils.isEmpty(password)) {
@@ -263,8 +307,179 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        // 调用登录
-        viewModel.loginWithPassword(password);
+        // 保存邮箱到本地（下次自动填充）
+        com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
+                .getTokenManager().saveLastLoginEmail(email);
+
+        // 调用云端登录
+        authViewModel.loginWithEmail(email, password);
+    }
+
+    /**
+     * 处理云端登录成功
+     */
+    private void handleCloudLoginSuccess(com.ttt.safevault.dto.response.EmailLoginResponse response) {
+        try {
+            String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
+            String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+
+            // 初始化 CryptoManager
+            com.ttt.safevault.crypto.CryptoManager cryptoManager =
+                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+
+            // 如果是新设备或未初始化，需要初始化
+            if (!cryptoManager.isInitialized()) {
+                if (!cryptoManager.initialize(password)) {
+                    showError("初始化加密环境失败");
+                    return;
+                }
+            } else {
+                // 已初始化，尝试解锁
+                if (!cryptoManager.unlock(password)) {
+                    showError("主密码错误");
+                    return;
+                }
+            }
+
+            // 登录成功后，如果用户启用了生物识别，保存主密码用于生物识别解锁
+            saveMasterPasswordForBiometricIfNeeded(password);
+
+            // 处理新设备数据恢复
+            if (response.getIsNewDevice() != null && response.getIsNewDevice()) {
+                android.util.Log.d(TAG, "新设备登录，开始云端数据恢复");
+                handleNewDeviceRecovery(email, password);
+                return;
+            }
+
+            // 老设备登录，执行云端数据同步
+            android.util.Log.d(TAG, "老设备登录，执行云端数据同步");
+            handleCloudDataSync();
+
+            // 登录成功，导航到主页
+            hideError();
+            navigateToMain();
+
+        } catch (Exception e) {
+            showError("登录处理失败: " + e.getMessage());
+            android.util.Log.e(TAG, "Failed to handle login success", e);
+        }
+    }
+
+    /**
+     * 如果用户启用了生物识别，保存主密码用于生物识别解锁
+     */
+    private void saveMasterPasswordForBiometricIfNeeded(String password) {
+        try {
+            com.ttt.safevault.security.SecurityConfig securityConfig =
+                    new com.ttt.safevault.security.SecurityConfig(this);
+
+            if (securityConfig.isBiometricEnabled()) {
+                android.util.Log.d(TAG, "生物识别已启用，保存主密码用于生物识别解锁");
+                com.ttt.safevault.service.manager.AccountManager accountManager =
+                        new com.ttt.safevault.service.manager.AccountManager(
+                                this,
+                                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                new com.ttt.safevault.service.manager.PasswordManager(
+                                        com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                        com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao()
+                                ),
+                                securityConfig,
+                                com.ttt.safevault.network.RetrofitClient.getInstance(this)
+                        );
+                accountManager.saveMasterPasswordForBiometric(password);
+                android.util.Log.d(TAG, "主密码已保存用于生物识别解锁");
+            }
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "保存主密码用于生物识别失败", e);
+            // 不阻止登录，只记录错误
+        }
+    }
+
+    /**
+     * 处理新设备数据恢复
+     */
+    private void handleNewDeviceRecovery(String email, String password) {
+        android.util.Log.d(TAG, "开始新设备数据恢复");
+
+        // 使用 final 变量以便在 AsyncTask 中访问
+        final String masterPassword = password;
+
+        // 使用后台线程执行数据恢复
+        new android.os.AsyncTask<Void, Void, com.ttt.safevault.dto.DeviceRecoveryResult>() {
+            @Override
+            protected com.ttt.safevault.dto.DeviceRecoveryResult doInBackground(Void... voids) {
+                try {
+                    com.ttt.safevault.model.BackendService backendService =
+                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                    com.ttt.safevault.service.manager.AccountManager accountManager =
+                            new com.ttt.safevault.service.manager.AccountManager(
+                                    LoginActivity.this,
+                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                    new com.ttt.safevault.service.manager.PasswordManager(
+                                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                            com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
+                                    ),
+                                    new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
+                                    com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
+                            );
+
+                    return accountManager.recoverDeviceData(email, masterPassword);
+                } catch (Exception e) {
+                    android.util.Log.e(TAG, "设备数据恢复失败", e);
+                    return com.ttt.safevault.dto.DeviceRecoveryResult.failure(e.getMessage(), null);
+                }
+            }
+
+            @Override
+            protected void onPostExecute(com.ttt.safevault.dto.DeviceRecoveryResult result) {
+                if (result.isSuccess()) {
+                    android.util.Log.d(TAG, "设备数据恢复成功");
+                    // 保存主密码用于生物识别解锁（如果已启用）
+                    saveMasterPasswordForBiometricIfNeeded(masterPassword);
+                    // 恢复成功后，继续执行数据同步
+                    handleCloudDataSync();
+                    // 导航到主页
+                    hideError();
+                    navigateToMain();
+                } else {
+                    android.util.Log.e(TAG, "设备数据恢复失败: " + result.getMessage());
+                    // 使用错误处理器显示错误
+                    com.ttt.safevault.utils.LoginErrorHandler.showError(
+                            LoginActivity.this,
+                            new RuntimeException(result.getMessage())
+                    );
+                }
+            }
+        }.execute();
+    }
+
+    /**
+     * 处理云端数据同步
+     */
+    private void handleCloudDataSync() {
+        android.util.Log.d(TAG, "开始云端数据同步");
+
+        try {
+            com.ttt.safevault.service.manager.EncryptionSyncManager syncManager =
+                    new com.ttt.safevault.service.manager.EncryptionSyncManager(
+                            this,
+                            com.ttt.safevault.network.RetrofitClient.getInstance(this)
+                    );
+
+            com.ttt.safevault.service.manager.EncryptionSyncManager.SyncResult syncResult =
+                    syncManager.syncVaultData();
+
+            if (syncResult.isSuccess()) {
+                android.util.Log.d(TAG, "云端数据同步成功，版本: " + syncResult.getNewVersion());
+            } else if (!syncResult.getMessage().contains("冲突")) {
+                // 如果不是冲突错误，记录日志但不阻止登录
+                android.util.Log.w(TAG, "云端数据同步失败: " + syncResult.getMessage());
+            }
+
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "云端数据同步异常", e);
+            // 同步失败不影响登录，只记录日志
+        }
     }
 
     private void navigateToMain() {
@@ -343,8 +558,6 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void checkAndRequestBiometricPermission() {
-        boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(this);
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.USE_BIOMETRIC)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -354,9 +567,8 @@ public class LoginActivity extends AppCompatActivity {
             }
         }
 
-        if (biometricButton != null) {
-            biometricButton.setVisibility(biometricSupported ? View.VISIBLE : View.GONE);
-        }
+        // 更新生物识别按钮的可见性
+        updateBiometricButtonVisibility();
     }
 
     @Override
@@ -364,10 +576,8 @@ public class LoginActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (biometricButton != null) {
-                boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(this);
-                biometricButton.setVisibility(biometricSupported ? View.VISIBLE : View.GONE);
-            }
+            // 更新生物识别按钮的可见性
+            updateBiometricButtonVisibility();
         }
     }
 
@@ -375,19 +585,51 @@ public class LoginActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
+        // 检查并更新生物识别按钮的可见性
+        updateBiometricButtonVisibility();
+
         // 自动触发生物识别（如果支持且未触发过）
-        Boolean canUseBiometric = viewModel.canUseBiometric.getValue();
-        if (canUseBiometric != null && canUseBiometric && !biometricAutoTriggered) {
+        if (biometricButton != null && biometricButton.getVisibility() == View.VISIBLE && !biometricAutoTriggered) {
             biometricAutoTriggered = true;
             performBiometricAuthentication();
         }
+    }
+
+    /**
+     * 更新生物识别按钮的可见性
+     * 检查三个条件：
+     * 1. 设备支持生物识别
+     * 2. 用户已启用生物识别功能
+     * 3. CryptoManager 已初始化（表示已设置过主密码）
+     */
+    private void updateBiometricButtonVisibility() {
+        if (biometricButton == null) {
+            return;
+        }
+
+        boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(this);
+        com.ttt.safevault.security.SecurityConfig securityConfig =
+                new com.ttt.safevault.security.SecurityConfig(this);
+        com.ttt.safevault.crypto.CryptoManager cryptoManager =
+                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+
+        boolean userEnabled = securityConfig.isBiometricEnabled();
+        boolean hasCredentials = cryptoManager.isInitialized();
+
+        boolean shouldShow = biometricSupported && userEnabled && hasCredentials;
+        biometricButton.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
+
+        android.util.Log.d(TAG, "updateBiometricButtonVisibility: " + shouldShow +
+                " (deviceSupported=" + biometricSupported +
+                ", userEnabled=" + userEnabled +
+                ", hasCredentials=" + hasCredentials + ")");
     }
 
     @Override
     @SuppressLint("MissingSuperCall")
     public void onBackPressed() {
         // 如果正在加载，不允许返回
-        Boolean isLoading = viewModel.isLoading.getValue();
+        Boolean isLoading = authViewModel.getLoading().getValue();
         if (isLoading != null && isLoading) {
             return;
         }
