@@ -485,11 +485,9 @@ public class AccountSecurityFragment extends BaseFragment {
         com.ttt.safevault.model.BackendService backendService =
                 com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
-        // 显示进度提示
-        android.app.ProgressDialog progressDialog = new android.app.ProgressDialog(requireContext());
-        progressDialog.setMessage("正在注销...");
-        progressDialog.setCancelable(false);
-        progressDialog.show();
+        // 显示现代化加载对话框
+        com.ttt.safevault.utils.LoadingDialog loadingDialog =
+                com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在注销...");
 
         // 在后台线程执行注销
         new android.os.Handler().post(() -> {
@@ -499,7 +497,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                 // 注销成功
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     Toast.makeText(requireContext(), R.string.logged_out, Toast.LENGTH_SHORT).show();
                     // 返回登录页面
                     requireActivity().finish();
@@ -507,7 +505,7 @@ public class AccountSecurityFragment extends BaseFragment {
             } catch (Exception e) {
                 // 注销失败，询问是否强制清除本地数据
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     showLogoutFailedDialog();
                 });
             }
@@ -751,11 +749,9 @@ public class AccountSecurityFragment extends BaseFragment {
             }
         }
 
-        // 显示进度对话框
-        android.app.ProgressDialog progressDialog = new android.app.ProgressDialog(requireContext());
-        progressDialog.setMessage("正在导出数据...");
-        progressDialog.setCancelable(false);
-        progressDialog.show();
+        // 显示现代化加载对话框
+        com.ttt.safevault.utils.LoadingDialog loadingDialog =
+                com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在导出数据...");
 
         new android.os.Handler().post(() -> {
             try {
@@ -777,7 +773,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 boolean success = backendService.exportData(exportFile.getAbsolutePath());
 
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     if (success) {
                         new MaterialAlertDialogBuilder(requireContext())
                                 .setTitle("导出成功")
@@ -795,7 +791,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 });
             } catch (Exception e) {
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     new MaterialAlertDialogBuilder(requireContext())
                             .setTitle("导出失败")
                             .setMessage("导出数据时发生错误:\n" + e.getMessage())
@@ -919,11 +915,9 @@ public class AccountSecurityFragment extends BaseFragment {
      * 执行数据导入
      */
     private void performImportData(String filePath) {
-        // 显示进度对话框
-        android.app.ProgressDialog progressDialog = new android.app.ProgressDialog(requireContext());
-        progressDialog.setMessage("正在导入数据...");
-        progressDialog.setCancelable(false);
-        progressDialog.show();
+        // 显示现代化加载对话框
+        com.ttt.safevault.utils.LoadingDialog loadingDialog =
+                com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在导入数据...");
 
         new android.os.Handler().post(() -> {
             try {
@@ -933,7 +927,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 boolean success = backendService.importData(filePath);
 
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     if (success) {
                         new MaterialAlertDialogBuilder(requireContext())
                                 .setTitle("导入成功")
@@ -955,7 +949,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 });
             } catch (Exception e) {
                 requireActivity().runOnUiThread(() -> {
-                    progressDialog.dismiss();
+                    loadingDialog.dismiss();
                     new MaterialAlertDialogBuilder(requireContext())
                             .setTitle("导入失败")
                             .setMessage("导入数据时发生错误:\n" + e.getMessage())
