@@ -279,6 +279,7 @@
     <string name="scan_qr_code">扫描二维码</string>
     <string name="scan_to_receive_share">扫描二维码接收分享</string>
     <string name="invalid_qr_code">无效的二维码</string>
+    <string name="scan_contact_instructions">1. 让对方打开\&quot;我的身份码\&quot;页面\n2. 扫描对方的身份QR码\n3. 添加备注后即可保存</string>
 
     <!-- 传输方式 -->
     <string name="transmission_method">传输方式</string>

@@ -46,6 +46,45 @@ public class QRCodeUtils {
     }
 
     /**
+     * 生成QR码图片（兼容旧API）
+     *
+     * @param content QR码内容
+     * @param size 图片大小（像素）
+     * @return QR码图片
+     * @throws WriterException 如果生成失败
+     */
+    @NonNull
+    public static Bitmap encodeQRCode(@NonNull String content, int size) throws WriterException {
+        if (content == null || content.isEmpty()) {
+            throw new WriterException("Content cannot be null or empty");
+        }
+
+        if (size <= 0) {
+            throw new WriterException("Size must be positive: " + size);
+        }
+
+        QRCodeWriter writer = new QRCodeWriter();
+        Map<EncodeHintType, Object> hints = new HashMap<>();
+        hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
+        hints.put(EncodeHintType.MARGIN, 1);
+
+        BitMatrix bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size, hints);
+
+        int width = bitMatrix.getWidth();
+        int height = bitMatrix.getHeight();
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                bitmap.setPixel(x, y, bitMatrix.get(x, y) ? Color.BLACK : Color.WHITE);
+            }
+        }
+
+        Log.d(TAG, "QR code encoded successfully: " + size + "x" + size);
+        return bitmap;
+    }
+
+    /**
      * 生成二维码（指定尺寸，使用默认颜色）
      *
      * @param content 二维码内容

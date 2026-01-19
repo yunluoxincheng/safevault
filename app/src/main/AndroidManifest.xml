@@ -149,8 +149,21 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
+        <!-- 联系人管理相关页面 -->
         <activity
-            android:name=".ui.share.NearbyUsersActivity"
+            android:name=".ui.share.ContactListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <activity
+            android:name=".ui.share.MyIdentityActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <activity
+            android:name=".ui.share.ScanContactActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />

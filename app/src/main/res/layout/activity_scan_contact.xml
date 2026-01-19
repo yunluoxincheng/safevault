@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context=".ui.share.ScanContactActivity">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:navigationIcon="@drawable/ic_arrow_back"
+            app:title="扫描添加联系人" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="24dp"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <!-- 扫描图标 -->
+        <ImageView
+            android:id="@+id/image_scan_icon"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:src="@drawable/ic_qr_code_scanner"
+            android:alpha="0.3"
+            android:layout_marginBottom="24dp" />
+
+        <!-- 扫描提示文字 -->
+        <TextView
+            android:id="@+id/text_scan_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="扫描添加联系人"
+            android:textAppearance="?attr/textAppearanceHeadline6"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/text_scan_sub_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击下方按钮启动QR码扫描器"
+            android:textAppearance="?attr/textAppearanceBody2"
+            android:textColor="?android:textColorSecondary"
+            android:layout_marginBottom="32dp"
+            android:gravity="center" />
+
+        <!-- 扫描按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_scan"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="启动扫描"
+            app:icon="@drawable/ic_qr_code_scanner"
+            app:iconGravity="start"
+            android:layout_marginBottom="16dp" />
+
+        <!-- 手动输入按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_manual_input"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="手动输入"
+            app:icon="@drawable/ic_keyboard"
+            app:iconGravity="start"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_marginBottom="32dp" />
+
+        <!-- 说明卡片 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/card_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="如何添加联系人？"
+                    android:textAppearance="?attr/textAppearanceTitleSmall"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/scan_contact_instructions"
+                    android:textAppearance="?attr/textAppearanceBody2"
+                    android:textColor="?android:textColorSecondary"
+                    android:lineSpacingExtra="4dp" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 加载指示器 -->
+        <com.google.android.material.progressindicator.CircularProgressIndicator
+            android:id="@+id/progress_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:indeterminate="true"
+            android:visibility="gone"
+            android:layout_marginTop="24dp" />
+
+    </LinearLayout>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

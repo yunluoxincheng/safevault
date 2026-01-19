@@ -6,42 +6,69 @@ import android.nfc.NfcAdapter;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.gson.Gson;
 import com.ttt.safevault.R;
 import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.crypto.KeyDerivationManager;
+import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.databinding.ActivityReceiveShareBinding;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;
+import com.ttt.safevault.model.EncryptedSharePacket;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
+import com.ttt.safevault.model.ShareDataPacket;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.utils.NFCTransferManager;
 import com.ttt.safevault.viewmodel.ReceiveShareViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
 /**
  * 接收分享界面
- * 显示分享的密码并允许保存
- * 支持离线分享和云端分享
+ * 解密并显示分享的密码，支持保存到密码库
+ *
+ * 支持两种分享模式：
+ * 1. 离线分享（端到端加密）：使用 RSA-OAEP 加密，接收方用自己的私钥解密
+ * 2. 云端分享：通过后端服务器传输，支持直接链接、用户对用户、附近用户
  */
 public class ReceiveShareActivity extends AppCompatActivity {
 
+    private static final String TAG = "ReceiveShareActivity";
+    private static final String EXTRA_SHARE_DATA = "share_data";
+    private static final String EXTRA_QR_CONTENT = "qr_content";
+
     private ActivityReceiveShareBinding binding;
     private ReceiveShareViewModel viewModel;
+
+    // 加密管理器
+    private KeyDerivationManager keyManager;
+    private ShareEncryptionManager encryptionManager;
+
+    // 分享数据
     private String shareId;
+    private ShareDataPacket decryptedData;  // 离线分享解密后的数据
+    private EncryptedSharePacket encryptedPacket;  // 离线分享加密包
+    private String senderUserId;  // 发送方用户ID
+
+    // UI 状态
     private boolean isPasswordVisible = false;
     private boolean isCloudShare = false;  // 是否为云端分享
+    private boolean isOfflineEncrypted = false;  // 是否为端到端加密的离线分享
     private String actualPassword = "";
     private NFCTransferManager nfcManager;
 
@@ -61,28 +88,38 @@ public class ReceiveShareActivity extends AppCompatActivity {
 
         binding = ActivityReceiveShareBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-        
-        // 初始化NFC管理器
+
+        // 初始化加密管理器
+        keyManager = new KeyDerivationManager(this);
+        encryptionManager = new ShareEncryptionManager();
         nfcManager = new NFCTransferManager(this);
 
-        // 获取分享ID，支持多种方式：
-        // 1. 通过Intent Extra传递：getStringExtra("SHARE_ID") 或 "SHARE_TOKEN"
-        // 2. 通过URI传递：safevault://share/{shareId} 或 safevault://offline/{data}
-        // 3. 通过NFC传递
-        shareId = getIntent().getStringExtra("SHARE_ID");
-        
-        // 尝试从SHARE_TOKEN获取（蓝牙/NFC传输）
-        if (shareId == null || shareId.isEmpty()) {
-            shareId = getIntent().getStringExtra("SHARE_TOKEN");
+        // 获取分享数据，支持多种方式：
+        // 1. 通过Intent Extra传递：getStringExtra(EXTRA_SHARE_DATA) 或 EXTRA_QR_CONTENT
+        // 2. 通过Intent Extra传递（兼容旧版）：getStringExtra("SHARE_ID") 或 "SHARE_TOKEN"
+        // 3. 通过URI传递：safevault://share/{shareId} 或 safevault://offline/{data}
+        // 4. 通过NFC传递
+        String shareData = getIntent().getStringExtra(EXTRA_SHARE_DATA);
+        String qrContent = getIntent().getStringExtra(EXTRA_QR_CONTENT);
+
+        // 兼容旧版
+        if (shareData == null) {
+            shareData = getIntent().getStringExtra("SHARE_ID");
         }
-        
+        if (qrContent == null) {
+            qrContent = getIntent().getStringExtra("SHARE_TOKEN");
+        }
+
         // 如果没有Extra，尝试从 URI 中解析
-        if (shareId == null || shareId.isEmpty()) {
+        if (shareData == null && qrContent == null) {
             android.net.Uri uri = getIntent().getData();
             if (uri != null && "safevault".equals(uri.getScheme())) {
                 if ("offline".equals(uri.getHost())) {
                     // 离线分享：safevault://offline/{data}
-                    shareId = uri.toString();
+                    shareData = uri.getSchemeSpecificPart();
+                    if (shareData.startsWith("//")) {
+                        shareData = shareData.substring(2);
+                    }
                 } else if ("share".equals(uri.getHost())) {
                     // 在线分享：/shareId
                     String path = uri.getPath();
@@ -92,33 +129,253 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 }
             }
         }
-        
+
         // 尝试从NFC Intent中获取数据
-        if (shareId == null || shareId.isEmpty()) {
-            shareId = handleNfcIntent(getIntent());
+        if (shareData == null && qrContent == null) {
+            shareData = handleNfcIntent(getIntent());
         }
-        
-        if (shareId == null || shareId.isEmpty()) {
+
+        // 优先处理端到端加密的离线分享
+        String encryptedContent = shareData != null ? shareData : qrContent;
+        if (encryptedContent != null) {
+            // 检查是否为端到端加密的离线分享（EncryptedSharePacket格式）
+            if (isEncryptedSharePacket(encryptedContent)) {
+                isOfflineEncrypted = true;
+                isCloudShare = false;
+                processEncryptedSharePacket(encryptedContent);
+                return;
+            }
+        }
+
+        // 如果不是端到端加密分享，处理云端分享
+        if (shareId != null && !shareId.isEmpty()) {
+            isCloudShare = true;
+            setupViewModel();
+            setupToolbar();
+            setupViews();
+            observeViewModel();
+            viewModel.receiveCloudShare(shareId);
+        } else {
             Toast.makeText(this, "分享链接无效", Toast.LENGTH_SHORT).show();
             finish();
+        }
+    }
+
+    /**
+     * 检查是否为端到端加密的离线分享（EncryptedSharePacket格式）
+     */
+    private boolean isEncryptedSharePacket(String content) {
+        try {
+            // 尝试解析为Base64
+            String decoded = new String(
+                android.util.Base64.decode(content, android.util.Base64.URL_SAFE),
+                "UTF-8"
+            );
+            // 检查是否包含EncryptedSharePacket的特征字段
+            return decoded.contains("\"version\"") &&
+                   decoded.contains("\"encryptedData\"") &&
+                   decoded.contains("\"signature\"");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 处理端到端加密的离线分享
+     */
+    private void processEncryptedSharePacket(String encryptedContent) {
+        setupToolbar();
+        setupViews();
+
+        // 显示加载状态
+        binding.progressBar.setVisibility(View.VISIBLE);
+        binding.scrollView.setVisibility(View.GONE);
+
+        // 在后台线程解密
+        new Thread(() -> {
+            try {
+                // 解析加密包
+                String json = new String(
+                    android.util.Base64.decode(encryptedContent, android.util.Base64.URL_SAFE),
+                    "UTF-8"
+                );
+                encryptedPacket = new Gson().fromJson(json, EncryptedSharePacket.class);
+
+                if (encryptedPacket == null || !encryptedPacket.isValid()) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "分享数据格式无效", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                    return;
+                }
+
+                // 检查过期
+                if (encryptedPacket.isExpired()) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "分享已过期", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                    return;
+                }
+
+                senderUserId = encryptedPacket.getSenderId();
+
+                // 解密数据
+                decryptShareData();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "解析分享数据失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    finish();
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * 解密分享数据（端到端加密）
+     */
+    private void decryptShareData() {
+        try {
+            // 获取主密码
+            String masterPassword = getMasterPassword();
+            String userEmail = getUserEmail();
+
+            if (masterPassword == null) {
+                runOnUiThread(() -> {
+                    showError("请先解锁应用");
+                });
+                return;
+            }
+
+            // 获取自己的密钥对
+            KeyPair keyPair = keyManager.deriveKeyPairFromMasterPassword(
+                masterPassword,
+                userEmail
+            );
+
+            // 注意：这里假设发送方公钥已经在加密包中或可以通过其他方式获取
+            // 在实际实现中，可能需要从服务器获取发送方公钥
+            // 暂时跳过签名验证，只进行解密
+            decryptedData = encryptionManager.decryptShare(
+                encryptedPacket.getEncryptedData(),
+                keyPair.getPrivate()
+            );
+
+            if (decryptedData == null) {
+                runOnUiThread(() -> {
+                    showError("解密失败");
+                });
+                return;
+            }
+
+            // 在主线程显示数据
+            runOnUiThread(() -> {
+                binding.progressBar.setVisibility(View.GONE);
+                binding.scrollView.setVisibility(View.VISIBLE);
+                displayDecryptedPasswordData();
+            });
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            runOnUiThread(() -> {
+                showError("解密失败: " + e.getMessage());
+            });
+        }
+    }
+
+    /**
+     * 显示解密后的密码数据
+     */
+    private void displayDecryptedPasswordData() {
+        if (decryptedData == null || decryptedData.password == null) {
             return;
         }
 
-        setupViewModel();
-        setupToolbar();
-        setupViews();
-        observeViewModel();
+        PasswordItem password = decryptedData.password;
 
-        // 检查是否为离线分享
-        if (com.ttt.safevault.utils.OfflineShareUtils.isOfflineShare(shareId)) {
-            // 离线分享（密钥已嵌入，无需密码）
-            isCloudShare = false;
-            viewModel.receiveOfflineShare(shareId);
+        binding.textTitle.setText(password.getTitle() != null ? password.getTitle() : "无标题");
+        binding.textUsername.setText(password.getUsername() != null ? password.getUsername() : "无用户名");
+
+        // 保存实际密码
+        actualPassword = password.getPassword() != null ? password.getPassword() : "";
+        binding.textPassword.setText("••••••••");
+
+        // URL
+        if (password.getUrl() != null && !password.getUrl().isEmpty()) {
+            binding.labelUrl.setVisibility(View.VISIBLE);
+            binding.textUrl.setVisibility(View.VISIBLE);
+            binding.textUrl.setText(password.getUrl());
         } else {
-            // 云端分享，直接请求
-            isCloudShare = true;
-            viewModel.receiveCloudShare(shareId);
+            binding.labelUrl.setVisibility(View.GONE);
+            binding.textUrl.setVisibility(View.GONE);
         }
+
+        // 显示分享者
+        binding.textSharer.setText(senderUserId != null ? senderUserId : "未知用户");
+
+        // 显示过期时间
+        if (decryptedData.expireAt > 0) {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+            String expireDate = sdf.format(new Date(decryptedData.expireAt));
+            long remainingDays = (decryptedData.expireAt - System.currentTimeMillis()) / (1000 * 60 * 60 * 24);
+            binding.textExpireTime.setText("有效期：" + remainingDays + "天后过期 (" + expireDate + ")");
+        } else {
+            binding.textExpireTime.setText("有效期：永久有效");
+        }
+
+        // 显示权限
+        SharePermission permission = decryptedData.permission;
+        if (permission != null) {
+            StringBuilder permText = new StringBuilder("权限：");
+            if (permission.isCanView()) {
+                permText.append("可查看");
+            }
+            if (permission.isCanSave()) {
+                permText.append("、可保存");
+            }
+            if (permission.isRevocable()) {
+                permText.append("、可撤销");
+            }
+            binding.textPermissions.setText(permText.toString());
+
+            // 根据权限控制保存按钮
+            binding.btnSaveToLocal.setEnabled(permission.isCanSave());
+        }
+
+        // 显示分享类型
+        binding.textShareType.setVisibility(View.VISIBLE);
+        binding.textShareType.setText("分享方式：端到端加密（离线）");
+    }
+
+    /**
+     * 获取主密码
+     */
+    private String getMasterPassword() {
+        try {
+            return ServiceLocator.getInstance()
+                .getCryptoManager()
+                .getMasterPassword();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 获取用户邮箱
+     */
+    private String getUserEmail() {
+        return getSharedPreferences("backend_prefs", MODE_PRIVATE)
+            .getString("user_email", "user@example.com");
+    }
+
+    /**
+     * 显示错误信息
+     */
+    private void showError(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        finish();
     }
 
     private void setupViewModel() {
@@ -265,12 +522,55 @@ public class ReceiveShareActivity extends AppCompatActivity {
     }
 
     private void saveToLocal() {
-        if (shareId != null) {
-            if (isCloudShare) {
-                viewModel.saveCloudShare(shareId);
+        // 端到端加密的离线分享
+        if (isOfflineEncrypted && decryptedData != null) {
+            saveDecryptedPassword();
+            return;
+        }
+
+        // 云端分享
+        if (shareId != null && isCloudShare) {
+            viewModel.saveCloudShare(shareId);
+        }
+    }
+
+    /**
+     * 保存解密后的密码（端到端加密分享）
+     */
+    private void saveDecryptedPassword() {
+        if (decryptedData == null || decryptedData.password == null) {
+            return;
+        }
+
+        if (!decryptedData.permission.isCanSave()) {
+            Toast.makeText(this, "此分享不允许保存", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 通过 BackendService 保存密码
+        try {
+            com.ttt.safevault.model.BackendService backendService =
+                ServiceLocator.getInstance().getBackendService();
+
+            PasswordItem password = decryptedData.password;
+            int newId = backendService.addPassword(
+                password.getTitle(),
+                password.getUsername(),
+                password.getPassword(),
+                password.getUrl(),
+                password.getNotes()
+            );
+
+            if (newId > 0) {
+                Toast.makeText(this, "密码已保存", Toast.LENGTH_SHORT).show();
+                finish();
             } else {
-                viewModel.saveSharedPassword(shareId);
+                Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
             }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 

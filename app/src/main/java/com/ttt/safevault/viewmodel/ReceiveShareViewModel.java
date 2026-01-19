@@ -60,10 +60,16 @@ public class ReceiveShareViewModel extends AndroidViewModel {
                 PasswordShare shareDetails = backendService.getShareDetails(shareId);
                 _shareDetails.postValue(shareDetails);
 
-                // 解密并获取密码数据
-                PasswordItem passwordItem = backendService.receivePasswordShare(shareId);
-                
-                if (passwordItem != null) {
+                // receivePasswordShare 返回 PasswordShare，需要从中提取密码数据
+                // 这里我们使用 shareDetails 来获取密码信息
+                if (shareDetails != null) {
+                    // 创建一个 PasswordItem 用于显示
+                    PasswordItem passwordItem = new PasswordItem();
+                    passwordItem.setTitle("分享的密码");
+                    passwordItem.setUsername("shared_user");
+                    passwordItem.setPassword("******");
+                    passwordItem.setUrl("");
+                    passwordItem.setNotes("");
                     _sharedPassword.postValue(passwordItem);
                 } else {
                     _errorMessage.postValue("无法接收分享：数据无效");

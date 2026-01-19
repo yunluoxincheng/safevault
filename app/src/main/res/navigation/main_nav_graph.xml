@@ -34,13 +34,6 @@
         android:label="@string/nav_generator"
         tools:layout="@layout/fragment_generator" />
 
-    <!-- 分享历史页面 -->
-    <fragment
-        android:id="@+id/nav_share_history"
-        android:name="com.ttt.safevault.ui.share.ShareHistoryFragment"
-        android:label="@string/share_history"
-        tools:layout="@layout/fragment_share_history" />
-
     <!-- 设置页面 -->
     <fragment
         android:id="@+id/nav_settings"

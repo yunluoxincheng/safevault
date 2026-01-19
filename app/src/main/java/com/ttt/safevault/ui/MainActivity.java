@@ -166,10 +166,9 @@ public class MainActivity extends AppCompatActivity {
         if (navHostFragment != null) {
             navController = navHostFragment.getNavController();
 
-            // 设置顶级目的地（底部导航的四个选项卡）
+            // 设置顶级目的地（底部导航的三个选项卡）
             appBarConfiguration = new AppBarConfiguration.Builder(
                     R.id.nav_passwords,
-                    R.id.nav_share_history,
                     R.id.nav_generator,
                     R.id.nav_settings
             ).build();
@@ -196,7 +195,6 @@ public class MainActivity extends AppCompatActivity {
 
                 // 处理返回按钮显示
                 boolean isTopLevelDestination = destination.getId() == R.id.nav_passwords
-                        || destination.getId() == R.id.nav_share_history
                         || destination.getId() == R.id.nav_generator
                         || destination.getId() == R.id.nav_settings;
 
@@ -218,8 +216,6 @@ public class MainActivity extends AppCompatActivity {
     private int getToolbarTitle(int destinationId) {
         if (destinationId == R.id.nav_passwords) {
             return R.string.nav_passwords;
-        } else if (destinationId == R.id.nav_share_history) {
-            return R.string.share_history;
         } else if (destinationId == R.id.nav_generator) {
             return R.string.nav_generator;
         } else if (destinationId == R.id.nav_settings) {
@@ -263,7 +259,6 @@ public class MainActivity extends AppCompatActivity {
                 // 只在顶级目的地显示底部导航
                 int destinationId = destination.getId();
                 boolean isTopLevelDestination = destinationId == R.id.nav_passwords
-                        || destinationId == R.id.nav_share_history
                         || destinationId == R.id.nav_generator
                         || destinationId == R.id.nav_settings;
 
@@ -443,7 +438,6 @@ public class MainActivity extends AppCompatActivity {
         if (navController != null && navController.getCurrentDestination() != null) {
             int currentDestinationId = navController.getCurrentDestination().getId();
             boolean isTopLevelDestination = currentDestinationId == R.id.nav_passwords
-                    || currentDestinationId == R.id.nav_share_history
                     || currentDestinationId == R.id.nav_generator
                     || currentDestinationId == R.id.nav_settings;
 

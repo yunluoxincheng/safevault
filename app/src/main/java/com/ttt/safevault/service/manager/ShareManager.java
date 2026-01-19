@@ -4,47 +4,215 @@ import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
+import com.ttt.safevault.crypto.CryptoManager;
+import com.ttt.safevault.data.AppDatabase;
+import com.ttt.safevault.data.EncryptedPasswordEntity;
+import com.ttt.safevault.data.PasswordDao;
+import com.ttt.safevault.data.ShareRecord;
+import com.ttt.safevault.data.ShareRecordDao;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.model.ShareStatus;
+import com.ttt.safevault.network.RetrofitClient;
+import com.ttt.safevault.network.api.ShareServiceApi;
+import com.ttt.safevault.dto.request.CreateShareRequest;
+import com.ttt.safevault.dto.response.ReceivedShareResponse;
+import com.ttt.safevault.dto.response.ShareResponse;
 
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * 分享管理器
- * 负责本地密码分享功能，包括创建、接收、撤销分享等
+ * 负责处理密码分享的创建、接收和撤销
+ * 支持云端分享和离线分享
  */
 public class ShareManager {
     private static final String TAG = "ShareManager";
-    private static final String PREF_USER_ID = "user_id";
 
     private final Context context;
-    private final PasswordManager passwordManager;
-    private final android.content.SharedPreferences prefs;
+    private final CryptoManager cryptoManager;
+    private final PasswordDao passwordDao;
+    private final ShareRecordDao shareRecordDao;
+    private final ShareServiceApi shareServiceApi;
+    private final Gson gson;
 
-    // 分享功能相关的内存存储（简化实现，生产环境应使用数据库）
-    private final Map<String, PasswordShare> sharesMap = new ConcurrentHashMap<>();
+    // 离线分享加密配置
+    private static final String OFFLINE_SHARE_ALGORITHM = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int SHARE_KEY_LENGTH = 256; // bits
 
-    public ShareManager(@NonNull Context context, @NonNull PasswordManager passwordManager) {
+    public ShareManager(@NonNull Context context, @NonNull CryptoManager cryptoManager,
+                       @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();
-        this.passwordManager = passwordManager;
-        this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
+        this.cryptoManager = cryptoManager;
+        this.passwordDao = AppDatabase.getInstance(context).passwordDao();
+        this.shareRecordDao = AppDatabase.getInstance(context).shareRecordDao();
+        this.shareServiceApi = retrofitClient.getShareServiceApi();
+        this.gson = new Gson();
+    }
+
+    // ==================== 云端分享相关 ====================
+
+    /**
+     * 创建云端分享
+     */
+    @Nullable
+    public ShareResponse createCloudShare(int passwordId, @Nullable String toUserId,
+                                         int expireInMinutes, @NonNull SharePermission permission,
+                                         @NonNull String shareType) {
+        try {
+            // 获取密码条目
+            PasswordItem item = getPasswordById(passwordId);
+            if (item == null) {
+                Log.e(TAG, "Password not found: " + passwordId);
+                return null;
+            }
+
+            // 构建请求
+            CreateShareRequest request = new CreateShareRequest();
+            request.setPasswordId(String.valueOf(passwordId));
+            request.setTitle(item.getTitle());
+            request.setUsername(item.getUsername());
+            request.setEncryptedPassword(item.getPassword()); // PasswordItem存储的是明文密码
+            request.setUrl(item.getUrl());
+            request.setNotes(item.getNotes());
+            request.setToUserId(toUserId);
+            request.setExpireInMinutes(expireInMinutes > 0 ? expireInMinutes : null);
+            request.setPermission(permission);
+            request.setShareType(shareType);
+
+            // 同步调用API
+            ShareResponse response = shareServiceApi.createShare(request)
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+
+            if (response != null) {
+                Log.d(TAG, "Cloud share created: " + response.getShareId());
+            }
+
+            return response;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to create cloud share", e);
+            return null;
+        }
     }
 
     /**
-     * 创建密码分享
+     * 接收云端分享
      */
-    public String createPasswordShare(int passwordId, String toUserId,
-                                     int expireInMinutes, SharePermission permission) {
+    @Nullable
+    public ReceivedShareResponse receiveCloudShare(@NonNull String shareId) {
         try {
-            // 验证密码是否存在
-            PasswordItem item = passwordManager.decryptItem(passwordId);
+            ReceivedShareResponse response = shareServiceApi.receiveShare(shareId)
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+
+            if (response != null) {
+                Log.d(TAG, "Cloud share received: " + response.getShareId());
+            }
+
+            return response;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to receive cloud share: " + shareId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 撤销云端分享
+     */
+    public boolean revokeCloudShare(@NonNull String shareId) {
+        try {
+            Void result = shareServiceApi.revokeShare(shareId)
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+            Log.d(TAG, "Cloud share revoked: " + shareId);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to revoke cloud share: " + shareId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 保存云端分享到本地
+     */
+    public boolean saveCloudShare(@NonNull String shareId) {
+        try {
+            Void result = shareServiceApi.saveSharedPassword(shareId)
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+            Log.d(TAG, "Cloud share saved: " + shareId);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save cloud share: " + shareId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 获取我创建的云端分享列表
+     */
+    @NonNull
+    public List<ReceivedShareResponse> getMyCloudShares() {
+        try {
+            List<ReceivedShareResponse> shares = shareServiceApi.getMyShares()
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+            return shares != null ? shares : new ArrayList<>();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get my cloud shares", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 获取我接收的云端分享列表
+     */
+    @NonNull
+    public List<ReceivedShareResponse> getReceivedCloudShares() {
+        try {
+            List<ReceivedShareResponse> shares = shareServiceApi.getReceivedShares()
+                    .timeout(30, TimeUnit.SECONDS)
+                    .blockingFirst();
+            return shares != null ? shares : new ArrayList<>();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get received cloud shares", e);
+            return new ArrayList<>();
+        }
+    }
+
+    // ==================== 离线分享相关 ====================
+
+    /**
+     * 创建直接密码分享（离线）
+     * 生成分享Token供后续访问
+     */
+    @Nullable
+    public String createDirectPasswordShare(int passwordId, int expireMinutes,
+                                          @NonNull SharePermission permission) {
+        try {
+            PasswordItem item = getPasswordById(passwordId);
             if (item == null) {
                 Log.e(TAG, "Password not found: " + passwordId);
                 return null;
@@ -53,76 +221,110 @@ public class ShareManager {
             // 生成分享ID
             String shareId = "share_" + UUID.randomUUID().toString();
 
-            // 创建分享对象
-            PasswordShare share = new PasswordShare();
-            share.setShareId(shareId);
-            share.setPasswordId(passwordId);
-            share.setFromUserId(getCurrentUserId());
-            share.setToUserId(toUserId);
-            share.setCreatedAt(System.currentTimeMillis());
-
             // 计算过期时间
-            if (expireInMinutes > 0) {
-                long expireTime = System.currentTimeMillis() + (expireInMinutes * 60 * 1000L);
-                share.setExpireTime(expireTime);
-            } else {
-                share.setExpireTime(0);
+            long expireTime = expireMinutes > 0
+                    ? System.currentTimeMillis() + (expireMinutes * 60 * 1000L)
+                    : 0;
+
+            // 保存分享记录到本地数据库
+            ShareRecord record = new ShareRecord();
+            record.shareId = shareId;
+            record.passwordId = passwordId;
+            record.type = "sent";
+            record.encryptedData = item.getPassword(); // 存储明文密码
+            record.permission = serializePermission(permission);
+            record.expireAt = expireTime;
+            record.status = "active";
+            record.createdAt = System.currentTimeMillis();
+            record.accessedAt = 0;
+
+            long result = shareRecordDao.insertShareRecord(record);
+            if (result <= 0) {
+                Log.e(TAG, "Failed to save share record");
+                return null;
             }
 
-            share.setPermission(permission);
-            share.setStatus(ShareStatus.ACTIVE);
-
-            // 加密密码数据（简化实现，直接存储JSON）
-            String encryptedData = encryptPasswordForShare(item);
-            share.setEncryptedData(encryptedData);
-
-            // 保存分享
-            sharesMap.put(shareId, share);
-            Log.d(TAG, "Share created: " + shareId);
-
-            return shareId;
+            // 返回分享Token
+            String token = Base64.getEncoder().encodeToString(
+                    (shareId + ":" + System.currentTimeMillis()).getBytes(StandardCharsets.UTF_8));
+            Log.d(TAG, "Direct share created: " + shareId);
+            return token;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create share", e);
+            Log.e(TAG, "Failed to create direct share", e);
             return null;
         }
     }
 
     /**
-     * 创建直接密码分享（无指定用户）
+     * 创建离线分享（版本2：密钥已嵌入，无需密码）
+     * 生成QR码内容，包含加密数据
      */
-    public String createDirectPasswordShare(int passwordId, int expireInMinutes,
-                                           SharePermission permission) {
-        // 直接分享与toUserId为null的普通分享相同
-        return createPasswordShare(passwordId, null, expireInMinutes, permission);
-    }
-
-    /**
-     * 创建离线分享
-     */
-    public String createOfflineShare(int passwordId,
-                                    int expireInMinutes, SharePermission permission) {
+    @Nullable
+    public String createOfflineShare(int passwordId, int expireMinutes,
+                                    @NonNull SharePermission permission) {
         try {
-            // 获取密码数据
-            PasswordItem item = passwordManager.decryptItem(passwordId);
+            PasswordItem item = getPasswordById(passwordId);
             if (item == null) {
                 Log.e(TAG, "Password not found: " + passwordId);
                 return null;
             }
 
-            // 使用OfflineShareUtils创建离线分享（版本2：嵌入密钥）
-            com.ttt.safevault.utils.OfflineShareUtils.OfflineSharePacket packet =
-                com.ttt.safevault.utils.OfflineShareUtils.createOfflineShare(
-                    item, expireInMinutes, permission
-                );
+            // 生成分享密钥（用于加密分享数据）
+            byte[] shareKeyBytes = new byte[SHARE_KEY_LENGTH / 8];
+            new SecureRandom().nextBytes(shareKeyBytes);
+            SecretKey shareKey = new SecretKeySpec(shareKeyBytes, "AES");
 
-            if (packet == null) {
-                Log.e(TAG, "Failed to create offline share");
-                return null;
-            }
+            // 生成IV
+            byte[] iv = new byte[12];
+            new SecureRandom().nextBytes(iv);
 
-            Log.d(TAG, "Offline share created successfully");
-            return packet.qrContent;
+            // 构建分享数据
+            ShareData shareData = new ShareData();
+            shareData.title = item.getTitle();
+            shareData.username = item.getUsername();
+            shareData.password = item.getPassword(); // PasswordItem已经包含明文密码
+            shareData.url = item.getUrl();
+            shareData.notes = item.getNotes();
+            shareData.permission = permission;
+            shareData.expireTime = expireMinutes > 0
+                    ? System.currentTimeMillis() + (expireMinutes * 60 * 1000L)
+                    : 0;
 
+            // 序列化分享数据
+            String jsonData = gson.toJson(shareData);
+            byte[] dataBytes = jsonData.getBytes(StandardCharsets.UTF_8);
+
+            // 使用分享密钥加密数据
+            Cipher cipher = Cipher.getInstance(OFFLINE_SHARE_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.ENCRYPT_MODE, shareKey, spec);
+            byte[] encryptedData = cipher.doFinal(dataBytes);
+
+            // 组合：IV + 密钥 + 加密数据（全部Base64编码）
+            String ivBase64 = Base64.getEncoder().encodeToString(iv);
+            String keyBase64 = Base64.getEncoder().encodeToString(shareKeyBytes);
+            String dataBase64 = Base64.getEncoder().encodeToString(encryptedData);
+
+            // QR码内容：safevault:offline:v2|iv|key|data
+            String qrContent = "safevault:offline:v2|" + ivBase64 + "|" + keyBase64 + "|" + dataBase64;
+
+            // 保存本地记录
+            String shareId = "offline_" + UUID.randomUUID().toString();
+            ShareRecord record = new ShareRecord();
+            record.shareId = shareId;
+            record.passwordId = passwordId;
+            record.type = "sent";
+            record.encryptedData = qrContent;
+            record.permission = serializePermission(permission);
+            record.expireAt = shareData.expireTime;
+            record.status = "active";
+            record.createdAt = System.currentTimeMillis();
+            record.accessedAt = 0;
+
+            shareRecordDao.insertShareRecord(record);
+
+            Log.d(TAG, "Offline share created: " + shareId);
+            return qrContent;
         } catch (Exception e) {
             Log.e(TAG, "Failed to create offline share", e);
             return null;
@@ -130,248 +332,242 @@ public class ShareManager {
     }
 
     /**
-     * 接收密码分享
-     */
-    public PasswordItem receivePasswordShare(String shareId) {
-        try {
-            PasswordShare share = getShareDetails(shareId);
-            if (share == null) {
-                Log.e(TAG, "Share not found: " + shareId);
-                return null;
-            }
-
-            // 验证分享状态
-            if (!share.isAvailable()) {
-                Log.e(TAG, "Share not available: " + shareId);
-                return null;
-            }
-
-            // 解密密码数据
-            PasswordItem item = decryptPasswordFromShare(share.getEncryptedData());
-
-            // 更新分享状态
-            share.setStatus(ShareStatus.ACCEPTED);
-
-            Log.d(TAG, "Share received: " + shareId);
-            return item;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to receive share", e);
-            return null;
-        }
-    }
-
-    /**
      * 接收离线分享
+     * 解密QR码内容并返回密码条目
      */
-    public PasswordItem receiveOfflineShare(String qrContent) {
+    @Nullable
+    public PasswordItem receiveOfflineShare(@NonNull String encryptedData) {
         try {
-            // 使用OfflineShareUtils解析离线分享
-            PasswordItem item = com.ttt.safevault.utils.OfflineShareUtils.parseOfflineShare(
-                qrContent
-            );
-
-            if (item == null) {
-                Log.e(TAG, "Failed to parse offline share");
+            // 解析QR码内容：safevault:offline:v2|iv|key|data
+            if (!encryptedData.startsWith("safevault:offline:v2|")) {
+                Log.e(TAG, "Invalid offline share format");
                 return null;
             }
+
+            String[] parts = encryptedData.split("\\|");
+            if (parts.length != 4) {
+                Log.e(TAG, "Invalid offline share data");
+                return null;
+            }
+
+            byte[] iv = Base64.getDecoder().decode(parts[1]);
+            byte[] keyBytes = Base64.getDecoder().decode(parts[2]);
+            byte[] encrypted = Base64.getDecoder().decode(parts[3]);
+
+            // 解密数据
+            SecretKey shareKey = new SecretKeySpec(keyBytes, "AES");
+            Cipher cipher = Cipher.getInstance(OFFLINE_SHARE_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.DECRYPT_MODE, shareKey, spec);
+            byte[] decryptedData = cipher.doFinal(encrypted);
+
+            // 反序列化分享数据
+            String jsonData = new String(decryptedData, StandardCharsets.UTF_8);
+            ShareData shareData = gson.fromJson(jsonData, ShareData.class);
+
+            // 检查过期
+            if (shareData.expireTime > 0 && System.currentTimeMillis() > shareData.expireTime) {
+                Log.e(TAG, "Offline share has expired");
+                return null;
+            }
+
+            // 创建密码条目
+            PasswordItem item = new PasswordItem();
+            item.setTitle(shareData.title);
+            item.setUsername(shareData.username);
+            item.setPassword(shareData.password);
+            item.setUrl(shareData.url);
+            item.setNotes(shareData.notes);
 
             Log.d(TAG, "Offline share received successfully");
             return item;
-
         } catch (Exception e) {
             Log.e(TAG, "Failed to receive offline share", e);
             return null;
         }
     }
 
+    // ==================== 本地分享记录相关 ====================
+
     /**
-     * 撤销密码分享
+     * 获取分享详情（本地）
      */
-    public boolean revokePasswordShare(String shareId) {
+    @Nullable
+    public PasswordShare getShareDetails(@NonNull String shareId) {
         try {
-            PasswordShare share = sharesMap.get(shareId);
-            if (share == null) {
-                return false;
+            ShareRecord record = shareRecordDao.getShareRecord(shareId);
+            if (record == null) {
+                return null;
             }
 
-            // 验证所有权
-            if (!share.getFromUserId().equals(getCurrentUserId())) {
-                Log.e(TAG, "Not authorized to revoke share: " + shareId);
-                return false;
+            PasswordShare share = new PasswordShare();
+            share.setShareId(record.shareId);
+            share.setPasswordId(record.passwordId);
+            share.setEncryptedData(record.encryptedData);
+            share.setCreatedAt(record.createdAt);
+            share.setExpireTime(record.expireAt);
+            share.setPermission(parsePermission(record.permission));
+            share.setStatus(ShareStatus.valueOf(record.status.toUpperCase()));
+
+            return share;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get share details", e);
+            return null;
+        }
+    }
+
+    /**
+     * 获取我创建的分享列表（本地）
+     */
+    @NonNull
+    public List<PasswordShare> getMyShares() {
+        try {
+            List<ShareRecord> records = shareRecordDao.getMySentShares();
+            List<PasswordShare> shares = new ArrayList<>();
+
+            for (ShareRecord record : records) {
+                PasswordShare share = new PasswordShare();
+                share.setShareId(record.shareId);
+                share.setPasswordId(record.passwordId);
+                share.setEncryptedData(record.encryptedData);
+                share.setCreatedAt(record.createdAt);
+                share.setExpireTime(record.expireAt);
+                share.setPermission(parsePermission(record.permission));
+                share.setStatus(ShareStatus.valueOf(record.status.toUpperCase()));
+                shares.add(share);
             }
 
-            // 验证是否可撤销
-            if (!share.getPermission().isRevocable()) {
-                Log.e(TAG, "Share is not revocable: " + shareId);
-                return false;
+            return shares;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get my shares", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 获取我接收的分享列表（本地）
+     */
+    @NonNull
+    public List<PasswordShare> getReceivedShares() {
+        try {
+            List<ShareRecord> records = shareRecordDao.getMyReceivedShares();
+            List<PasswordShare> shares = new ArrayList<>();
+
+            for (ShareRecord record : records) {
+                PasswordShare share = new PasswordShare();
+                share.setShareId(record.shareId);
+                share.setPasswordId(record.passwordId);
+                share.setEncryptedData(record.encryptedData);
+                share.setCreatedAt(record.createdAt);
+                share.setExpireTime(record.expireAt);
+                share.setPermission(parsePermission(record.permission));
+                share.setStatus(ShareStatus.valueOf(record.status.toUpperCase()));
+                shares.add(share);
             }
 
-            // 更新状态
-            share.setStatus(ShareStatus.REVOKED);
-            Log.d(TAG, "Share revoked: " + shareId);
-            return true;
+            return shares;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get received shares", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 撤销密码分享（本地）
+     */
+    public boolean revokePasswordShare(@NonNull String shareId) {
+        try {
+            int result = shareRecordDao.revokeShare(shareId);
+            Log.d(TAG, "Revoke share result: " + result);
+            return result > 0;
         } catch (Exception e) {
             Log.e(TAG, "Failed to revoke share", e);
             return false;
         }
     }
 
-    /**
-     * 获取我创建的分享列表
-     */
-    public List<PasswordShare> getMyShares() {
-        List<PasswordShare> myShares = new ArrayList<>();
-        String currentUserId = getCurrentUserId();
-
-        for (PasswordShare share : sharesMap.values()) {
-            if (currentUserId.equals(share.getFromUserId())) {
-                myShares.add(share);
-            }
-        }
-
-        return myShares;
-    }
+    // ==================== 辅助方法 ====================
 
     /**
-     * 获取接收到的分享列表
+     * 获取密码条目
      */
-    public List<PasswordShare> getReceivedShares() {
-        List<PasswordShare> receivedShares = new ArrayList<>();
-        String currentUserId = getCurrentUserId();
-
-        for (PasswordShare share : sharesMap.values()) {
-            if (currentUserId.equals(share.getToUserId()) || share.getToUserId() == null) {
-                receivedShares.add(share);
-            }
-        }
-
-        return receivedShares;
-    }
-
-    /**
-     * 保存分享的密码到本地
-     */
-    public int saveSharedPassword(String shareId) {
+    @Nullable
+    private PasswordItem getPasswordById(int passwordId) {
         try {
-            PasswordItem item = receivePasswordShare(shareId);
-            if (item == null) {
-                return -1;
+            // 使用cryptoManager来解密密码
+            EncryptedPasswordEntity entity = passwordDao.getById(passwordId);
+            if (entity == null) {
+                return null;
             }
 
-            // 保存到密码库
-            return passwordManager.saveItem(item);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to save shared password", e);
-            return -1;
-        }
-    }
-
-    /**
-     * 获取分享详情
-     */
-    public PasswordShare getShareDetails(String shareId) {
-        return sharesMap.get(shareId);
-    }
-
-    /**
-     * 生成分享数据
-     */
-    public String generateShareData(PasswordItem passwordItem,
-                                   String receiverPublicKey,
-                                   SharePermission permission) {
-        try {
-            // 简化实现：直接序列化为JSON（生产环境应使用真正的加密）
-            return encryptPasswordForShare(passwordItem);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to generate share data", e);
-            return null;
-        }
-    }
-
-    /**
-     * 解析分享数据
-     */
-    public PasswordItem parseShareData(String shareData) {
-        try {
-            // 简化实现：从JSON解析（生产环境应使用真正的解密）
-            return decryptPasswordFromShare(shareData);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to parse share data", e);
-            return null;
-        }
-    }
-
-    /**
-     * 加密密码用于分享（简化实现）
-     */
-    private String encryptPasswordForShare(PasswordItem item) {
-        // 简化实现：返回JSON字符串
-        // 生产环境应使用真正的端到端加密
-        return "{\"title\":\"" + (item.getTitle() != null ? item.getTitle() : "") +
-               "\",\"username\":\"" + (item.getUsername() != null ? item.getUsername() : "") +
-               "\",\"password\":\"" + (item.getPassword() != null ? item.getPassword() : "") +
-               "\",\"url\":\"" + (item.getUrl() != null ? item.getUrl() : "") +
-               "\",\"notes\":\"" + (item.getNotes() != null ? item.getNotes() : "") + "\"}";
-    }
-
-    /**
-     * 从分享数据解密密码（简化实现）
-     */
-    private PasswordItem decryptPasswordFromShare(String encryptedData) {
-        // 简化实现：从JSON解析
-        try {
+            // 简化方案：由于PasswordManager处理加密/解密，我们这里只返回基本结构
+            // 实际应用中应该通过PasswordManager.decryptItem()来获取解密后的数据
             PasswordItem item = new PasswordItem();
-            if (encryptedData.contains("\"title\":\"")) {
-                String title = extractJsonValue(encryptedData, "title");
-                String username = extractJsonValue(encryptedData, "username");
-                String password = extractJsonValue(encryptedData, "password");
-                String url = extractJsonValue(encryptedData, "url");
-                String notes = extractJsonValue(encryptedData, "notes");
+            item.setId(entity.getId());
 
-                item.setTitle(title);
-                item.setUsername(username);
-                item.setPassword(password);
-                item.setUrl(url);
-                item.setNotes(notes);
+            // 尝试使用cryptoManager解密各个字段
+            try {
+                String iv = entity.getIv();
+                if (entity.getEncryptedTitle() != null) {
+                    item.setTitle(cryptoManager.decrypt(entity.getEncryptedTitle(), iv));
+                }
+                if (entity.getEncryptedUsername() != null) {
+                    item.setUsername(cryptoManager.decrypt(entity.getEncryptedUsername(), iv));
+                }
+                if (entity.getEncryptedPassword() != null) {
+                    item.setPassword(cryptoManager.decrypt(entity.getEncryptedPassword(), iv));
+                }
+                if (entity.getEncryptedUrl() != null) {
+                    item.setUrl(cryptoManager.decrypt(entity.getEncryptedUrl(), iv));
+                }
+                if (entity.getEncryptedNotes() != null) {
+                    item.setNotes(cryptoManager.decrypt(entity.getEncryptedNotes(), iv));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Decryption failed", e);
+                // 如果解密失败，返回null
+                return null;
             }
+
+            item.setUpdatedAt(entity.getUpdatedAt());
             return item;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to decrypt password from share", e);
+            Log.e(TAG, "Failed to get password by id", e);
             return null;
         }
     }
 
     /**
-     * 从JSON字符串提取值（简化实现）
+     * 序列化权限为JSON
      */
-    private String extractJsonValue(String json, String key) {
+    @NonNull
+    private String serializePermission(@NonNull SharePermission permission) {
+        return gson.toJson(permission);
+    }
+
+    /**
+     * 解析权限JSON
+     */
+    @NonNull
+    private SharePermission parsePermission(@NonNull String json) {
         try {
-            String searchKey = "\"" + key + "\":\"";
-            int startIndex = json.indexOf(searchKey);
-            if (startIndex == -1) {
-                return "";
-            }
-            startIndex += searchKey.length();
-            int endIndex = json.indexOf("\"", startIndex);
-            if (endIndex == -1) {
-                return "";
-            }
-            return json.substring(startIndex, endIndex);
-        } catch (Exception e) {
-            return "";
+            return gson.fromJson(json, SharePermission.class);
+        } catch (JsonSyntaxException e) {
+            Log.e(TAG, "Failed to parse permission", e);
+            return new SharePermission();
         }
     }
 
     /**
-     * 获取当前用户ID
+     * 分享数据内部类
      */
-    private String getCurrentUserId() {
-        String userId = prefs.getString(PREF_USER_ID, null);
-        if (userId == null) {
-            // 创建新用户
-            userId = "user_" + UUID.randomUUID().toString();
-            prefs.edit().putString(PREF_USER_ID, userId).apply();
-        }
-        return userId;
+    private static class ShareData {
+        String title;
+        String username;
+        String password;
+        String url;
+        String notes;
+        SharePermission permission;
+        long expireTime;
     }
 }

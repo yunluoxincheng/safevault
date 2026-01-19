@@ -219,6 +219,25 @@ public class ShareViewModel extends AndroidViewModel {
         return tokenManager.isLoggedIn();
     }
 
+    /**
+     * 根据ID获取密码（用于分享界面）
+     * @param passwordId 密码ID
+     * @return LiveData观察密码数据
+     */
+    public LiveData<PasswordItem> getPasswordById(int passwordId) {
+        MutableLiveData<PasswordItem> result = new MutableLiveData<>();
+        executor.execute(() -> {
+            try {
+                PasswordItem item = backendService.decryptItem(passwordId);
+                result.postValue(item);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to get password by id", e);
+                result.postValue(null);
+            }
+        });
+        return result;
+    }
+
     @Override
     protected void onCleared() {
         super.onCleared();

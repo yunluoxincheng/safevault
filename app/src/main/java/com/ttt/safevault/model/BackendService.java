@@ -83,6 +83,13 @@ public interface BackendService {
     boolean isUnlocked();
 
     /**
+     * 获取当前会话的主密码
+     * 注意：此方法仅在应用已解锁后有效
+     * @return 主密码字符串，如果未解锁返回null
+     */
+    String getMasterPassword();
+
+    /**
      * 检查应用是否已初始化（是否已设置主密码）
      * @return true表示已初始化，false表示需要设置主密码
      */
@@ -218,106 +225,7 @@ public interface BackendService {
     boolean canUseBiometricAuthentication();
 
     // ========== 新增：分享管理接口 ==========
-
-    /**
-     * 创建密码分享
-     * @param passwordId 要分享的密码ID
-     * @param toUserId 接收者用户ID（null表示直接分享）
-     * @param expireInMinutes 过期时间（分钟），0表示永不过期
-     * @param permission 分享权限
-     * @return 分享ID
-     */
-    String createPasswordShare(int passwordId, String toUserId,
-                              int expireInMinutes, SharePermission permission);
-
-    /**
-     * 通过二维码/链接直接创建分享
-     * @param passwordId 要分享的密码ID
-     * @param expireInMinutes 过期时间
-     * @param permission 分享权限
-     * @return 分享内容（可用于生成二维码或链接）
-     */
-    String createDirectPasswordShare(int passwordId, int expireInMinutes,
-                                    SharePermission permission);
-
-    /**
-     * 接收密码分享
-     * @param shareId 分享ID或分享Token
-     * @return 解密后的密码数据
-     */
-    PasswordItem receivePasswordShare(String shareId);
-
-    /**
-     * 撤销密码分享
-     * @param shareId 分享ID
-     * @return true 表示撤销成功
-     */
-    boolean revokePasswordShare(String shareId);
-
-    /**
-     * 获取我创建的分享列表
-     * @return 分享列表
-     */
-    List<PasswordShare> getMyShares();
-
-    /**
-     * 获取我接收的分享列表
-     * @return 分享列表
-     */
-    List<PasswordShare> getReceivedShares();
-
-    /**
-     * 将接收的分享保存到本地
-     * @param shareId 分享ID
-     * @return 保存后的密码ID
-     */
-    int saveSharedPassword(String shareId);
-
-    /**
-     * 获取分享详情
-     * @param shareId 分享ID
-     * @return 分享详情
-     */
-    PasswordShare getShareDetails(String shareId);
-
-    // ========== 新增：加密传输接口 ==========
-
-    /**
-     * 生成分享数据包
-     * @param passwordItem 要分享的密码
-     * @param receiverPublicKey 接收方公钥
-     * @param permission 分享权限
-     * @return 加密的分享数据包
-     */
-    String generateShareData(PasswordItem passwordItem, String receiverPublicKey,
-                            SharePermission permission);
-
-    /**
-     * 解析分享数据包
-     * @param shareData 加密的分享数据包
-     * @return 解密后的密码数据
-     */
-    PasswordItem parseShareData(String shareData);
-
-    // ========== 新增：离线分享接口 ==========
-
-    /**
-     * 创建离线分享（用于二维码离线传输）
-     * 注意：分享前应验证用户身份（生物识别或主密码）
-     * @param passwordId 要分享的密码ID
-     * @param expireInMinutes 过期时间（分钟），0表示永不过期
-     * @param permission 分享权限
-     * @return 二维码内容（包含加密数据和嵌入密钥），失败返回null
-     */
-    String createOfflineShare(int passwordId,
-                             int expireInMinutes, SharePermission permission);
-
-    /**
-     * 接收离线分享（从二维码解析）
-     * @param qrContent 二维码内容
-     * @return 解密后的密码数据，失败返回null
-     */
-    PasswordItem receiveOfflineShare(String qrContent);
+    // 旧的本地分享方法已移除，现在使用云端分享接口
 
     // ========== 新增：云端分享接口（后端API集成）==========
 
@@ -432,6 +340,84 @@ public interface BackendService {
      */
     com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
             String email, String username, String masterPassword);
+
+    // ========== 新增：本地分享接口（离线分享）==========
+
+    /**
+     * 创建直接密码分享（离线/本地）
+     * @param passwordId 密码ID
+     * @param expireInMinutes 过期时间（分钟）
+     * @param permission 分享权限
+     * @return 分享Token或QR码内容
+     */
+    String createDirectPasswordShare(int passwordId, int expireInMinutes, SharePermission permission);
+
+    /**
+     * 创建离线分享（版本2：密钥已嵌入，无需密码）
+     * @param passwordId 密码ID
+     * @param expireInMinutes 过期时间（分钟）
+     * @param permission 分享权限
+     * @return QR码内容（包含加密数据）
+     */
+    String createOfflineShare(int passwordId, int expireInMinutes, SharePermission permission);
+
+    /**
+     * 接收密码分享（云端）
+     * @param shareId 分享ID或Token
+     * @return PasswordItem 解密后的密码条目
+     */
+    PasswordItem receivePasswordShare(String shareId);
+
+    /**
+     * 接收离线分享
+     * @param encryptedData 加密数据
+     * @return PasswordItem 解密后的密码条目
+     */
+    PasswordItem receiveOfflineShare(String encryptedData);
+
+    /**
+     * 保存分享的密码到本地
+     * @param shareId 分享ID
+     * @return 新密码ID，失败返回-1
+     */
+    int saveSharedPassword(String shareId);
+
+    /**
+     * 撤销密码分享（本地）
+     * @param shareId 分享ID
+     * @return true表示撤销成功
+     */
+    boolean revokePasswordShare(String shareId);
+
+    /**
+     * 获取我创建的分享列表（本地）
+     * @return 分享列表
+     */
+    List<PasswordShare> getMyShares();
+
+    /**
+     * 获取我接收的分享列表（本地）
+     * @return 分享列表
+     */
+    List<PasswordShare> getReceivedShares();
+
+    /**
+     * 获取分享详情（本地）
+     * @param shareId 分享ID
+     * @return 分享详情
+     */
+    PasswordShare getShareDetails(String shareId);
+
+    /**
+     * 添加密码（用于保存分享的密码）
+     * @param title 标题
+     * @param username 用户名
+     * @param password 密码
+     * @param url URL
+     * @param notes 备注
+     * @return 新密码ID，失败返回-1
+     */
+    int addPassword(String title, String username, String password, String url, String notes);
 
     // ========== 新增：统一邮箱认证加密数据接口 ==========
 
