@@ -19,6 +19,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.PasswordListAdapter;
@@ -46,6 +48,10 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
     private View loadingLayout;
     private PasswordListAdapter adapter;
     private BackendService backendService;
+
+    // 标签筛选相关
+    private ChipGroup tagsChipGroup;
+    private Chip allTagsChip;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -82,6 +88,17 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
         emptyAddButton = view.findViewById(R.id.empty_add_button);
         clearSearchButton = view.findViewById(R.id.clear_search_button);
         loadingLayout = view.findViewById(R.id.loading_layout);
+
+        // 初始化标签筛选视图
+        tagsChipGroup = view.findViewById(R.id.tags_chip_group);
+        allTagsChip = view.findViewById(R.id.all_tags_chip);
+
+        // 设置"全部"标签 Chip 点击事件
+        if (allTagsChip != null) {
+            allTagsChip.setOnClickListener(v -> {
+                viewModel.clearTagFilter();
+            });
+        }
 
         // 设置空状态按钮点击事件
         if (emptyAddButton != null) {
@@ -129,6 +146,16 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
         viewModel.passwordItems.observe(getViewLifecycleOwner(), items -> {
             adapter.submitList(items);
             updateEmptyState(items);
+        });
+
+        // 观察所有标签
+        viewModel.allTags.observe(getViewLifecycleOwner(), tags -> {
+            updateTagsChips(tags);
+        });
+
+        // 观察选中的标签
+        viewModel.selectedTag.observe(getViewLifecycleOwner(), selectedTag -> {
+            updateSelectedTagChip(selectedTag);
         });
 
         // 观察加载状态
@@ -356,6 +383,76 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
                     }
                 })
                 .show();
+    }
+
+    /**
+     * 更新标签 Chip 列表
+     */
+    private void updateTagsChips(List<String> tags) {
+        if (tagsChipGroup == null) return;
+
+        // 清除除了"全部"以外的所有 Chip
+        for (int i = tagsChipGroup.getChildCount() - 1; i >= 0; i--) {
+            View child = tagsChipGroup.getChildAt(i);
+            if (child instanceof Chip && child != allTagsChip) {
+                tagsChipGroup.removeViewAt(i);
+            }
+        }
+
+        // 添加新的标签 Chip
+        for (String tag : tags) {
+            Chip chip = new Chip(requireContext());
+            chip.setText(tag);
+            chip.setCheckable(true);
+            chip.setClickable(true);
+            chip.setFocusable(true);
+            chip.setChipIconVisible(false);
+
+            // 设置点击事件
+            chip.setOnClickListener(v -> {
+                viewModel.filterByTag(tag);
+            });
+
+            tagsChipGroup.addView(chip);
+        }
+    }
+
+    /**
+     * 更新选中的标签 Chip 状态
+     */
+    private void updateSelectedTagChip(String selectedTag) {
+        if (tagsChipGroup == null) return;
+
+        // 如果没有选中标签，选中"全部"
+        if (selectedTag == null || selectedTag.isEmpty()) {
+            if (allTagsChip != null) {
+                allTagsChip.setChecked(true);
+            }
+            // 取消其他标签的选中状态
+            for (int i = 0; i < tagsChipGroup.getChildCount(); i++) {
+                View child = tagsChipGroup.getChildAt(i);
+                if (child instanceof Chip && child != allTagsChip) {
+                    ((Chip) child).setChecked(false);
+                }
+            }
+        } else {
+            // 取消"全部"的选中状态
+            if (allTagsChip != null) {
+                allTagsChip.setChecked(false);
+            }
+            // 选中对应的标签
+            for (int i = 0; i < tagsChipGroup.getChildCount(); i++) {
+                View child = tagsChipGroup.getChildAt(i);
+                if (child instanceof Chip && child != allTagsChip) {
+                    Chip chip = (Chip) child;
+                    if (chip.getText().toString().equals(selectedTag)) {
+                        chip.setChecked(true);
+                    } else {
+                        chip.setChecked(false);
+                    }
+                }
+            }
+        }
     }
 
     @Override

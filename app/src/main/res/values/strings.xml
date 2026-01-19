@@ -24,6 +24,13 @@
     <string name="empty_state_icon_description">空状态图标</string>
     <string name="no_search_results">未找到匹配的密码</string>
 
+    <!-- Tags -->
+    <string name="all_tags">全部</string>
+    <string name="tags">标签</string>
+    <string name="add_tag">添加标签</string>
+    <string name="tag_hint">输入标签名</string>
+    <string name="no_tags">暂无标签</string>
+
     <!-- Password details/edit -->
     <string name="title">标题</string>
     <string name="username">用户名</string>

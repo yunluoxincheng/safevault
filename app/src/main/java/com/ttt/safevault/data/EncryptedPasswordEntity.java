@@ -28,6 +28,9 @@ public class EncryptedPasswordEntity {
     // 加密存储的备注
     private String encryptedNotes;
 
+    // 加密存储的标签（JSON格式）
+    private String encryptedTags;
+
     // 更新时间戳
     private long updatedAt;
 
@@ -85,6 +88,14 @@ public class EncryptedPasswordEntity {
 
     public void setEncryptedNotes(String encryptedNotes) {
         this.encryptedNotes = encryptedNotes;
+    }
+
+    public String getEncryptedTags() {
+        return encryptedTags;
+    }
+
+    public void setEncryptedTags(String encryptedTags) {
+        this.encryptedTags = encryptedTags;
     }
 
     public long getUpdatedAt() {

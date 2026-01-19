@@ -8,6 +8,10 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.ServiceLocator;
 import com.ttt.safevault.databinding.ActivityAutofillSaveBinding;
@@ -15,6 +19,7 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.utils.AutofillUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import java.util.concurrent.ExecutorService;
@@ -30,6 +35,13 @@ public class AutofillSaveActivity extends AppCompatActivity {
     private ActivityAutofillSaveBinding binding;
     private BackendService backendService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    // 标签相关
+    private ChipGroup tagsChipGroup;
+    private TextInputLayout tagInputLayout;
+    private TextInputEditText tagInputText;
+    private com.google.android.material.button.MaterialButton addTagButton;
+    private final List<String> currentTags = new ArrayList<>();
 
     // Intent 数据
     private String username;
@@ -106,6 +118,9 @@ public class AutofillSaveActivity extends AppCompatActivity {
             setResult(RESULT_CANCELED);
             finish();
         });
+
+        // 初始化标签输入
+        initTagsInput();
 
         // 启动去重检查
         checkDuplicateCredential();
@@ -323,6 +338,7 @@ public class AutofillSaveActivity extends AppCompatActivity {
                 item.setPassword(passwordText);
                 item.setUrl(websiteText);
                 item.setNotes(notesText);
+                item.setTags(new ArrayList<>(currentTags));  // 添加标签
 
                 // 保存
                 int savedId = backendService.saveItem(item);
@@ -352,6 +368,95 @@ public class AutofillSaveActivity extends AppCompatActivity {
                 });
             }
         });
+    }
+
+    /**
+     * 初始化标签输入
+     */
+    private void initTagsInput() {
+        tagsChipGroup = binding.getRoot().findViewById(R.id.tags_chip_group);
+        tagInputLayout = binding.getRoot().findViewById(R.id.tag_input_layout);
+        tagInputText = binding.getRoot().findViewById(R.id.tag_input_text);
+        addTagButton = binding.getRoot().findViewById(R.id.btn_add_tag);
+
+        // 添加标签按钮点击事件
+        if (addTagButton != null) {
+            addTagButton.setOnClickListener(v -> {
+                addTag();
+            });
+        }
+
+        // 标签输入框回车键事件
+        if (tagInputText != null) {
+            tagInputText.setOnEditorActionListener((v, actionId, event) -> {
+                addTag();
+                return true;
+            });
+        }
+    }
+
+    /**
+     * 添加标签
+     */
+    private void addTag() {
+        if (tagInputText == null) return;
+
+        String tag = tagInputText.getText().toString().trim();
+        if (tag.isEmpty()) {
+            return;
+        }
+
+        // 检查是否已存在
+        if (currentTags.contains(tag)) {
+            if (tagInputLayout != null) {
+                tagInputLayout.setError("标签已存在");
+            }
+            return;
+        }
+
+        // 添加标签
+        currentTags.add(tag);
+        updateTagsChips();
+
+        // 清空输入框
+        tagInputText.setText("");
+        if (tagInputLayout != null) {
+            tagInputLayout.setError(null);
+        }
+    }
+
+    /**
+     * 移除标签
+     */
+    private void removeTag(String tag) {
+        currentTags.remove(tag);
+        updateTagsChips();
+    }
+
+    /**
+     * 更新标签 Chip 显示
+     */
+    private void updateTagsChips() {
+        if (tagsChipGroup == null) return;
+
+        // 清除所有 Chip
+        tagsChipGroup.removeAllViews();
+
+        // 为每个标签创建 Chip
+        for (String tag : currentTags) {
+            Chip chip = new Chip(this);
+            chip.setText(tag);
+            chip.setCloseIconVisible(true);
+            chip.setCheckable(false);
+            chip.setClickable(true);
+
+            // 设置关闭按钮点击事件
+            chip.setOnCloseIconClickListener(v -> {
+                removeTag(tag);
+            });
+
+            tagsChipGroup.addView(chip);
+        }
     }
 
     @Override

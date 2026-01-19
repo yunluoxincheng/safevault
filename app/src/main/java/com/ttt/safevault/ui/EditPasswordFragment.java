@@ -16,6 +16,8 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.navigation.Navigation;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
@@ -26,6 +28,9 @@ import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordStrength;
 import com.ttt.safevault.utils.AnimationUtils;
 import com.ttt.safevault.viewmodel.EditPasswordViewModel;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 编辑密码Fragment
@@ -57,6 +62,13 @@ public class EditPasswordFragment extends Fragment {
     private BackendService backendService;
     private int passwordId = -1;
     private boolean isPasswordVisible = false;
+
+    // 标签相关
+    private ChipGroup tagsChipGroup;
+    private TextInputLayout tagInputLayout;
+    private TextInputEditText tagInputText;
+    private MaterialButton addTagButton;
+    private final List<String> currentTags = new ArrayList<>();
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -110,6 +122,12 @@ public class EditPasswordFragment extends Fragment {
         loadingOverlay = view.findViewById(R.id.loading_overlay);
         progressIndicator = view.findViewById(R.id.progress_indicator);
         saveButton = view.findViewById(R.id.btn_save);
+
+        // 初始化标签相关视图
+        tagsChipGroup = view.findViewById(R.id.tags_chip_group);
+        tagInputLayout = view.findViewById(R.id.tag_input_layout);
+        tagInputText = view.findViewById(R.id.tag_input_text);
+        addTagButton = view.findViewById(R.id.btn_add_tag);
 
         // 设置密码输入框默认图标为闭眼
         if (passwordLayout != null) {
@@ -169,6 +187,21 @@ public class EditPasswordFragment extends Fragment {
                 togglePasswordVisibility();
             });
         }
+
+        // 添加标签按钮
+        if (addTagButton != null) {
+            addTagButton.setOnClickListener(v -> {
+                addTag();
+            });
+        }
+
+        // 标签输入框的回车键
+        if (tagInputText != null) {
+            tagInputText.setOnEditorActionListener((v, actionId, event) -> {
+                addTag();
+                return true;
+            });
+        }
     }
 
     private void setupObservers() {
@@ -215,6 +248,13 @@ public class EditPasswordFragment extends Fragment {
         if (passwordText != null) passwordText.setText(item.getPassword());
         if (urlText != null) urlText.setText(item.getUrl());
         if (notesText != null) notesText.setText(item.getNotes());
+
+        // 加载标签
+        currentTags.clear();
+        if (item.getTags() != null) {
+            currentTags.addAll(item.getTags());
+        }
+        updateTagsChips();
 
         updatePasswordStrength();
     }
@@ -315,7 +355,7 @@ public class EditPasswordFragment extends Fragment {
         String url = urlText != null ? urlText.getText().toString().trim() : "";
         String notes = notesText != null ? notesText.getText().toString().trim() : "";
 
-        viewModel.savePassword(title, username, password, url, notes);
+        viewModel.savePassword(title, username, password, url, notes, new ArrayList<>(currentTags));
     }
 
     private void showPasswordGeneratorDialog() {
@@ -372,6 +412,70 @@ public class EditPasswordFragment extends Fragment {
 
         // 添加旋转动画反馈
         // 注意：getEndIconView() 不是公开 API，这里简化处理
+    }
+
+    /**
+     * 添加标签
+     */
+    private void addTag() {
+        if (tagInputText == null) return;
+
+        String tag = tagInputText.getText().toString().trim();
+        if (tag.isEmpty()) {
+            return;
+        }
+
+        // 检查是否已存在
+        if (currentTags.contains(tag)) {
+            if (tagInputLayout != null) {
+                tagInputLayout.setError("标签已存在");
+            }
+            return;
+        }
+
+        // 添加标签
+        currentTags.add(tag);
+        updateTagsChips();
+
+        // 清空输入框
+        tagInputText.setText("");
+        if (tagInputLayout != null) {
+            tagInputLayout.setError(null);
+        }
+    }
+
+    /**
+     * 移除标签
+     */
+    private void removeTag(String tag) {
+        currentTags.remove(tag);
+        updateTagsChips();
+    }
+
+    /**
+     * 更新标签 Chip 显示
+     */
+    private void updateTagsChips() {
+        if (tagsChipGroup == null) return;
+
+        // 清除所有 Chip
+        tagsChipGroup.removeAllViews();
+
+        // 为每个标签创建 Chip
+        for (String tag : currentTags) {
+            Chip chip = new Chip(requireContext());
+            chip.setText(tag);
+            chip.setCloseIconVisible(true);
+            chip.setCheckable(false);
+            chip.setClickable(true);
+
+            // 设置关闭按钮点击事件
+            chip.setOnCloseIconClickListener(v -> {
+                removeTag(tag);
+            });
+
+            tagsChipGroup.addView(chip);
+        }
     }
 
     private void showError(String error) {

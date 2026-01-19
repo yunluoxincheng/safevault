@@ -5,17 +5,28 @@ import android.content.Context;
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
+import androidx.room.migration.Migration;
+import androidx.sqlite.db.SupportSQLiteDatabase;
 
 /**
  * SafeVault应用数据库
  */
-@Database(entities = {EncryptedPasswordEntity.class}, version = 1, exportSchema = false)
+@Database(entities = {EncryptedPasswordEntity.class}, version = 2, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     private static final String DATABASE_NAME = "safevault_db";
     private static volatile AppDatabase INSTANCE;
 
     public abstract PasswordDao passwordDao();
+
+    // 数据库版本1到版本2的迁移：添加 encryptedTags 字段
+    private static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 添加 encryptedTags 列
+            database.execSQL("ALTER TABLE passwords ADD COLUMN encryptedTags TEXT");
+        }
+    };
 
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
@@ -25,7 +36,8 @@ public abstract class AppDatabase extends RoomDatabase {
                             context.getApplicationContext(),
                             AppDatabase.class,
                             DATABASE_NAME
-                    ).build();
+                    ).addMigrations(MIGRATION_1_2)
+                     .build();
                 }
             }
         }

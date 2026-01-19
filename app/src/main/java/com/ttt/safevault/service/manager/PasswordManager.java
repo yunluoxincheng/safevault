@@ -10,6 +10,9 @@ import com.ttt.safevault.data.EncryptedPasswordEntity;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.PasswordItem;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -134,6 +137,9 @@ public class PasswordManager {
         entity.setEncryptedUrl(encryptField(item.getUrl()));
         entity.setEncryptedNotes(encryptField(item.getNotes()));
 
+        // 加密标签（将List转换为JSON字符串）
+        entity.setEncryptedTags(encryptTags(item.getTags()));
+
         entity.setUpdatedAt(item.getUpdatedAt() > 0 ? item.getUpdatedAt() : System.currentTimeMillis());
 
         return entity;
@@ -169,6 +175,9 @@ public class PasswordManager {
             item.setNotes(decryptField(entity.getEncryptedNotes()));
             item.setUpdatedAt(entity.getUpdatedAt());
 
+            // 解密标签
+            item.setTags(decryptTags(entity.getEncryptedTags()));
+
             return item;
         } catch (Exception e) {
             Log.e(TAG, "Failed to decrypt entity", e);
@@ -189,6 +198,54 @@ public class PasswordManager {
             return null;
         }
         return cryptoManager.decrypt(parts[1], parts[0]);
+    }
+
+    /**
+     * 加密标签列表
+     * 将List<String>转换为JSON字符串，然后加密
+     */
+    @Nullable
+    private String encryptTags(@Nullable List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return null;
+        }
+        try {
+            JSONArray jsonArray = new JSONArray();
+            for (String tag : tags) {
+                jsonArray.put(tag);
+            }
+            String jsonString = jsonArray.toString();
+            return encryptField(jsonString);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to encrypt tags", e);
+            return null;
+        }
+    }
+
+    /**
+     * 解密标签列表
+     * 解密JSON字符串，然后转换为List<String>
+     */
+    @Nullable
+    private List<String> decryptTags(@Nullable String encryptedTags) {
+        if (encryptedTags == null || encryptedTags.isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            String jsonString = decryptField(encryptedTags);
+            if (jsonString == null) {
+                return new ArrayList<>();
+            }
+            JSONArray jsonArray = new JSONArray(jsonString);
+            List<String> tags = new ArrayList<>();
+            for (int i = 0; i < jsonArray.length(); i++) {
+                tags.add(jsonArray.getString(i));
+            }
+            return tags;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to decrypt tags", e);
+            return new ArrayList<>();
+        }
     }
 
     /**

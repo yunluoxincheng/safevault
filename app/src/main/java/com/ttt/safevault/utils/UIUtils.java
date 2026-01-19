@@ -19,6 +19,21 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 public class UIUtils {
 
     /**
+     * 安全获取字符串资源
+     * @param context 上下文
+     * @param stringRes 字符串资源 ID
+     * @return 字符串，如果获取失败返回 null
+     */
+    private static String getStringSafely(Context context, @StringRes int stringRes) {
+        if (context == null) return null;
+        try {
+            return context.getString(stringRes);
+        } catch (Resources.NotFoundException e) {
+            return null;
+        }
+    }
+
+    /**
      * 显示短时间 Toast
      * @param context 上下文
      * @param message 消息内容
@@ -35,12 +50,9 @@ public class UIUtils {
      * @param messageRes 消息字符串资源 ID
      */
     public static void showToastShort(Context context, @StringRes int messageRes) {
-        if (context != null) {
-            try {
-                Toast.makeText(context, messageRes, Toast.LENGTH_SHORT).show();
-            } catch (Resources.NotFoundException e) {
-                // 忽略资源未找到异常
-            }
+        String message = getStringSafely(context, messageRes);
+        if (message != null) {
+            showToastShort(context, message);
         }
     }
 
@@ -61,12 +73,9 @@ public class UIUtils {
      * @param messageRes 消息字符串资源 ID
      */
     public static void showToastLong(Context context, @StringRes int messageRes) {
-        if (context != null) {
-            try {
-                Toast.makeText(context, messageRes, Toast.LENGTH_LONG).show();
-            } catch (Resources.NotFoundException e) {
-                // 忽略资源未找到异常
-            }
+        String message = getStringSafely(context, messageRes);
+        if (message != null) {
+            showToastLong(context, message);
         }
     }
 
@@ -93,13 +102,9 @@ public class UIUtils {
     public static Snackbar showSnackbarShort(View view, @StringRes int messageRes) {
         if (view == null) return null;
 
-        try {
-            Snackbar snackbar = Snackbar.make(view, messageRes, Snackbar.LENGTH_SHORT);
-            snackbar.show();
-            return snackbar;
-        } catch (Resources.NotFoundException e) {
-            return null;
-        }
+        Context context = view.getContext();
+        String message = getStringSafely(context, messageRes);
+        return message != null ? showSnackbarShort(view, message) : null;
     }
 
     /**
@@ -125,13 +130,9 @@ public class UIUtils {
     public static Snackbar showSnackbarLong(View view, @StringRes int messageRes) {
         if (view == null) return null;
 
-        try {
-            Snackbar snackbar = Snackbar.make(view, messageRes, Snackbar.LENGTH_LONG);
-            snackbar.show();
-            return snackbar;
-        } catch (Resources.NotFoundException e) {
-            return null;
-        }
+        Context context = view.getContext();
+        String message = getStringSafely(context, messageRes);
+        return message != null ? showSnackbarLong(view, message) : null;
     }
 
     /**
@@ -178,16 +179,10 @@ public class UIUtils {
      */
     public static void showErrorDialog(Context context, @StringRes int titleRes,
                                       @StringRes int messageRes) {
-        if (context == null) return;
-
-        try {
-            new MaterialAlertDialogBuilder(context)
-                    .setTitle(titleRes)
-                    .setMessage(messageRes)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show();
-        } catch (Resources.NotFoundException e) {
-            // 忽略资源未找到异常
+        String title = getStringSafely(context, titleRes);
+        String message = getStringSafely(context, messageRes);
+        if (title != null && message != null) {
+            showErrorDialog(context, title, message);
         }
     }
 
@@ -223,21 +218,10 @@ public class UIUtils {
      */
     public static void showConfirmDialog(Context context, @StringRes int titleRes,
                                         @StringRes int messageRes, Runnable onConfirm) {
-        if (context == null) return;
-
-        try {
-            new MaterialAlertDialogBuilder(context)
-                    .setTitle(titleRes)
-                    .setMessage(messageRes)
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                        if (onConfirm != null) {
-                            onConfirm.run();
-                        }
-                    })
-                    .show();
-        } catch (Resources.NotFoundException e) {
-            // 忽略资源未找到异常
+        String title = getStringSafely(context, titleRes);
+        String message = getStringSafely(context, messageRes);
+        if (title != null && message != null) {
+            showConfirmDialog(context, title, message, onConfirm);
         }
     }
 

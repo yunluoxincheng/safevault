@@ -33,6 +33,8 @@ public class PasswordListViewModel extends AndroidViewModel {
     private final MutableLiveData<Boolean> _isSearching = new MutableLiveData<>(false);
     private final MutableLiveData<String> _errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> _isEmpty = new MutableLiveData<>(false);
+    private final MutableLiveData<String> _selectedTag = new MutableLiveData<>(null);  // 当前选中的标签
+    private final MutableLiveData<List<String>> _allTags = new MutableLiveData<>(new ArrayList<>());  // 所有可用标签
 
     public LiveData<List<PasswordItem>> passwordItems = _passwordItems;
     public LiveData<Boolean> isLoading = _isLoading;
@@ -40,6 +42,8 @@ public class PasswordListViewModel extends AndroidViewModel {
     public LiveData<Boolean> isSearching = _isSearching;
     public LiveData<String> errorMessage = _errorMessage;
     public LiveData<Boolean> isEmpty = _isEmpty;
+    public LiveData<String> selectedTag = _selectedTag;
+    public LiveData<List<String>> allTags = _allTags;
 
     private List<PasswordItem> allItems; // 保存原始数据
 
@@ -63,11 +67,12 @@ public class PasswordListViewModel extends AndroidViewModel {
                 // 创建新的 ArrayList 以确保 ListAdapter 能检测到变化
                 allItems = new ArrayList<>(items);
 
-                // 应用当前搜索过滤
-                String currentQuery = _searchQuery.getValue();
-                if (currentQuery != null && !currentQuery.trim().isEmpty()) {
-                    items = filterItems(items, currentQuery);
-                }
+                // 提取所有标签
+                List<String> tags = extractAllTags(items);
+                _allTags.postValue(tags);
+
+                // 应用当前过滤（搜索和标签）
+                items = applyFilters(items);
 
                 _passwordItems.postValue(items);
                 _isEmpty.postValue(items.isEmpty());
@@ -96,12 +101,11 @@ public class PasswordListViewModel extends AndroidViewModel {
             try {
                 List<PasswordItem> filteredItems;
 
-                // 使用后端搜索（更安全，后端处理解密）
-                filteredItems = backendService.search(query.trim());
-
-                // 如果有原始数据，也可以在前端过滤（更快）
+                // 如果有原始数据，在前端过滤（更快）
                 if (allItems != null) {
-                    filteredItems = filterItems(allItems, query.trim());
+                    filteredItems = applyFilters(allItems);
+                } else {
+                    filteredItems = new ArrayList<>();
                 }
 
                 // 创建新的 ArrayList 以确保 ListAdapter 能检测到变化
@@ -114,19 +118,52 @@ public class PasswordListViewModel extends AndroidViewModel {
     }
 
     /**
+     * 按标签筛选
+     */
+    public void filterByTag(String tag) {
+        _selectedTag.setValue(tag);
+
+        executor.execute(() -> {
+            try {
+                List<PasswordItem> filteredItems;
+                if (allItems != null) {
+                    filteredItems = applyFilters(allItems);
+                } else {
+                    filteredItems = new ArrayList<>();
+                }
+
+                _passwordItems.postValue(new ArrayList<>(filteredItems));
+                _isEmpty.postValue(filteredItems.isEmpty());
+            } catch (Exception e) {
+                _errorMessage.postValue("标签筛选失败: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 清除标签筛选
+     */
+    public void clearTagFilter() {
+        filterByTag(null);
+    }
+
+    /**
      * 清除搜索，显示所有条目
      */
     public void clearSearch() {
         _searchQuery.setValue("");
         _isSearching.setValue(false);
 
-        if (allItems != null) {
-            // 创建新的 ArrayList 以确保 ListAdapter 能检测到变化
-            _passwordItems.setValue(new ArrayList<>(allItems));
-            _isEmpty.setValue(allItems.isEmpty());
-        } else {
-            loadPasswordItems();
-        }
+        executor.execute(() -> {
+            if (allItems != null) {
+                // 应用标签过滤（如果有选中的标签）
+                List<PasswordItem> filteredItems = applyFilters(allItems);
+                _passwordItems.postValue(new ArrayList<>(filteredItems));
+                _isEmpty.postValue(filteredItems.isEmpty());
+            } else {
+                loadPasswordItems();
+            }
+        });
     }
 
     /**
@@ -214,11 +251,12 @@ public class PasswordListViewModel extends AndroidViewModel {
                 // 创建新的 ArrayList 以确保 ListAdapter 能检测到变化
                 allItems = new ArrayList<>(items);
 
-                // 应用当前搜索过滤
-                String currentQuery = _searchQuery.getValue();
-                if (currentQuery != null && !currentQuery.trim().isEmpty()) {
-                    items = filterItems(items, currentQuery);
-                }
+                // 提取所有标签
+                List<String> tags = extractAllTags(items);
+                _allTags.postValue(tags);
+
+                // 应用当前过滤（搜索和标签）
+                items = applyFilters(items);
 
                 _passwordItems.postValue(items);
                 _isEmpty.postValue(items.isEmpty());
@@ -236,11 +274,24 @@ public class PasswordListViewModel extends AndroidViewModel {
     }
 
     /**
-     * 过滤条目（前端过滤）
+     * 应用所有过滤器（搜索和标签）
      */
-    private List<PasswordItem> filterItems(List<PasswordItem> items, String query) {
+    private List<PasswordItem> applyFilters(List<PasswordItem> items) {
+        String query = _searchQuery.getValue();
+        String tag = _selectedTag.getValue();
+
         return items.stream()
-                .filter(item -> matchesQuery(item, query))
+                .filter(item -> {
+                    // 首先检查标签过滤
+                    if (tag != null && !tag.isEmpty() && !item.hasTag(tag)) {
+                        return false;
+                    }
+                    // 然后检查搜索过滤
+                    if (query != null && !query.trim().isEmpty() && !matchesQuery(item, query)) {
+                        return false;
+                    }
+                    return true;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -253,7 +304,19 @@ public class PasswordListViewModel extends AndroidViewModel {
         return (item.getTitle() != null && item.getTitle().toLowerCase().contains(lowerQuery)) ||
                (item.getUsername() != null && item.getUsername().toLowerCase().contains(lowerQuery)) ||
                (item.getUrl() != null && item.getUrl().toLowerCase().contains(lowerQuery)) ||
-               (item.getNotes() != null && item.getNotes().toLowerCase().contains(lowerQuery));
+               (item.getNotes() != null && item.getNotes().toLowerCase().contains(lowerQuery)) ||
+               (item.getTags().stream().anyMatch(t -> t.toLowerCase().contains(lowerQuery)));  // 也搜索标签
+    }
+
+    /**
+     * 从所有密码条目中提取唯一标签
+     */
+    private List<String> extractAllTags(List<PasswordItem> items) {
+        return items.stream()
+                .flatMap(item -> item.getTags().stream())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
     }
 
     /**

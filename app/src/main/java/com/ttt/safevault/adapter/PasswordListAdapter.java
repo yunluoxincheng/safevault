@@ -20,6 +20,8 @@ import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.ttt.safevault.R;
@@ -73,6 +75,7 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
         private final TextView titleText;
         private final TextView usernameText;
         private final TextView timestampText;
+        private final ChipGroup tagsChipGroup;
         private final ImageButton moreButton;
 
         public ViewHolder(@NonNull View itemView) {
@@ -83,6 +86,7 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
             titleText = itemView.findViewById(R.id.title_text);
             usernameText = itemView.findViewById(R.id.username_text);
             timestampText = itemView.findViewById(R.id.timestamp_text);
+            tagsChipGroup = itemView.findViewById(R.id.tags_chip_group);
             moreButton = itemView.findViewById(R.id.more_button);
         }
 
@@ -103,6 +107,9 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
 
             // 设置时间戳
             setupTimestamp(item);
+
+            // 设置标签
+            setupTags(item);
 
             // 设置无障碍内容描述
             String contentDescription = buildContentDescription(item);
@@ -202,6 +209,50 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
                 timestampText.setVisibility(View.VISIBLE);
             } else {
                 timestampText.setVisibility(View.GONE);
+            }
+        }
+
+        /**
+         * 设置标签
+         */
+        private void setupTags(PasswordItem item) {
+            if (tagsChipGroup == null) return;
+
+            List<String> tags = item.getTags();
+            if (tags == null || tags.isEmpty()) {
+                tagsChipGroup.setVisibility(View.GONE);
+                return;
+            }
+
+            tagsChipGroup.setVisibility(View.VISIBLE);
+            tagsChipGroup.removeAllViews();
+
+            // 最多显示 3 个标签
+            int maxTags = Math.min(tags.size(), 3);
+            for (int i = 0; i < maxTags; i++) {
+                Chip chip = new Chip(itemView.getContext());
+                chip.setText(tags.get(i));
+                chip.setCloseIconVisible(false);
+                chip.setCheckable(false);
+                chip.setClickable(false);
+                chip.setFocusable(false);
+                // 使用小尺寸样式
+                chip.setChipIconVisible(false);
+                chip.setEnsureMinTouchTargetSize(false);
+
+                tagsChipGroup.addView(chip);
+            }
+
+            // 如果有更多标签，显示数量
+            if (tags.size() > 3) {
+                Chip moreChip = new Chip(itemView.getContext());
+                moreChip.setText("+" + (tags.size() - 3));
+                moreChip.setCloseIconVisible(false);
+                moreChip.setCheckable(false);
+                moreChip.setClickable(false);
+                moreChip.setFocusable(false);
+                moreChip.setEnsureMinTouchTargetSize(false);
+                tagsChipGroup.addView(moreChip);
             }
         }
 
@@ -312,7 +363,20 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
 
         @Override
         public boolean areContentsTheSame(@NonNull PasswordItem oldItem, @NonNull PasswordItem newItem) {
-            return oldItem.equals(newItem);
+            // 比较所有字段，包括标签
+            if (!equals(oldItem.getTitle(), newItem.getTitle())) return false;
+            if (!equals(oldItem.getUsername(), newItem.getUsername())) return false;
+            if (!equals(oldItem.getUrl(), newItem.getUrl())) return false;
+            if (!equals(oldItem.getNotes(), newItem.getNotes())) return false;
+            // 比较标签
+            if (!equals(oldItem.getTags(), newItem.getTags())) return false;
+            return true;
+        }
+
+        private boolean equals(Object a, Object b) {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            return a.equals(b);
         }
 
         @Nullable
@@ -329,6 +393,10 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
             }
             if (!oldItem.getUrl().equals(newItem.getUrl())) {
                 diff.putString("url", newItem.getUrl());
+            }
+            // 添加标签变化检测
+            if (!oldItem.getTags().equals(newItem.getTags())) {
+                diff.putStringArrayList("tags", new ArrayList<>(newItem.getTags()));
             }
 
             return diff.isEmpty() ? null : diff;

@@ -3,6 +3,9 @@ package com.ttt.safevault.model;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 密码条目数据模型
  * 前端使用的明文模型，实际数据由后端加密存储
@@ -15,10 +18,12 @@ public class PasswordItem implements Parcelable {
     private String url;
     private String notes;
     private long updatedAt;
+    private List<String> tags;  // 标签列表
 
     // 构造函数
     public PasswordItem() {
         this.updatedAt = System.currentTimeMillis();
+        this.tags = new ArrayList<>();
     }
 
     public PasswordItem(String title, String username, String password) {
@@ -92,6 +97,44 @@ public class PasswordItem implements Parcelable {
         this.updatedAt = updatedAt;
     }
 
+    // Tags 相关方法
+    public List<String> getTags() {
+        return tags != null ? tags : new ArrayList<>();
+    }
+
+    public void setTags(List<String> tags) {
+        this.tags = tags != null ? tags : new ArrayList<>();
+    }
+
+    /**
+     * 添加单个标签（避免重复）
+     */
+    public void addTag(String tag) {
+        if (tags == null) {
+            tags = new ArrayList<>();
+        }
+        String trimmedTag = tag.trim();
+        if (!trimmedTag.isEmpty() && !tags.contains(trimmedTag)) {
+            tags.add(trimmedTag);
+        }
+    }
+
+    /**
+     * 移除标签
+     */
+    public void removeTag(String tag) {
+        if (tags != null) {
+            tags.remove(tag);
+        }
+    }
+
+    /**
+     * 检查是否包含指定标签
+     */
+    public boolean hasTag(String tag) {
+        return tags != null && tags.contains(tag);
+    }
+
     // 更新时间戳
     public void updateTimestamp() {
         this.updatedAt = System.currentTimeMillis();
@@ -131,6 +174,7 @@ public class PasswordItem implements Parcelable {
         clone.url = this.url;
         clone.notes = this.notes;
         clone.updatedAt = this.updatedAt;
+        clone.tags = this.tags != null ? new ArrayList<>(this.tags) : new ArrayList<>();
         return clone;
     }
 
@@ -167,6 +211,7 @@ public class PasswordItem implements Parcelable {
         url = in.readString();
         notes = in.readString();
         updatedAt = in.readLong();
+        tags = in.createStringArrayList();
     }
 
     @Override
@@ -178,6 +223,7 @@ public class PasswordItem implements Parcelable {
         dest.writeString(url);
         dest.writeString(notes);
         dest.writeLong(updatedAt);
+        dest.writeStringList(tags);
     }
 
     @Override

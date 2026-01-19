@@ -11,6 +11,7 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordStrength;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -101,7 +102,7 @@ public class EditPasswordViewModel extends AndroidViewModel {
     /**
      * 保存密码条目
      */
-    public void savePassword(String title, String username, String password, String url, String notes) {
+    public void savePassword(String title, String username, String password, String url, String notes, List<String> tags) {
         // 验证输入
         String validationError = validateInput(title, username, password);
         if (validationError != null) {
@@ -128,6 +129,7 @@ public class EditPasswordViewModel extends AndroidViewModel {
         item.setPassword(password);
         item.setUrl(url);
         item.setNotes(notes);
+        item.setTags(tags);
         item.updateTimestamp();
 
         final PasswordItem finalItem = item;
