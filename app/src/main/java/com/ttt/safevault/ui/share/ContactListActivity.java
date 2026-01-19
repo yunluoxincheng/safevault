@@ -24,6 +24,7 @@ public class ContactListActivity extends AppCompatActivity {
     private static final String TAG = "ContactListActivity";
 
     public static final String EXTRA_CONTACT_ID = "contact_id";
+    public static final String EXTRA_CONTACT_NAME = "contact_name";
 
     private com.google.android.material.appbar.MaterialToolbar toolbar;
     private androidx.recyclerview.widget.RecyclerView recyclerView;

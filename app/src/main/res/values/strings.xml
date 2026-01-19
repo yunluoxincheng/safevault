@@ -574,4 +574,22 @@
     <string name="button_overwrite">覆盖</string>
     <string name="credential_overwritten">凭据已覆盖</string>
 
+    <!-- ========== 联系人功能 ========== -->
+
+    <!-- 底部导航 -->
+    <string name="nav_contacts">联系人</string>
+
+    <!-- 联系人页面 -->
+    <string name="contacts_title">我的联系人</string>
+    <string name="add_contact">添加联系人</string>
+    <string name="scan_contact">扫描联系人</string>
+    <string name="my_identity">我的身份码</string>
+    <string name="no_contacts">暂无联系人\n点击下方按钮添加</string>
+
+    <!-- 联系人详情 -->
+    <string name="contact_details">联系人详情</string>
+    <string name="edit_note">编辑备注</string>
+    <string name="delete_contact">删除联系人</string>
+    <string name="delete_contact_confirm">确定要删除这个联系人吗？</string>
+
 </resources>
