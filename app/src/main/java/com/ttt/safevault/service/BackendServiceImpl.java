@@ -75,6 +75,7 @@ public class BackendServiceImpl implements BackendService {
         // 解锁成功后保存密码
         if (success) {
             accountManager.saveMasterPasswordForBiometric(masterPassword);
+            accountManager.setSessionMasterPassword(masterPassword);
             // 保存一份用于自动填充服务
             savePasswordForAutofill(masterPassword);
         }
@@ -123,6 +124,7 @@ public class BackendServiceImpl implements BackendService {
         // 初始化成功后保存主密码
         if (success) {
             accountManager.saveMasterPasswordForBiometric(masterPassword);
+            accountManager.setSessionMasterPassword(masterPassword);
             // 保存一份用于自动填充服务
             savePasswordForAutofill(masterPassword);
         }

@@ -9,6 +9,7 @@ import androidx.core.splashscreen.SplashScreen;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
@@ -131,6 +132,14 @@ public class LoginActivity extends AppCompatActivity {
 
         // 观察邮箱登录响应
         authViewModel.getEmailLoginResponse().observe(this, response -> {
+            // 添加日志以便调试
+            Log.d(TAG, "收到邮箱登录响应: " + (response != null ? "有数据" : "null"));
+            if (response != null) {
+                Log.d(TAG, "response.getUserId() = " + response.getUserId());
+                Log.d(TAG, "response.getUsername() = " + response.getUsername());
+                Log.d(TAG, "response.getDisplayName() = " + response.getDisplayName());
+            }
+
             // 检查响应是否有效（userId 不为空表示登录成功）
             if (response != null && response.getUserId() != null) {
                 // 登录成功，初始化 CryptoManager 并进入主页
@@ -320,8 +329,38 @@ public class LoginActivity extends AppCompatActivity {
      */
     private void handleCloudLoginSuccess(com.ttt.safevault.dto.response.EmailLoginResponse response) {
         try {
+            // 添加详细日志以调试服务器返回的数据
+            android.util.Log.d(TAG, "=== EmailLoginResponse 详情 ===");
+            android.util.Log.d(TAG, "userId: " + response.getUserId());
+            android.util.Log.d(TAG, "email: " + response.getEmail());
+            android.util.Log.d(TAG, "username: " + response.getUsername());
+            android.util.Log.d(TAG, "displayName: " + response.getDisplayName());
+            android.util.Log.d(TAG, "accessToken: " + (response.getAccessToken() != null ? "有值" : "null"));
+            android.util.Log.d(TAG, "========================");
+
             String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
             String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+
+            // 保存邮箱登录信息到 TokenManager（包括 displayName 和 username）
+            String responseUsername = response.getUsername();
+            String responseDisplayName = response.getDisplayName();
+            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
+                    .getTokenManager().saveEmailLoginInfo(email, responseUsername, responseDisplayName);
+            android.util.Log.d(TAG, "用户信息已保存 - email: " + email + ", username: " + responseUsername + ", displayName: " + responseDisplayName);
+
+            // 保存当前用户邮箱到 AccountManager
+            com.ttt.safevault.service.manager.AccountManager accountManager =
+                    new com.ttt.safevault.service.manager.AccountManager(
+                            this,
+                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                            new com.ttt.safevault.service.manager.PasswordManager(
+                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                    com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao()
+                            ),
+                            new com.ttt.safevault.security.SecurityConfig(this),
+                            com.ttt.safevault.network.RetrofitClient.getInstance(this)
+                    );
+            accountManager.setCurrentUserEmail(email);
 
             // 初始化 CryptoManager
             com.ttt.safevault.crypto.CryptoManager cryptoManager =
@@ -337,6 +376,10 @@ public class LoginActivity extends AppCompatActivity {
 
             // 登录成功后，如果用户启用了生物识别，保存主密码用于生物识别解锁
             saveMasterPasswordForBiometricIfNeeded(password);
+
+            // 保存会话密码到内存（无论是否启用生物识别都需要保存）
+            accountManager.setSessionMasterPassword(password);
+            android.util.Log.d(TAG, "会话密码已保存到内存");
 
             // 处理新设备数据恢复
             if (response.getIsNewDevice() != null && response.getIsNewDevice()) {
@@ -430,6 +473,19 @@ public class LoginActivity extends AppCompatActivity {
                     android.util.Log.d(TAG, "设备数据恢复成功");
                     // 保存主密码用于生物识别解锁（如果已启用）
                     saveMasterPasswordForBiometricIfNeeded(masterPassword);
+                    // 保存会话密码到内存
+                    com.ttt.safevault.service.manager.AccountManager sessionAccountManager =
+                            new com.ttt.safevault.service.manager.AccountManager(
+                                    LoginActivity.this,
+                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                    new com.ttt.safevault.service.manager.PasswordManager(
+                                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                            com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
+                                    ),
+                                    new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
+                                    com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
+                            );
+                    sessionAccountManager.setSessionMasterPassword(masterPassword);
                     // 恢复成功后，继续执行数据同步
                     handleCloudDataSync();
                     // 导航到主页

@@ -154,7 +154,31 @@ public class AccountManager {
         }
 
         // 使用主密码解锁
-        return cryptoManager.unlock(masterPassword);
+        boolean success = cryptoManager.unlock(masterPassword);
+
+        // 解锁成功后，保存会话密码用于后续操作（如自动填充）
+        if (success) {
+            setSessionMasterPassword(masterPassword);
+            // 保存密码供自动填充服务使用
+            savePasswordForAutofill(masterPassword);
+            Log.d(TAG, "Biometric unlock successful, session password set");
+        }
+
+        return success;
+    }
+
+    /**
+     * 保存密码供自动填充服务使用
+     */
+    private void savePasswordForAutofill(String password) {
+        try {
+            context.getSharedPreferences("autofill_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("master_password", password)
+                .apply();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save password for autofill", e);
+        }
     }
 
     /**

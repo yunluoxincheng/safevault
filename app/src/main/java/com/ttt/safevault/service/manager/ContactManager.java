@@ -17,6 +17,7 @@ import com.ttt.safevault.data.ContactDao;
 import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 联系人管理器
@@ -256,11 +257,28 @@ public class ContactManager {
      */
     @NonNull
     private String generateUserId(@NonNull String email) {
-        // 简单实现：使用邮箱的哈希作为用户ID
-        return "user_" + Base64.encodeToString(
+        // 处理空邮箱的情况
+        if (email == null || email.isEmpty()) {
+            Log.e(TAG, "generateUserId: email is empty, using random ID");
+            // 返回一个随机ID（UUID去掉横线后取前16位）
+            String uuid = UUID.randomUUID().toString().replace("-", "");
+            return "user_" + uuid.substring(0, Math.min(16, uuid.length()));
+        }
+
+        String encoded = Base64.encodeToString(
             email.getBytes(),
             Base64.NO_WRAP | Base64.URL_SAFE
-        ).substring(0, 16);
+        );
+
+        // 确保有足够的字符
+        if (encoded.length() < 16) {
+            // 如果编码结果太短，用UUID补足
+            String uuidSuffix = UUID.randomUUID().toString().replace("-", "");
+            encoded = encoded + uuidSuffix;
+        }
+
+        // 安全地截取前16个字符
+        return "user_" + encoded.substring(0, Math.min(16, encoded.length()));
     }
 
     /**

@@ -11,8 +11,9 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import androidx.core.content.ContextCompat;
 
 import com.google.android.material.appbar.MaterialToolbar;
@@ -128,7 +129,7 @@ public class ScanContactActivity extends AppCompatActivity {
         TextInputEditText editQRCode = dialogView.findViewById(R.id.edit_qr_code);
         editQRCode.setInputType(InputType.TYPE_TEXT_FLAG_MULTI_LINE);
 
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("手动输入身份码")
                 .setView(dialogView)
                 .setPositiveButton("确定", (dialog, which) -> {
@@ -146,11 +147,9 @@ public class ScanContactActivity extends AppCompatActivity {
     private void showAddContactDialog(String qrContent) {
         View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_edit_note, null);
         TextInputEditText editNote = dialogView.findViewById(R.id.edit_note);
-        editNote.setHint("输入备注（如：妈妈、同事等）");
 
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("添加联系人")
-                .setMessage("请为此联系人添加备注")
                 .setView(dialogView)
                 .setPositiveButton("添加", (dialog, which) -> {
                     String note = editNote.getText().toString().trim();
@@ -175,7 +174,7 @@ public class ScanContactActivity extends AppCompatActivity {
                     Toast.makeText(this, "联系人添加成功", Toast.LENGTH_SHORT).show();
                     finish();
                 } else {
-                    new AlertDialog.Builder(this)
+                    new MaterialAlertDialogBuilder(this)
                             .setTitle("添加失败")
                             .setMessage("无法添加联系人，可能原因：\n1. 身份码格式错误\n2. 该联系人已存在")
                             .setPositiveButton("确定", null)

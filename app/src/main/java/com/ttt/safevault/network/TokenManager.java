@@ -232,6 +232,20 @@ public class TokenManager {
     }
 
     /**
+     * 保存邮箱登录响应中的用户信息
+     * 用于保存 EmailLoginResponse 中的 displayName 和 username
+     */
+    public void saveEmailLoginInfo(String email, String username, String displayName) {
+        prefs.edit()
+            .putString(KEY_LAST_LOGIN_EMAIL, email)
+            .putString(KEY_DISPLAY_NAME, displayName)
+            .putString(KEY_VERIFIED_USERNAME, username)
+            .apply();
+
+        Log.d(TAG, "Email login info saved - email: " + email + ", username: " + username + ", displayName: " + displayName);
+    }
+
+    /**
      * 清除上次登录的邮箱
      */
     public void clearLastLoginEmail() {
