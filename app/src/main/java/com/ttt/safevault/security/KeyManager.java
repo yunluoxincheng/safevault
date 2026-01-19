@@ -387,21 +387,18 @@ public class KeyManager {
     }
 
     /**
-     * 解密私钥（从云端下载或本地存储）
+     * 解密私钥（从云端下载，使用提供的盐值）
      *
      * @param encryptedPrivateKey Base64编码的加密私钥
      * @param masterPassword      主密码
-     * @param email               用户邮箱
+     * @param salt                盐值（Base64编码）- 从云端获取
      * @param iv                  初始化向量（Base64编码）
      * @return 解密后的RSA私钥
      */
-    public PrivateKey decryptPrivateKey(String encryptedPrivateKey, String masterPassword, String email, String iv) {
+    public PrivateKey decryptPrivateKey(String encryptedPrivateKey, String masterPassword, String salt, String iv) {
         try {
-            // 1. 获取用户盐值
-            String salt = getUserSalt(email);
-            if (salt == null) {
-                throw new IllegalStateException("未找到用户盐值，无法解密");
-            }
+            // 1. 保存用户盐值到本地（供后续使用）
+            saveUserSalt("current", salt);
 
             // 2. 从主密码派生密钥
             SecretKey derivedKey = deriveKeyFromMasterPassword(masterPassword, salt);
@@ -434,7 +431,7 @@ public class KeyManager {
                     .putString(KEY_PRIVATE_KEY_IV, iv)
                     .apply();
 
-            Log.d(TAG, "Private key decrypted and imported for user: " + email);
+            Log.d(TAG, "Private key decrypted and imported successfully");
             return privateKey;
         } catch (Exception e) {
             Log.e(TAG, "Failed to decrypt private key", e);
@@ -453,13 +450,14 @@ public class KeyManager {
         try {
             String encryptedPrivateKey = prefs.getString(KEY_ENCRYPTED_PRIVATE_KEY, null);
             String iv = prefs.getString(KEY_PRIVATE_KEY_IV, null);
+            String salt = getUserSalt(email);
 
-            if (encryptedPrivateKey == null || iv == null) {
+            if (encryptedPrivateKey == null || iv == null || salt == null) {
                 return false;
             }
 
             // 尝试解密，如果成功则密码正确
-            decryptPrivateKey(encryptedPrivateKey, masterPassword, email, iv);
+            decryptPrivateKey(encryptedPrivateKey, masterPassword, salt, iv);
             return true;
         } catch (Exception e) {
             Log.d(TAG, "Master password verification failed", e);

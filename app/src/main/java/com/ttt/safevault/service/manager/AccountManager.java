@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.dto.DeviceRecoveryResult;
@@ -26,6 +27,7 @@ public class AccountManager {
     private static final String TAG = "AccountManager";
     private static final String PREF_BIOMETRIC_ENCRYPTED_PASSWORD = "biometric_encrypted_password";
     private static final String PREF_BIOMETRIC_IV = "biometric_iv";
+    private static final String KEY_USER_EMAIL = "user_email";
 
     private final Context context;
     private final CryptoManager cryptoManager;
@@ -35,6 +37,9 @@ public class AccountManager {
     private final BiometricKeyManager biometricKeyManager;
     private final RetrofitClient retrofitClient;
     private final TokenManager tokenManager;
+
+    // 会话期间临时存储的主密码（用于当前会话）
+    private String sessionMasterPassword;
 
     public AccountManager(@NonNull Context context,
                          @NonNull CryptoManager cryptoManager,
@@ -282,7 +287,7 @@ public class AccountManager {
                 privateKey = keyManager.decryptPrivateKey(
                         encryptedKey.getEncryptedData(),
                         masterPassword,
-                        email,
+                        encryptedKey.getSalt(),  // 使用云端返回的盐值
                         encryptedKey.getIv()
                 );
                 Log.d(TAG, "Private key decrypted successfully");
@@ -395,5 +400,57 @@ public class AccountManager {
         securityConfig.setBiometricEnabled(false);
 
         Log.d(TAG, "Biometric authentication disabled");
+    }
+
+    // ========== 账户信息获取 ==========
+
+    /**
+     * 获取当前用户邮箱
+     *
+     * @return 当前登录用户的邮箱，未登录返回空字符串
+     */
+    @NonNull
+    public String getCurrentUserEmail() {
+        return prefs.getString(KEY_USER_EMAIL, "");
+    }
+
+    /**
+     * 设置当前用户邮箱
+     *
+     * @param email 用户邮箱
+     */
+    public void setCurrentUserEmail(@NonNull String email) {
+        prefs.edit().putString(KEY_USER_EMAIL, email).apply();
+        Log.d(TAG, "Current user email saved: " + email);
+    }
+
+    /**
+     * 获取当前主密码
+     * 注意：这个方法返回的是临时存储的主密码（仅用于当前会话）
+     *
+     * @return 当前会话的主密码，未设置返回null
+     */
+    @Nullable
+    public String getCurrentMasterPassword() {
+        return sessionMasterPassword;
+    }
+
+    /**
+     * 设置当前会话的主密码
+     * 注意：主密码仅在内存中临时存储，不持久化到磁盘
+     *
+     * @param masterPassword 主密码
+     */
+    public void setSessionMasterPassword(@NonNull String masterPassword) {
+        this.sessionMasterPassword = masterPassword;
+        Log.d(TAG, "Session master password set");
+    }
+
+    /**
+     * 清除当前会话的主密码
+     */
+    public void clearSessionMasterPassword() {
+        this.sessionMasterPassword = null;
+        Log.d(TAG, "Session master password cleared");
     }
 }

@@ -327,18 +327,12 @@ public class LoginActivity extends AppCompatActivity {
             com.ttt.safevault.crypto.CryptoManager cryptoManager =
                     com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
 
-            // 如果是新设备或未初始化，需要初始化
-            if (!cryptoManager.isInitialized()) {
-                if (!cryptoManager.initialize(password)) {
-                    showError("初始化加密环境失败");
-                    return;
-                }
-            } else {
-                // 已初始化，尝试解锁
-                if (!cryptoManager.unlock(password)) {
-                    showError("主密码错误");
-                    return;
-                }
+            // 云端登录成功后，直接初始化本地加密环境
+            // 因为云端已经验证了主密码，我们可以信任这个密码
+            // 注意：initialize() 会覆盖之前的盐值（如果有）
+            if (!cryptoManager.initialize(password)) {
+                showError("初始化加密环境失败");
+                return;
             }
 
             // 登录成功后，如果用户启用了生物识别，保存主密码用于生物识别解锁
