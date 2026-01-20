@@ -99,4 +99,19 @@
     <style name="Widget.Material3.Button.TextButton.HighContrast" parent="Widget.Material3.Button.TextButton">
         <item name="android:textColor">@color/md_theme_light_primary</item>
     </style>
+
+    <!-- 对话框样式 -->
+    <style name="Theme.SafeVault.Dialog" parent="Theme.Material3.DayNight.Dialog">
+        <item name="colorPrimary">@color/md_theme_light_primary</item>
+        <item name="colorSurface">@color/md_theme_light_surface</item>
+        <item name="colorOnSurface">@color/md_theme_light_onSurface</item>
+    </style>
+
+    <style name="Theme.SafeVault.Dialog.FullWidth" parent="Theme.Material3.DayNight.Dialog">
+        <item name="colorPrimary">@color/md_theme_light_primary</item>
+        <item name="colorSurface">@color/md_theme_light_surface</item>
+        <item name="colorOnSurface">@color/md_theme_light_onSurface</item>
+        <item name="android:windowMinWidthMajor">100%</item>
+        <item name="android:windowMinWidthMinor">100%</item>
+    </style>
 </resources>

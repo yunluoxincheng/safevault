@@ -350,15 +350,6 @@
     <string name="cloud_share_placeholder_hint">云端分享功能需要服务器支持，当前为占位实现</string>
     <string name="cloud_link_info">可通过微信、邮件等方式分享此链接</string>
 
-    <!-- 分享设置 -->
-    <string name="share_settings">分享设置</string>
-    <string name="default_transmission_method">默认传输方式</string>
-    <string name="default_expire_time">默认过期时间</string>
-    <string name="default_saveable">默认允许保存</string>
-    <string name="share_password_length">分享密码长度</string>
-    <string name="auto_revoke_after_view">查看后自动撤销</string>
-    <string name="expire_time_minutes">%d 分钟</string>
-    <string name="password_length_chars">%d 位</string>
 
     <!-- ========== 自动填充功能 ========== -->
 
@@ -591,5 +582,20 @@
     <string name="edit_note">编辑备注</string>
     <string name="delete_contact">删除联系人</string>
     <string name="delete_contact_confirm">确定要删除这个联系人吗？</string>
+
+    <!-- 导航 -->
+    <string name="navigate_next">下一页</string>
+    <string name="contact_share">联系人分享</string>
+
+    <!-- 扫描设备 -->
+    <string name="scan_devices">扫描设备</string>
+    <string name="scanning">正在扫描…</string>
+    <string name="pair_device">配对设备</string>
+    <string name="device_paired">已配对</string>
+    <string name="device_not_paired">未配对</string>
+    <string name="scan_new_devices">扫描新设备</string>
+    <string name="bluetooth_discovery_started">开始扫描设备</string>
+    <string name="bluetooth_discovery_failed">扫描失败</string>
+    <string name="select_device">选择设备</string>
 
 </resources>

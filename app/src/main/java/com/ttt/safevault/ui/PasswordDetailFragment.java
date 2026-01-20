@@ -349,10 +349,10 @@ public class PasswordDetailFragment extends Fragment {
     }
 
     private void sharePassword() {
-        // 导航到新的分享界面
-        Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.share.ShareActivity.class);
-        intent.putExtra(com.ttt.safevault.ui.share.ShareActivity.EXTRA_PASSWORD_ID, passwordId);
-        startActivity(intent);
+        // 显示分享方式选择对话框
+        com.ttt.safevault.ui.share.ShareEntryDialog dialog =
+            com.ttt.safevault.ui.share.ShareEntryDialog.newInstance(passwordId);
+        dialog.show(getChildFragmentManager(), com.ttt.safevault.ui.share.ShareEntryDialog.TAG);
     }
 
     private void showError(String error) {

@@ -143,6 +143,41 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
+        <!-- QR码分享 -->
+        <activity
+            android:name=".ui.share.QRShareActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 蓝牙分享 -->
+        <activity
+            android:name=".ui.share.BluetoothShareActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- NFC发送 -->
+        <activity
+            android:name=".ui.share.NFCSendActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- NFC接收 -->
+        <activity
+            android:name=".ui.share.NFCReceiveActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar">
+            <!-- 处理NFC推送 -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/com.ttt.safevault" />
+            </intent-filter>
+        </activity>
+
         <!-- 联系人管理相关页面 -->
         <activity
             android:name=".ui.share.ContactListActivity"
