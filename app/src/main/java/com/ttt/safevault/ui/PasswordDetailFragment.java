@@ -351,7 +351,7 @@ public class PasswordDetailFragment extends Fragment {
     private void sharePassword() {
         // 导航到新的分享界面
         Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.share.ShareActivity.class);
-        intent.putExtra("PASSWORD_ID", passwordId);
+        intent.putExtra(com.ttt.safevault.ui.share.ShareActivity.EXTRA_PASSWORD_ID, passwordId);
         startActivity(intent);
     }
 

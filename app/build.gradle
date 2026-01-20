@@ -3,8 +3,8 @@ plugins {
 }
 
 android {
-    namespace 'com.ttt.safevault'
-    compileSdk 36
+    namespace = 'com.ttt.safevault'
+    compileSdk = 36
 
     defaultConfig {
         applicationId "com.ttt.safevault"
@@ -28,7 +28,7 @@ android {
     }
 
     buildFeatures {
-        viewBinding true
+        viewBinding = true
     }
 }
 

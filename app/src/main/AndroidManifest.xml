@@ -112,12 +112,6 @@
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
         <activity
-            android:name=".ui.share.ShareResultActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.SafeVault.NoActionBar" />
-
-        <activity
             android:name=".ui.share.ReceiveShareActivity"
             android:exported="true"
             android:screenOrientation="portrait"
