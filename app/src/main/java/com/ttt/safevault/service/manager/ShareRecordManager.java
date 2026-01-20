@@ -213,6 +213,39 @@ public class ShareRecordManager {
     }
 
     /**
+     * 获取与特定联系人的分享记录
+     *
+     * @param contactId 联系人ID
+     * @param type 分享类型（sent 或 received）
+     * @return 分享记录列表
+     */
+    @NonNull
+    public List<ShareRecord> getSharesByContactId(@NonNull String contactId, @NonNull String type) {
+        try {
+            return shareRecordDao.getSharesByContactIdAndType(contactId, type);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get shares by contact ID", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 删除分享记录
+     *
+     * @param shareId 分享ID
+     * @return true表示删除成功
+     */
+    public boolean deleteShareRecord(@NonNull String shareId) {
+        try {
+            int result = shareRecordDao.deleteShareRecordById(shareId);
+            return result > 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to delete share record", e);
+            return false;
+        }
+    }
+
+    /**
      * 生成分享ID
      */
     @NonNull

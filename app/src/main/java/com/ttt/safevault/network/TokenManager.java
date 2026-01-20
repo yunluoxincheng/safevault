@@ -29,8 +29,8 @@ public class TokenManager {
     private final SharedPreferences prefs;
     private AuthServiceApi authApi;
     private static TokenManager instance;
-    
-    private TokenManager(Context context) {
+
+    public TokenManager(Context context) {
         this.prefs = context.getApplicationContext()
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }

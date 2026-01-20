@@ -6,7 +6,7 @@ import android.util.Log;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.ttt.safevault.network.api.AuthServiceApi;
-import com.ttt.safevault.network.api.DiscoveryServiceApi;
+import com.ttt.safevault.network.api.FriendServiceApi;
 import com.ttt.safevault.network.api.ShareServiceApi;
 import com.ttt.safevault.network.api.VaultServiceApi;
 
@@ -34,8 +34,8 @@ public class RetrofitClient {
 
     private AuthServiceApi authServiceApi;
     private ShareServiceApi shareServiceApi;
-    private DiscoveryServiceApi discoveryServiceApi;
     private VaultServiceApi vaultServiceApi;
+    private FriendServiceApi friendServiceApi;
 
     private RetrofitClient(Context context) {
         tokenManager = TokenManager.getInstance(context);
@@ -108,8 +108,8 @@ public class RetrofitClient {
         // 创建API服务
         authServiceApi = retrofit.create(AuthServiceApi.class);
         shareServiceApi = retrofit.create(ShareServiceApi.class);
-        discoveryServiceApi = retrofit.create(DiscoveryServiceApi.class);
         vaultServiceApi = retrofit.create(VaultServiceApi.class);
+        friendServiceApi = retrofit.create(FriendServiceApi.class);
         
         // 设置TokenManager的authApi
         tokenManager.setAuthApi(authServiceApi);
@@ -121,21 +121,41 @@ public class RetrofitClient {
         }
         return instance;
     }
-    
+
+    /**
+     * 获取Retrofit实例（用于创建API服务）
+     */
+    public static Retrofit getClient(Context context) {
+        return getInstance(context).retrofit;
+    }
+
+    /**
+     * 获取Retrofit实例（使用TokenManager）
+     */
+    public static Retrofit getClient(TokenManager tokenManager) {
+        // 如果需要使用TokenManager，可以使用getInstance方法
+        // 这里为了兼容性，我们返回已存在的实例
+        if (instance != null) {
+            return instance.retrofit;
+        }
+        // 如果instance为null，需要从Context创建
+        throw new IllegalStateException("RetrofitClient not initialized. Call getInstance(Context) first.");
+    }
+
     public AuthServiceApi getAuthServiceApi() {
         return authServiceApi;
     }
-    
+
     public ShareServiceApi getShareServiceApi() {
         return shareServiceApi;
-    }
-    
-    public DiscoveryServiceApi getDiscoveryServiceApi() {
-        return discoveryServiceApi;
     }
 
     public VaultServiceApi getVaultServiceApi() {
         return vaultServiceApi;
+    }
+
+    public FriendServiceApi getFriendServiceApi() {
+        return friendServiceApi;
     }
 
     public TokenManager getTokenManager() {

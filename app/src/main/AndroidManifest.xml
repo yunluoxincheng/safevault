@@ -178,6 +178,13 @@
             </intent-filter>
         </activity>
 
+        <!-- 分享历史页面 -->
+        <activity
+            android:name=".ui.share.ShareHistoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
         <!-- 联系人管理相关页面 -->
         <activity
             android:name=".ui.share.ContactListActivity"
@@ -193,6 +200,28 @@
 
         <activity
             android:name=".ui.share.ScanContactActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 好友请求列表页面 -->
+        <activity
+            android:name=".ui.friend.FriendRequestListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 联系人搜索页面 -->
+        <activity
+            android:name=".ui.friend.ContactSearchActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 好友详情/聊天页面 -->
+        <activity
+            android:name=".ui.friend.FriendDetailActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />

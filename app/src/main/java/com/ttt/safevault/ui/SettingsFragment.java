@@ -44,6 +44,12 @@ public class SettingsFragment extends BaseFragment {
         binding.cardAccountSecurity.setOnClickListener(v ->
                 Navigation.findNavController(v).navigate(R.id.action_settings_to_accountSecurity));
 
+        // 分享历史
+        binding.cardShareHistory.setOnClickListener(v -> {
+            Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.share.ShareHistoryActivity.class);
+            startActivity(intent);
+        });
+
         // 自动填充服务
         binding.cardAutofillService.setOnClickListener(v -> openAutofillSettings());
 

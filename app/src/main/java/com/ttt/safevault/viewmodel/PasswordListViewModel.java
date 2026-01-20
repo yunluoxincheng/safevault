@@ -55,6 +55,21 @@ public class PasswordListViewModel extends AndroidViewModel {
     }
 
     /**
+     * 获取所有密码的LiveData（供密码选择对话框使用）
+     * @return 所有密码的LiveData
+     */
+    public LiveData<List<PasswordItem>> getAllPasswords() {
+        // 如果数据未加载，先加载
+        if (allItems == null) {
+            loadPasswordItems();
+        }
+        // 返回原始数据（未过滤的）
+        MutableLiveData<List<PasswordItem>> result = new MutableLiveData<>();
+        result.setValue(allItems != null ? new ArrayList<>(allItems) : new ArrayList<>());
+        return result;
+    }
+
+    /**
      * 加载所有密码条目
      */
     public void loadPasswordItems() {

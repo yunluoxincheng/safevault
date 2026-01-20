@@ -5,11 +5,13 @@ import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
+import java.io.Serializable;
+
 /**
  * 分享记录实体
  */
 @Entity(tableName = "share_records")
-public class ShareRecord {
+public class ShareRecord implements Serializable {
     @PrimaryKey
     @NonNull
     @ColumnInfo(name = "share_id")

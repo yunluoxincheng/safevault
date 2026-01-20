@@ -13,6 +13,7 @@ import com.ttt.safevault.crypto.KeyDerivationManager;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.ContactDao;
+import com.ttt.safevault.network.TokenManager;
 
 import java.security.PublicKey;
 import java.util.ArrayList;
@@ -27,7 +28,7 @@ public class ContactManager {
     private static final String TAG = "ContactManager";
 
     private static final String IDENTITY_QR_PREFIX = "safevault://identity/";
-    private static final String IDENTITY_VERSION = "1.0";
+    private static final String IDENTITY_VERSION = "2.0";
 
     private final Context context;
     private final ContactDao contactDao;
@@ -61,25 +62,30 @@ public class ContactManager {
                 Base64.NO_WRAP
             );
 
-            // 2. 构建身份数据
+            // 2. 获取云端用户ID
+            TokenManager tokenManager = TokenManager.getInstance(context);
+            String cloudUserId = tokenManager.getUserId();
+
+            // 3. 构建身份数据
             IdentityQRData identityData = new IdentityQRData();
             identityData.version = IDENTITY_VERSION;
             identityData.userId = generateUserId(userEmail);
+            identityData.cloudUserId = cloudUserId;  // 新增云端用户ID
             identityData.username = userEmail;
             identityData.displayName = extractDisplayName(userEmail);
             identityData.publicKey = publicKeyBase64;
             identityData.generatedAt = System.currentTimeMillis();
 
-            // 3. 序列化为JSON
+            // 4. 序列化为JSON
             String json = gson.toJson(identityData);
 
-            // 4. Base64编码
+            // 5. Base64编码
             String base64Data = Base64.encodeToString(
                 json.getBytes(),
                 Base64.NO_WRAP | Base64.URL_SAFE
             );
 
-            // 5. 构建QR码内容
+            // 6. 构建QR码内容
             String qrContent = IDENTITY_QR_PREFIX + base64Data;
 
             Log.d(TAG, "Generated identity QR code for user: " + userEmail);
@@ -122,22 +128,35 @@ public class ContactManager {
             // 4. 解析JSON
             IdentityQRData identityData = gson.fromJson(json, IdentityQRData.class);
 
-            if (identityData == null || !IDENTITY_VERSION.equals(identityData.version)) {
-                Log.e(TAG, "Invalid identity data version");
+            if (identityData == null) {
+                Log.e(TAG, "Failed to parse identity data");
                 return false;
             }
 
-            // 5. 检查是否已存在
+            // 5. 版本兼容性检查
+            if (!IDENTITY_VERSION.equals(identityData.version) && !"1.0".equals(identityData.version)) {
+                Log.e(TAG, "Invalid identity data version: " + identityData.version);
+                return false;
+            }
+
+            // 兼容旧版本（1.0）：如果没有 cloudUserId 字段，设为空字符串
+            if (identityData.cloudUserId == null) {
+                identityData.cloudUserId = "";
+                Log.d(TAG, "Legacy QR code detected (v1.0), cloudUserId set to empty");
+            }
+
+            // 6. 检查是否已存在
             Contact existing = contactDao.getContactByUserId(identityData.userId);
             if (existing != null) {
                 Log.w(TAG, "Contact already exists: " + identityData.userId);
                 return false;
             }
 
-            // 6. 创建联系人
+            // 7. 创建联系人
             Contact contact = new Contact();
             contact.contactId = generateContactId();
             contact.userId = identityData.userId;
+            contact.cloudUserId = identityData.cloudUserId;  // 新增云端用户ID
             contact.username = identityData.username;
             contact.displayName = identityData.displayName;
             contact.publicKey = identityData.publicKey;
@@ -145,7 +164,7 @@ public class ContactManager {
             contact.addedAt = System.currentTimeMillis();
             contact.lastUsedAt = 0;
 
-            // 7. 保存到数据库
+            // 8. 保存到数据库
             long result = contactDao.insertContact(contact);
 
             if (result > 0) {
@@ -295,11 +314,12 @@ public class ContactManager {
      * 身份QR码数据结构
      */
     private static class IdentityQRData {
-        String version;
-        String userId;
-        String username;
-        String displayName;
-        String publicKey;
-        long generatedAt;
+        String version;           // "2.0"
+        String userId;            // 本地派生的用户ID（用于离线分享）
+        String cloudUserId;       // 云端用户ID（用于云端分享）
+        String username;          // 邮箱
+        String displayName;       // 显示名称
+        String publicKey;         // RSA公钥（Base64）
+        long generatedAt;         // 生成时间
     }
 }

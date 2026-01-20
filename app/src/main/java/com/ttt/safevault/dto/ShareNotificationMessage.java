@@ -5,9 +5,11 @@ package com.ttt.safevault.dto;
  */
 public class ShareNotificationMessage {
     private String shareId;
+    private String requestId;  // 好友请求ID
     private String fromUserId;
     private String fromDisplayName;
-    private String type;  // NEW_SHARE, SHARE_REVOKED
+    private String type;  // NEW_SHARE, SHARE_REVOKED, FRIEND_REQUEST, FRIEND_REQUEST_ACCEPTED, FRIEND_DELETED
+    private String message;  // 通知消息内容
     private long timestamp;
 
     public ShareNotificationMessage() {
@@ -51,5 +53,21 @@ public class ShareNotificationMessage {
 
     public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
     }
 }

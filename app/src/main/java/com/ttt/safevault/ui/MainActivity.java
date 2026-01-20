@@ -119,6 +119,42 @@ public class MainActivity extends AppCompatActivity {
 
         // 处理从自动填充返回的意图
         handleAutofillIntent();
+
+        // 处理导航请求（从其他Activity返回时）
+        handleNavigationIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNavigationIntent(intent);
+    }
+
+    /**
+     * 处理导航Intent
+     * 处理从其他Activity传递过来的导航请求
+     */
+    private void handleNavigationIntent(Intent intent) {
+        if (intent == null || navController == null) return;
+
+        String navigateTo = intent.getStringExtra("navigate_to");
+        if ("edit_password".equals(navigateTo)) {
+            int passwordId = intent.getIntExtra("password_id", -1);
+            // 清除导航参数，避免重复处理
+            intent.removeExtra("navigate_to");
+            intent.removeExtra("password_id");
+
+            // 等待导航完成后跳转到编辑页面
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (navController != null) {
+                    // 导航到编辑密码页面
+                    Bundle args = new Bundle();
+                    args.putInt("passwordId", passwordId);
+                    navController.navigate(R.id.action_passwordListFragment_to_editPasswordFragment, args);
+                }
+            }, 100);
+        }
     }
 
     /**

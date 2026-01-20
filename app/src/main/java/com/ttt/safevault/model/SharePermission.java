@@ -3,24 +3,49 @@ package com.ttt.safevault.model;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+import com.google.gson.Gson;
+
 /**
  * 分享权限数据模型
  */
 public class SharePermission implements Parcelable {
-    private boolean canView;         // 是否可查看
-    private boolean canSave;         // 是否可保存到本地
-    private boolean isRevocable;     // 是否可撤销
+    public boolean canView;         // 是否可查看
+    public boolean canSave;         // 是否可保存到本地
+    public boolean revocable;       // 是否可撤销
+
+    private static final Gson gson = new Gson();
 
     public SharePermission() {
         this.canView = true;         // 默认可查看
         this.canSave = true;         // 默认可保存
-        this.isRevocable = true;     // 默认可撤销
+        this.revocable = true;       // 默认可撤销
     }
 
-    public SharePermission(boolean canView, boolean canSave, boolean isRevocable) {
+    public SharePermission(boolean canView, boolean canSave, boolean revocable) {
         this.canView = canView;
         this.canSave = canSave;
-        this.isRevocable = isRevocable;
+        this.revocable = revocable;
+    }
+
+    /**
+     * 从JSON字符串创建SharePermission
+     */
+    public static SharePermission fromJson(String json) {
+        if (json == null || json.isEmpty()) {
+            return new SharePermission();
+        }
+        try {
+            return gson.fromJson(json, SharePermission.class);
+        } catch (Exception e) {
+            return new SharePermission();
+        }
+    }
+
+    /**
+     * 转换为JSON字符串
+     */
+    public String toJson() {
+        return gson.toJson(this);
     }
 
     // Getter 和 Setter 方法
@@ -41,11 +66,11 @@ public class SharePermission implements Parcelable {
     }
 
     public boolean isRevocable() {
-        return isRevocable;
+        return revocable;
     }
 
     public void setRevocable(boolean revocable) {
-        isRevocable = revocable;
+        this.revocable = revocable;
     }
 
     @Override
@@ -53,7 +78,7 @@ public class SharePermission implements Parcelable {
         return "SharePermission{" +
                 "canView=" + canView +
                 ", canSave=" + canSave +
-                ", isRevocable=" + isRevocable +
+                ", revocable=" + revocable +
                 '}';
     }
 
@@ -61,14 +86,14 @@ public class SharePermission implements Parcelable {
     protected SharePermission(Parcel in) {
         canView = in.readByte() != 0;
         canSave = in.readByte() != 0;
-        isRevocable = in.readByte() != 0;
+        revocable = in.readByte() != 0;
     }
 
     @Override
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeByte((byte) (canView ? 1 : 0));
         dest.writeByte((byte) (canSave ? 1 : 0));
-        dest.writeByte((byte) (isRevocable ? 1 : 0));
+        dest.writeByte((byte) (revocable ? 1 : 0));
     }
 
     @Override

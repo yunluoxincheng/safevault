@@ -250,38 +250,10 @@ public class ContactListFragment extends Fragment {
     }
 
     private void showContactDetailDialog(Contact contact) {
-        String displayName = contact.myNote != null && !contact.myNote.isEmpty()
-                ? contact.myNote
-                : (contact.displayName != null && !contact.displayName.isEmpty()
-                        ? contact.displayName
-                        : contact.username);
-
-        StringBuilder info = new StringBuilder();
-        info.append("用户名: ").append(contact.username).append("\n");
-        if (contact.displayName != null && !contact.displayName.isEmpty()) {
-            info.append("显示名称: ").append(contact.displayName).append("\n");
-        }
-        if (contact.myNote != null && !contact.myNote.isEmpty()) {
-            info.append("备注: ").append(contact.myNote).append("\n");
-        }
-
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm",
-                java.util.Locale.getDefault());
-        info.append("添加时间: ").append(sdf.format(new java.util.Date(contact.addedAt))).append("\n");
-        if (contact.lastUsedAt > 0) {
-            info.append("最后使用: ").append(sdf.format(new java.util.Date(contact.lastUsedAt)));
-        }
-
-        new AlertDialog.Builder(requireContext())
-                .setTitle(displayName)
-                .setMessage(info.toString())
-                .setPositiveButton("关闭", null)
-                .setNeutralButton("分享密码给TA", (dialog, which) -> {
-                    // TODO: 启动分享流程，选择要分享的密码
-                    Toast.makeText(requireContext(), "分享功能待实现",
-                            Toast.LENGTH_SHORT).show();
-                })
-                .show();
+        // 打开好友详情/聊天界面
+        Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.friend.FriendDetailActivity.class);
+        intent.putExtra(com.ttt.safevault.ui.friend.FriendDetailActivity.EXTRA_CONTACT_ID, contact.contactId);
+        startActivity(intent);
     }
 
     private void showEditNoteDialog(Contact contact) {

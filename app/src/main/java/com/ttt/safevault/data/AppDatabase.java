@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 /**
  * SafeVault应用数据库
  */
-@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class}, version = 3, exportSchema = false)
+@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class, FriendRequest.class}, version = 4, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     private static final String DATABASE_NAME = "safevault_db";
@@ -20,6 +20,7 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract PasswordDao passwordDao();
     public abstract ContactDao contactDao();
     public abstract ShareRecordDao shareRecordDao();
+    public abstract FriendRequestDao friendRequestDao();
 
     // 数据库版本1到版本2的迁移：添加 encryptedTags 字段
     private static final Migration MIGRATION_1_2 = new Migration(1, 2) {
@@ -72,6 +73,34 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    // 数据库版本3到版本4的迁移：添加好友请求表和联系人表cloud_user_id字段
+    private static final Migration MIGRATION_3_4 = new Migration(3, 4) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 为contacts表添加cloud_user_id列
+            database.execSQL("ALTER TABLE contacts ADD COLUMN cloud_user_id TEXT");
+
+            // 创建好友请求表
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS friend_requests (" +
+                "request_id TEXT PRIMARY KEY NOT NULL, " +
+                "from_user_id TEXT NOT NULL, " +
+                "from_username TEXT NOT NULL, " +
+                "from_display_name TEXT NOT NULL, " +
+                "from_public_key TEXT NOT NULL, " +
+                "message TEXT, " +
+                "status TEXT NOT NULL, " +
+                "created_at INTEGER NOT NULL, " +
+                "responded_at INTEGER NOT NULL)"
+            );
+
+            // 创建索引以提高查询性能
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_friend_requests_from_user_id ON friend_requests(from_user_id)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_friend_requests_status ON friend_requests(status)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_friend_requests_created_at ON friend_requests(created_at)");
+        }
+    };
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -80,7 +109,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             context.getApplicationContext(),
                             AppDatabase.class,
                             DATABASE_NAME
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                      .build();
                 }
             }

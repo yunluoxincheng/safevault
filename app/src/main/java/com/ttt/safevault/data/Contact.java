@@ -41,6 +41,9 @@ public class Contact {
     @ColumnInfo(name = "last_used_at")
     public long lastUsedAt;         // 最后使用时间
 
+    @ColumnInfo(name = "cloud_user_id")
+    public String cloudUserId;      // 云端用户ID（用于云端分享）
+
     public Contact() {
         this.addedAt = System.currentTimeMillis();
         this.lastUsedAt = System.currentTimeMillis();
@@ -120,5 +123,13 @@ public class Contact {
 
     public void setLastUsedAt(long lastUsedAt) {
         this.lastUsedAt = lastUsedAt;
+    }
+
+    public String getCloudUserId() {
+        return cloudUserId;
+    }
+
+    public void setCloudUserId(String cloudUserId) {
+        this.cloudUserId = cloudUserId;
     }
 }

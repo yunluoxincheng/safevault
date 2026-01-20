@@ -48,4 +48,13 @@ public interface ShareRecordDao {
 
     @Query("DELETE FROM share_records WHERE expire_at > 0 AND expire_at < :timestamp")
     int deleteExpiredShares(long timestamp);
+
+    @Query("SELECT * FROM share_records WHERE contact_id = :contactId AND type = :type ORDER BY created_at DESC")
+    List<ShareRecord> getSharesByContactIdAndType(String contactId, String type);
+
+    @Query("SELECT * FROM share_records WHERE contact_id = :contactId ORDER BY created_at DESC")
+    List<ShareRecord> getSharesByContactId(String contactId);
+
+    @Query("DELETE FROM share_records WHERE share_id = :shareId")
+    int deleteShareRecordById(String shareId);
 }

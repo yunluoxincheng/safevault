@@ -166,45 +166,44 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- QR码显示区域 -->
+            <!-- 分享进度区域 -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Material3.CardView.Modern.Flat"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 android:visibility="gone"
-                android:id="@+id/cardQRCode">
+                android:id="@+id/cardProgress">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp"
-                    android:gravity="center">
+                    android:padding="16dp">
 
                     <TextView
+                        android:id="@+id/textStatus"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="扫描此QR码分享密码"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
+                        android:text="正在创建云端分享..."
+                        android:textAppearance="?attr/textAppearanceBodyLarge"
                         android:textColor="?attr/colorOnSurface"
                         android:layout_marginBottom="12dp" />
 
-                    <ImageView
-                        android:id="@+id/qrCodeImage"
-                        android:layout_width="300dp"
-                        android:layout_height="300dp"
-                        android:scaleType="fitCenter"
-                        android:contentDescription="分享QR码" />
+                    <com.google.android.material.progressindicator.LinearProgressIndicator
+                        android:id="@+id/progressIndicator"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:indeterminate="true"
+                        app:indicatorColor="?attr/colorPrimary" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="提示：只有选中的联系人可以扫描并解密此密码"
+                        android:text="提示：密码将使用端到端加密，只有选中的联系人可以解密"
                         android:textAppearance="?attr/textAppearanceBodySmall"
                         android:textColor="?attr/colorOnSurfaceVariant"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center" />
+                        android:layout_marginTop="8dp" />
 
                 </LinearLayout>
 

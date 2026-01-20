@@ -255,16 +255,15 @@ public interface BackendService {
 
     /**
      * 创建云端分享（通过后端API）
+     * 仅支持用户对用户的端到端加密分享
      * @param passwordId 密码ID
-     * @param toUserId 接收方用户ID（null表示直接分享）
+     * @param toUserId 接收方用户ID
      * @param expireInMinutes 过期时间（分钟）
      * @param permission 分享权限
-     * @param shareType 分享类型：DIRECT, USER_TO_USER, NEARBY
      * @return ShareResponse 包含shareId和shareToken
      */
     com.ttt.safevault.dto.response.ShareResponse createCloudShare(int passwordId, String toUserId,
-                                                                   int expireInMinutes, SharePermission permission,
-                                                                   String shareType);
+                                                                   int expireInMinutes, SharePermission permission);
 
     /**
      * 接收云端分享
@@ -297,60 +296,7 @@ public interface BackendService {
      */
     java.util.List<com.ttt.safevault.dto.response.ReceivedShareResponse> getReceivedCloudShares();
 
-    /**
-     * 注册位置信息（附近发现）
-     * @param latitude 纬度
-     * @param longitude 经度
-     * @param radius 发现范围（米）
-     */
-    void registerLocation(double latitude, double longitude, double radius);
-
-    /**
-     * 获取附近用户
-     * @param latitude 纬度
-     * @param longitude 经度
-     * @param radius 搜索半径（米）
-     * @return 附近用户列表
-     */
-    java.util.List<com.ttt.safevault.dto.response.NearbyUserResponse> getNearbyUsers(double latitude, double longitude, double radius);
-
-    /**
-     * 发送心跳保持在线状态
-     */
-    void sendHeartbeat();
-
-    /**
-     * 检查是否已登录云端服务
-     * @return true表示已登录
-     */
-    boolean isCloudLoggedIn();
-
-    /**
-     * 登出云端服务
-     */
-    void logoutCloud();
-
-    /**
-     * 完成注册
-     * 邮箱验证后设置主密码并完成注册
-     * @param email 邮箱
-     * @param username 用户名
-     * @param masterPassword 主密码
-     * @return CompleteRegistrationResponse 完成注册响应
-     */
-    com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
-            String email, String username, String masterPassword);
-
-    // ========== 新增：本地分享接口（离线分享）==========
-
-    /**
-     * 创建直接密码分享（离线/本地）
-     * @param passwordId 密码ID
-     * @param expireInMinutes 过期时间（分钟）
-     * @param permission 分享权限
-     * @return 分享Token或QR码内容
-     */
-    String createDirectPasswordShare(int passwordId, int expireInMinutes, SharePermission permission);
+    // ========== 新增：离线分享接口 ==========
 
     /**
      * 创建离线分享（版本2：密钥已嵌入，无需密码）
@@ -360,13 +306,6 @@ public interface BackendService {
      * @return QR码内容（包含加密数据）
      */
     String createOfflineShare(int passwordId, int expireInMinutes, SharePermission permission);
-
-    /**
-     * 接收密码分享（云端）
-     * @param shareId 分享ID或Token
-     * @return PasswordItem 解密后的密码条目
-     */
-    PasswordItem receivePasswordShare(String shareId);
 
     /**
      * 接收离线分享
@@ -418,6 +357,50 @@ public interface BackendService {
      * @return 新密码ID，失败返回-1
      */
     int addPassword(String title, String username, String password, String url, String notes);
+
+    // ========== 新增：基本密码操作接口 ==========
+
+    /**
+     * 添加密码（使用PasswordItem对象）
+     * @param password 密码条目
+     * @return true表示添加成功
+     */
+    boolean addPassword(PasswordItem password);
+
+    /**
+     * 根据ID获取密码条目
+     * @param passwordId 密码ID
+     * @return PasswordItem 密码条目，不存在返回null
+     */
+    PasswordItem getPasswordById(int passwordId);
+
+    /**
+     * 获取所有密码条目
+     * @return 所有密码条目列表
+     */
+    List<PasswordItem> getAllPasswords();
+
+    /**
+     * 检查是否已登录云端服务
+     * @return true表示已登录
+     */
+    boolean isCloudLoggedIn();
+
+    /**
+     * 登出云端服务
+     */
+    void logoutCloud();
+
+    /**
+     * 完成注册
+     * 邮箱验证后设置主密码并完成注册
+     * @param email 邮箱
+     * @param username 用户名
+     * @param masterPassword 主密码
+     * @return CompleteRegistrationResponse 完成注册响应
+     */
+    com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
+            String email, String username, String masterPassword);
 
     // ========== 新增：统一邮箱认证加密数据接口 ==========
 

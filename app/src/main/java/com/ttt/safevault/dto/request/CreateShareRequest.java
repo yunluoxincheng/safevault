@@ -4,6 +4,7 @@ import com.ttt.safevault.model.SharePermission;
 
 /**
  * 创建分享请求DTO
+ * 仅支持用户对用户的端到端加密分享
  */
 public class CreateShareRequest {
     private String passwordId;
@@ -12,10 +13,9 @@ public class CreateShareRequest {
     private String encryptedPassword;
     private String url;
     private String notes;
-    private String toUserId;          // 接收方用户ID（null表示直接分享）
+    private String toUserId;          // 接收方用户ID
     private Integer expireInMinutes;  // 过期时间（分钟）
     private SharePermission permission; // 分享权限
-    private String shareType;         // 分享类型: DIRECT, USER_TO_USER, NEARBY
 
     public CreateShareRequest() {
     }
@@ -91,13 +91,5 @@ public class CreateShareRequest {
 
     public void setPermission(SharePermission permission) {
         this.permission = permission;
-    }
-
-    public String getShareType() {
-        return shareType;
-    }
-
-    public void setShareType(String shareType) {
-        this.shareType = shareType;
     }
 }

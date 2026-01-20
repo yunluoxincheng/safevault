@@ -84,38 +84,6 @@ public class ShareViewModel extends AndroidViewModel {
     }
 
     /**
-     * 创建直接分享（无需好友）
-     * @param passwordId 密码ID
-     * @param expireInMinutes 过期时间（分钟）
-     * @param permission 分享权限
-     */
-    public void createDirectShare(int passwordId, int expireInMinutes, 
-                                 SharePermission permission) {
-        _isLoading.setValue(true);
-        _errorMessage.setValue(null);
-        _shareSuccess.setValue(false);
-
-        executor.execute(() -> {
-            try {
-                String shareToken = backendService.createDirectPasswordShare(
-                    passwordId, expireInMinutes, permission
-                );
-                
-                if (shareToken != null && !shareToken.isEmpty()) {
-                    _shareResult.postValue(shareToken);
-                    _shareSuccess.postValue(true);
-                } else {
-                    _errorMessage.postValue("创建分享失败");
-                }
-            } catch (Exception e) {
-                _errorMessage.postValue("创建分享失败: " + e.getMessage());
-            } finally {
-                _isLoading.postValue(false);
-            }
-        });
-    }
-
-    /**
      * 创建离线分享（二维码传输，版本2：扫码直接访问）
      * @param passwordId 密码ID
      * @param expireInMinutes 过期时间（分钟）
@@ -167,15 +135,14 @@ public class ShareViewModel extends AndroidViewModel {
     }
 
     /**
-     * 创建云端分享（三种类型）
+     * 创建云端分享（仅支持用户对用户端到端加密）
      * @param passwordId 密码ID
-     * @param toUserId 接收方用户ID（DIRECT时为null）
+     * @param toUserId 接收方用户ID
      * @param expireInMinutes 过期时间
      * @param permission 分享权限
-     * @param shareType 分享类型: DIRECT, USER_TO_USER, NEARBY
      */
     public void createCloudShare(int passwordId, String toUserId, int expireInMinutes,
-                                SharePermission permission, String shareType) {
+                                SharePermission permission) {
         if (!tokenManager.isLoggedIn()) {
             _errorMessage.setValue("请先登录云端服务");
             return;
@@ -185,8 +152,8 @@ public class ShareViewModel extends AndroidViewModel {
         _errorMessage.setValue(null);
         _shareSuccess.setValue(false);
 
-        Disposable disposable = io.reactivex.rxjava3.core.Observable.fromCallable(() -> 
-            backendService.createCloudShare(passwordId, toUserId, expireInMinutes, permission, shareType)
+        Disposable disposable = io.reactivex.rxjava3.core.Observable.fromCallable(() ->
+            backendService.createCloudShare(passwordId, toUserId, expireInMinutes, permission)
         )
         .subscribeOn(Schedulers.io())
         .observeOn(AndroidSchedulers.mainThread())
@@ -236,6 +203,34 @@ public class ShareViewModel extends AndroidViewModel {
             }
         });
         return result;
+    }
+
+    /**
+     * 获取分享成功状态的LiveData
+     */
+    public LiveData<Boolean> getShareSuccess() {
+        return shareSuccess;
+    }
+
+    /**
+     * 获取错误消息的LiveData
+     */
+    public LiveData<String> getErrorMessage() {
+        return errorMessage;
+    }
+
+    /**
+     * 获取加载状态的LiveData
+     */
+    public LiveData<Boolean> getIsLoading() {
+        return isLoading;
+    }
+
+    /**
+     * 获取云端分享响应的LiveData
+     */
+    public LiveData<ShareResponse> getCloudShareResponse() {
+        return cloudShareResponse;
     }
 
     @Override

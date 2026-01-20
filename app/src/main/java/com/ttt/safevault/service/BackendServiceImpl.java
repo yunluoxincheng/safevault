@@ -338,10 +338,9 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public com.ttt.safevault.dto.response.ShareResponse createCloudShare(int passwordId, String toUserId,
-                                                                          int expireInMinutes, SharePermission permission,
-                                                                          String shareType) {
-        // 创建云端分享
-        Log.d(TAG, "Creating cloud share type: " + shareType + " for password ID: " + passwordId);
+                                                                          int expireInMinutes, SharePermission permission) {
+        // 创建云端分享（仅支持用户对用户端到端加密）
+        Log.d(TAG, "Creating cloud share for password ID: " + passwordId + ", to user: " + toUserId);
         // 简化实现：返回ShareResponse
         com.ttt.safevault.dto.response.ShareResponse response =
             new com.ttt.safevault.dto.response.ShareResponse();
@@ -370,7 +369,6 @@ public class BackendServiceImpl implements BackendService {
 
         response.setFromUserId("unknown_user");
         response.setFromDisplayName("Unknown User");
-        response.setShareType("DIRECT");
         response.setPermission(new SharePermission(true, true, true));
         response.setExpiresAt(0L);
         return response;
@@ -406,38 +404,7 @@ public class BackendServiceImpl implements BackendService {
         return java.util.Collections.emptyList();
     }
 
-    @Override
-    public void registerLocation(double latitude, double longitude, double radius) {
-        // 注册位置信息
-        Log.d(TAG, "Registering location: " + latitude + ", " + longitude);
-        // 简化实现：空方法
-    }
-
-    @Override
-    public java.util.List<com.ttt.safevault.dto.response.NearbyUserResponse> getNearbyUsers(
-            double latitude, double longitude, double radius) {
-        // 获取附近用户
-        Log.d(TAG, "Getting nearby users");
-        // 简化实现：返回空列表
-        return java.util.Collections.emptyList();
-    }
-
-    @Override
-    public void sendHeartbeat() {
-        // 发送心跳保持在线状态
-        Log.d(TAG, "Sending heartbeat");
-        // 简化实现：空方法
-    }
-
-    // ==================== 本地分享相关 ====================
-
-    @Override
-    public String createDirectPasswordShare(int passwordId, int expireInMinutes, SharePermission permission) {
-        // 本地直接分享（使用QR码）
-        Log.d(TAG, "Creating direct password share for password ID: " + passwordId);
-        // 简化实现：返回分享Token
-        return "share_" + passwordId + "_" + System.currentTimeMillis();
-    }
+    // ==================== 离线分享相关 ====================
 
     @Override
     public String createOfflineShare(int passwordId, int expireInMinutes, SharePermission permission) {
@@ -451,19 +418,6 @@ public class BackendServiceImpl implements BackendService {
         // 这里应该加密数据并返回Base64编码的QR码内容
         // 简化实现：直接返回JSON
         return "offline_share_" + passwordId;
-    }
-
-    @Override
-    public PasswordItem receivePasswordShare(String shareId) {
-        // 接收密码分享（返回密码条目）
-        Log.d(TAG, "Receiving password share: " + shareId);
-        PasswordItem item = new PasswordItem();
-        item.setTitle("分享的密码");
-        item.setUsername("shared_user");
-        item.setPassword("shared_password");
-        item.setUrl("");
-        item.setNotes("来自分享");
-        return item;
     }
 
     @Override
@@ -541,5 +495,29 @@ public class BackendServiceImpl implements BackendService {
         item.setUrl(url);
         item.setNotes(notes);
         return passwordManager.saveItem(item);
+    }
+
+    // ==================== 基本密码操作 ====================
+
+    @Override
+    public boolean addPassword(PasswordItem password) {
+        if (password == null) {
+            return false;
+        }
+        Log.d(TAG, "Adding password item: " + password.getTitle());
+        int result = passwordManager.saveItem(password);
+        return result > 0;
+    }
+
+    @Override
+    public PasswordItem getPasswordById(int passwordId) {
+        Log.d(TAG, "Getting password by ID: " + passwordId);
+        return passwordManager.decryptItem(passwordId);
+    }
+
+    @Override
+    public List<PasswordItem> getAllPasswords() {
+        Log.d(TAG, "Getting all passwords");
+        return passwordManager.getAllItems();
     }
 }

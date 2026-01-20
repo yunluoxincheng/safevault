@@ -1,13 +1,11 @@
 package com.ttt.safevault.ui.share;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Base64;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
@@ -18,12 +16,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.zxing.WriterException;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.ttt.safevault.R;
 import com.ttt.safevault.ServiceLocator;
 import com.ttt.safevault.crypto.KeyDerivationManager;
 import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.data.Contact;
+import com.ttt.safevault.dto.request.CreateShareRequest;
+import com.ttt.safevault.dto.response.ShareResponse;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.EncryptedSharePacket;
 import com.ttt.safevault.model.PasswordItem;
@@ -32,8 +32,6 @@ import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.BiometricAuthHelper;
 import com.ttt.safevault.service.manager.ContactManager;
 import com.ttt.safevault.service.manager.ShareRecordManager;
-import com.ttt.safevault.utils.QRCodeUtils;
-import com.ttt.safevault.utils.ShareQRGenerator;
 import com.ttt.safevault.viewmodel.ShareViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
@@ -45,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 密码分享界面
- * 使用端到端加密将密码分享给联系人
+ * 使用端到端加密将密码分享给联系人（云端分享）
  */
 public class ShareActivity extends AppCompatActivity {
     private static final String TAG = "ShareActivity";
@@ -68,7 +66,9 @@ public class ShareActivity extends AppCompatActivity {
     private RadioButton radio1Day;
     private RadioButton radio7Days;
     private RadioButton radioNever;
-    private ImageView qrCodeImage;
+    private LinearProgressIndicator progressIndicator;
+    private View cardProgress;
+    private TextView textStatus;
     private Button btnShare;
     private Button btnSelectContact;
 
@@ -76,7 +76,6 @@ public class ShareActivity extends AppCompatActivity {
     private String contactId;
     private Contact selectedContact;
     private PasswordItem passwordToShare;
-    private String generatedQrContent;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -125,7 +124,9 @@ public class ShareActivity extends AppCompatActivity {
         radio1Day = findViewById(R.id.radio1Day);
         radio7Days = findViewById(R.id.radio7Days);
         radioNever = findViewById(R.id.radioNever);
-        qrCodeImage = findViewById(R.id.qrCodeImage);
+        progressIndicator = findViewById(R.id.progressIndicator);
+        cardProgress = findViewById(R.id.cardProgress);
+        textStatus = findViewById(R.id.textStatus);
         btnShare = findViewById(R.id.btnShare);
         btnSelectContact = findViewById(R.id.btnSelectContact);
 
@@ -144,6 +145,57 @@ public class ShareActivity extends AppCompatActivity {
                 Intent intent = new Intent(this, ContactListActivity.class);
                 startActivityForResult(intent, REQUEST_CODE_CONTACT_LIST);
             });
+        }
+
+        // 观察分享结果
+        observeShareResult();
+    }
+
+    /**
+     * 观察云端分享结果
+     */
+    private void observeShareResult() {
+        viewModel.getShareSuccess().observe(this, success -> {
+            if (success) {
+                hideLoading();
+                Toast.makeText(this, "分享成功", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        });
+
+        viewModel.getErrorMessage().observe(this, error -> {
+            if (error != null) {
+                hideLoading();
+                Toast.makeText(this, "分享失败: " + error, Toast.LENGTH_LONG).show();
+                viewModel.clearError();
+            }
+        });
+    }
+
+    /**
+     * 显示加载状态
+     */
+    private void showLoading(String message) {
+        if (cardProgress != null) {
+            cardProgress.setVisibility(View.VISIBLE);
+        }
+        if (textStatus != null) {
+            textStatus.setText(message);
+        }
+        if (btnShare != null) {
+            btnShare.setEnabled(false);
+        }
+    }
+
+    /**
+     * 隐藏加载状态
+     */
+    private void hideLoading() {
+        if (cardProgress != null) {
+            cardProgress.setVisibility(View.GONE);
+        }
+        if (btnShare != null) {
+            btnShare.setEnabled(true);
         }
     }
 
@@ -309,6 +361,18 @@ public class ShareActivity extends AppCompatActivity {
             return;
         }
 
+        // 检查是否已登录云端
+        if (!viewModel.isCloudLoggedIn()) {
+            Toast.makeText(this, "请先登录云端服务", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 检查联系人是否有云端用户ID
+        if (selectedContact.cloudUserId == null || selectedContact.cloudUserId.isEmpty()) {
+            Toast.makeText(this, "该联系人未绑定云端账号，无法进行云端分享", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         // 获取主密码和用户邮箱
         String masterPassword = getMasterPassword();
         String userEmail = getUserEmail();
@@ -323,7 +387,9 @@ public class ShareActivity extends AppCompatActivity {
             return;
         }
 
-        // 在后台线程执行加密
+        showLoading("正在加密并创建云端分享...");
+
+        // 在后台线程执行加密和云端分享
         new Thread(() -> {
             try {
                 KeyDerivationManager keyManager = new KeyDerivationManager(this);
@@ -360,19 +426,34 @@ public class ShareActivity extends AppCompatActivity {
 
                 if (encryptedPacket == null) {
                     runOnUiThread(() -> {
-                        Toast.makeText(this, "分享生成失败", Toast.LENGTH_SHORT).show();
+                        hideLoading();
+                        Toast.makeText(this, "加密失败", Toast.LENGTH_SHORT).show();
                     });
                     return;
                 }
 
-                // 5. 生成QR码内容
-                String packetJson = new com.google.gson.Gson().toJson(encryptedPacket);
-                generatedQrContent = "safevault://share/" + Base64.encodeToString(
-                    packetJson.getBytes(),
-                    Base64.NO_WRAP | Base64.URL_SAFE
+                // 5. 创建云端分享请求
+                CreateShareRequest request = new CreateShareRequest();
+                request.setPasswordId(String.valueOf(passwordId));
+                request.setToUserId(selectedContact.cloudUserId);
+                request.setEncryptedPassword(encryptedPacket.getEncryptedData());
+                request.setTitle(passwordToShare.getTitle());
+                request.setUsername(passwordToShare.getUsername());
+                request.setUrl(passwordToShare.getUrl());
+                request.setNotes(passwordToShare.getNotes());
+                request.setExpireInMinutes(getExpireMinutes());
+                request.setPermission(dataPacket.permission);
+
+                // 6. 调用云端API创建分享
+                int expireMinutes = getExpireMinutes();
+                viewModel.createCloudShare(
+                    passwordId,
+                    selectedContact.cloudUserId,
+                    expireMinutes,
+                    dataPacket.permission
                 );
 
-                // 6. 保存分享记录
+                // 7. 保存本地分享记录
                 recordManager.createShareRecord(
                     passwordId,
                     "sent",
@@ -382,22 +463,29 @@ public class ShareActivity extends AppCompatActivity {
                     dataPacket.expireAt
                 );
 
-                // 7. 在UI线程显示QR码
-                runOnUiThread(() -> {
-                    displayQRCode(generatedQrContent);
-                    if (btnShare != null) {
-                        btnShare.setEnabled(false);
-                        btnShare.setText("分享已生成");
-                    }
-                });
-
             } catch (Exception e) {
                 e.printStackTrace();
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "分享生成失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    hideLoading();
+                    Toast.makeText(this, "分享失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 });
             }
         }).start();
+    }
+
+    /**
+     * 获取过期时间（分钟）
+     */
+    private int getExpireMinutes() {
+        if (radio1Hour != null && radio1Hour.isChecked()) {
+            return 60;
+        } else if (radio1Day != null && radio1Day.isChecked()) {
+            return 60 * 24;
+        } else if (radio7Days != null && radio7Days.isChecked()) {
+            return 60 * 24 * 7;
+        } else {
+            return 0; // 永不过期
+        }
     }
 
     private long getExpireTime() {
@@ -411,19 +499,6 @@ public class ShareActivity extends AppCompatActivity {
             return now + TimeUnit.DAYS.toMillis(7);
         } else {
             return 0; // 永不过期
-        }
-    }
-
-    private void displayQRCode(String content) {
-        try {
-            Bitmap qrBitmap = ShareQRGenerator.generateQRCode(content, 512);
-            if (qrCodeImage != null) {
-                qrCodeImage.setImageBitmap(qrBitmap);
-                qrCodeImage.setVisibility(View.VISIBLE);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            Toast.makeText(this, "QR码生成失败", Toast.LENGTH_SHORT).show();
         }
     }
 
