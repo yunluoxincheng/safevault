@@ -78,10 +78,43 @@ public class AccountSecurityFragment extends BaseFragment {
                     // 启用生物识别前要求用户验证身份
                     // 直接触发生物识别验证
                     showBiometricOnlyAuthentication(() -> {
-                        // 验证成功，开启生物识别
-                        binding.switchBiometric.setChecked(true);
-                        securityConfig.setBiometricEnabled(true);
-                        Toast.makeText(requireContext(), "生物识别已启用", Toast.LENGTH_SHORT).show();
+                        // 生物识别验证成功，从本地获取主密码并保存
+                        com.ttt.safevault.model.BackendService backendService =
+                                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+                        // 调试：检查是否能获取主密码
+                        String masterPassword = backendService.getMasterPassword();
+                        android.util.Log.d("AccountSecurity", "获取主密码: " + (masterPassword != null ? "成功" : "失败"));
+
+                        if (masterPassword != null && !masterPassword.isEmpty()) {
+                            com.ttt.safevault.service.manager.AccountManager accountManager =
+                                    new com.ttt.safevault.service.manager.AccountManager(
+                                            requireContext(),
+                                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                            new com.ttt.safevault.service.manager.PasswordManager(
+                                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                                    com.ttt.safevault.data.AppDatabase.getInstance(requireContext()).passwordDao()
+                                            ),
+                                            securityConfig,
+                                            com.ttt.safevault.network.RetrofitClient.getInstance(requireContext())
+                                    );
+
+                            android.util.Log.d("AccountSecurity", "调用 enableBiometricAuth");
+                            boolean success = accountManager.enableBiometricAuth(masterPassword);
+                            android.util.Log.d("AccountSecurity", "enableBiometricAuth 结果: " + success);
+
+                            if (success) {
+                                binding.switchBiometric.setChecked(true);
+                                Toast.makeText(requireContext(), "生物识别已启用", Toast.LENGTH_SHORT).show();
+                            } else {
+                                binding.switchBiometric.setChecked(false);
+                                Toast.makeText(requireContext(), "启用生物识别失败", Toast.LENGTH_SHORT).show();
+                            }
+                        } else {
+                            android.util.Log.e("AccountSecurity", "主密码为空或null");
+                            binding.switchBiometric.setChecked(false);
+                            Toast.makeText(requireContext(), "无法获取主密码，请重新登录", Toast.LENGTH_SHORT).show();
+                        }
                     }, () -> {
                         // 验证失败，保持开关关闭状态
                         binding.switchBiometric.setChecked(false);
