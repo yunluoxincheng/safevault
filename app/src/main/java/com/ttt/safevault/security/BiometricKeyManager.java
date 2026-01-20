@@ -41,21 +41,12 @@ public class BiometricKeyManager {
      * 初始化生物识别密钥
      */
     public void initializeKey() throws Exception {
-        // 如果密钥已存在，先删除旧密钥（可能是旧版本的需要认证的密钥）
+        // 如果密钥已存在，直接使用，不要重建
+        // 重建会导致之前用旧密钥加密的数据无法解密
         if (keyStore.containsAlias(KEY_ALIAS)) {
-            try {
-                // 尝试使用密钥，如果失败则删除重建
-                SecretKey testKey = (SecretKey) keyStore.getKey(KEY_ALIAS, null);
-                Cipher testCipher = Cipher.getInstance("AES/CBC/PKCS7Padding");
-                testCipher.init(Cipher.ENCRYPT_MODE, testKey);
-                // 密钥可用，无需重建
-                return;
-            } catch (Exception e) {
-                // 密钥不可用，删除并重建
-                keyStore.deleteEntry(KEY_ALIAS);
-            }
+            return;
         }
-        
+
         // 创建新密钥
         KeyGenerator keyGenerator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
