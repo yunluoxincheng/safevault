@@ -114,6 +114,12 @@ com.ttt.safevault/
 
 ## Development Guidelines
 
+### Skill Usage Rule (重要)
+**在执行任何任务之前，必须先检查是否有可用的 skill：**
+- 如果有适用的 skill，**必须**使用该 skill 来执行任务
+- 特别是修改代码类的工作，必须使用相应的 skill
+- 这确保了任务的正确执行和代码质量
+
 ### BackendService Implementation
 All data operations go through the `BackendService` interface. The frontend receives:
 - `PasswordItem` objects (already decrypted)

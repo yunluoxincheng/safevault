@@ -4,12 +4,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
+    android:background="?attr/colorSurface"
     tools:context=".ui.friend.ContactSearchActivity">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:fitsSystemWindows="true">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
@@ -31,33 +32,46 @@
             android:orientation="vertical">
 
             <!-- 搜索框 -->
-            <com.google.android.material.card.MaterialCardView
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/search_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_margin="16dp"
-                app:cardElevation="2dp"
-                app:cardCornerRadius="12dp">
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="8dp"
+                android:hint="搜索用户名或邮箱"
+                app:startIconDrawable="@drawable/ic_search"
+                app:startIconTint="?attr/colorOnSurfaceVariant"
+                app:endIconDrawable="@drawable/ic_close"
+                app:endIconMode="custom"
+                app:endIconCheckable="true"
+                app:endIconTint="?attr/colorOnSurfaceVariant"
+                app:boxBackgroundMode="outline"
+                app:boxCornerRadiusTopStart="28dp"
+                app:boxCornerRadiusTopEnd="28dp"
+                app:boxCornerRadiusBottomStart="28dp"
+                app:boxCornerRadiusBottomEnd="28dp"
+                app:boxStrokeColor="?attr/colorOutline"
+                app:boxStrokeWidth="1dp"
+                app:boxStrokeWidthFocused="2dp"
+                app:hintTextColor="?attr/colorPrimary"
+                app:hintEnabled="true"
+                app:hintAnimationEnabled="true"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
-                <com.google.android.material.textfield.TextInputLayout
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/edit_search"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="搜索用户名或邮箱"
-                    app:boxBackgroundMode="outline"
-                    app:startIconDrawable="@drawable/ic_search"
-                    app:endIconMode="clear_text"
-                    app:endIconCheckable="true">
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:imeOptions="actionSearch"
+                    android:textAppearance="?attr/textAppearanceBody1"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp" />
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/edit_search"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="text"
-                        android:maxLines="1"
-                        android:imeOptions="actionSearch" />
-
-                </com.google.android.material.textfield.TextInputLayout>
-
-            </com.google.android.material.card.MaterialCardView>
+            </com.google.android.material.textfield.TextInputLayout>
 
             <!-- 进度指示器 -->
             <FrameLayout

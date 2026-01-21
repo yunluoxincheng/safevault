@@ -21,6 +21,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ContactAdapter;
+import com.ttt.safevault.ui.MainActivity;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.service.manager.ContactManager;
@@ -149,6 +150,10 @@ public class ContactListFragment extends Fragment {
     public void onResume() {
         super.onResume();
         loadContacts();
+        // 刷新 MainActivity 的菜单以更新好友请求 Badge
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).refreshOptionsMenu();
+        }
     }
 
     private void loadContacts() {
@@ -379,5 +384,15 @@ public class ContactListFragment extends Fragment {
     private void openMyIdentity() {
         Intent intent = new Intent(requireContext(), MyIdentityActivity.class);
         startActivity(intent);
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        // 清理引用，避免内存泄漏
+        recyclerView = null;
+        swipeRefreshLayout = null;
+        emptyView = null;
+        adapter = null;
     }
 }

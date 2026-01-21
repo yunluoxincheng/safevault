@@ -352,7 +352,7 @@ public class MainActivity extends AppCompatActivity {
             currentDestinationId = navController.getCurrentDestination().getId();
         }
 
-        // 只在密码库页面显示搜索
+        // 密码库页面：显示搜索
         if (currentDestinationId == R.id.nav_passwords) {
             // 检查菜单是否已经存在，避免重复添加
             if (menu.findItem(R.id.action_search) == null) {
@@ -367,8 +367,15 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
+        }
+        // 联系人页面：显示好友请求
+        else if (currentDestinationId == R.id.nav_contacts) {
+            if (menu.findItem(R.id.action_friend_requests) == null) {
+                getMenuInflater().inflate(R.menu.contact_list_menu, menu);
+                updateFriendRequestBadge(menu);
+            }
         } else {
-            // 非密码库页面，清空菜单
+            // 其他页面，清空菜单
             menu.clear();
         }
 
@@ -454,9 +461,52 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // 处理好友请求菜单点击
+        if (item.getItemId() == R.id.action_friend_requests) {
+            Intent intent = new Intent(this, com.ttt.safevault.ui.friend.FriendRequestListActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    @Override
     public boolean onSupportNavigateUp() {
         return NavigationUI.navigateUp(navController, appBarConfiguration)
                 || super.onSupportNavigateUp();
+    }
+
+    /**
+     * 更新好友请求 Badge
+     */
+    private void updateFriendRequestBadge(Menu menu) {
+        MenuItem friendRequestItem = menu.findItem(R.id.action_friend_requests);
+        if (friendRequestItem == null) return;
+
+        // 在后台查询未读请求数量
+        new Thread(() -> {
+            int count = com.ttt.safevault.data.AppDatabase.getInstance(this)
+                    .friendRequestDao()
+                    .getPendingCount();
+
+            runOnUiThread(() -> {
+                if (count > 0) {
+                    // 显示 Badge 数量
+                    String badgeText = count > 9 ? "9+" : String.valueOf(count);
+                    friendRequestItem.setTitle("好友请求 (" + badgeText + ")");
+                } else {
+                    friendRequestItem.setTitle("好友请求");
+                }
+            });
+        }).start();
+    }
+
+    /**
+     * 刷新当前页面的菜单（供 Fragment 调用）
+     */
+    public void refreshOptionsMenu() {
+        invalidateOptionsMenu();
     }
 
     @Override

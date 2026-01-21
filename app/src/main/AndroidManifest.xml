@@ -83,7 +83,7 @@
             android:name=".ui.MainActivity"
             android:exported="false"
             android:screenOrientation="portrait"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
         <!-- 邮箱验证页面 -->
@@ -216,7 +216,7 @@
             android:name=".ui.friend.ContactSearchActivity"
             android:exported="false"
             android:screenOrientation="portrait"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
         <!-- 好友详情/聊天页面 -->
