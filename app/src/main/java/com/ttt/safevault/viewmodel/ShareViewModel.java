@@ -27,6 +27,7 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
 /**
  * 密码分享页面的ViewModel
  * 负责管理分享配置和创建分享
+ * 仅支持云端联系人分享
  */
 public class ShareViewModel extends AndroidViewModel {
     private static final String TAG = "ShareViewModel";
@@ -43,8 +44,6 @@ public class ShareViewModel extends AndroidViewModel {
     private final MutableLiveData<String> _shareResult = new MutableLiveData<>();
     private final MutableLiveData<Boolean> _shareSuccess = new MutableLiveData<>(false);
     private final MutableLiveData<PasswordItem> _passwordItem = new MutableLiveData<>();
-    private final MutableLiveData<String> _sharePassword = new MutableLiveData<>();
-    private final MutableLiveData<Boolean> _isOfflineShare = new MutableLiveData<>(false);
     private final MutableLiveData<ShareResponse> _cloudShareResponse = new MutableLiveData<>();
 
     public LiveData<Boolean> isLoading = _isLoading;
@@ -52,8 +51,6 @@ public class ShareViewModel extends AndroidViewModel {
     public LiveData<String> shareResult = _shareResult;
     public LiveData<Boolean> shareSuccess = _shareSuccess;
     public LiveData<PasswordItem> passwordItem = _passwordItem;
-    public LiveData<String> sharePassword = _sharePassword;
-    public LiveData<Boolean> isOfflineShare = _isOfflineShare;
     public LiveData<ShareResponse> cloudShareResponse = _cloudShareResponse;
 
     public ShareViewModel(@NonNull Application application, BackendService backendService) {
@@ -84,42 +81,6 @@ public class ShareViewModel extends AndroidViewModel {
     }
 
     /**
-     * 创建离线分享（二维码传输，版本2：扫码直接访问）
-     * @param passwordId 密码ID
-     * @param expireInMinutes 过期时间（分钟）
-     * @param permission 分享权限
-     */
-    public void createOfflineShare(int passwordId, int expireInMinutes,
-                                  SharePermission permission) {
-        _isLoading.setValue(true);
-        _errorMessage.setValue(null);
-        _shareSuccess.setValue(false);
-        _isOfflineShare.setValue(true);
-
-        executor.execute(() -> {
-            try {
-                // 创建离线分享（版本2：密钥已嵌入，无需密码）
-                String qrContent = backendService.createOfflineShare(
-                    passwordId, expireInMinutes, permission
-                );
-
-                if (qrContent != null && !qrContent.isEmpty()) {
-                    _shareResult.postValue(qrContent);
-                    _shareSuccess.postValue(true);
-                    // 版本2不需要分享密码
-                    _sharePassword.postValue(null);
-                } else {
-                    _errorMessage.postValue("创建离线分享失败");
-                }
-            } catch (Exception e) {
-                _errorMessage.postValue("创建离线分享失败: " + e.getMessage());
-            } finally {
-                _isLoading.postValue(false);
-            }
-        });
-    }
-
-    /**
      * 清除错误信息
      */
     public void clearError() {
@@ -135,9 +96,9 @@ public class ShareViewModel extends AndroidViewModel {
     }
 
     /**
-     * 创建云端分享（仅支持用户对用户端到端加密）
+     * 创建云端联系人分享
      * @param passwordId 密码ID
-     * @param toUserId 接收方用户ID
+     * @param toUserId 接收方用户ID（必须是好友）
      * @param expireInMinutes 过期时间
      * @param permission 分享权限
      */
