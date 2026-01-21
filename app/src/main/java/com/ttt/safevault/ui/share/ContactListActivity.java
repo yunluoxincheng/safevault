@@ -64,11 +64,7 @@ public class ContactListActivity extends AppCompatActivity {
         emptyView = findViewById(R.id.empty_view);
 
         FloatingActionButton fabAdd = findViewById(R.id.fabAdd);
-        fabAdd.setOnClickListener(v -> {
-            // 打开扫描添加联系人界面
-            Intent intent = new Intent(this, ScanContactActivity.class);
-            startActivity(intent);
-        });
+        fabAdd.setOnClickListener(v -> showAddContactBottomSheet());
 
         // 我的身份码按钮
         findViewById(R.id.btnMyIdentity).setOnClickListener(v -> {
@@ -180,5 +176,53 @@ public class ContactListActivity extends AppCompatActivity {
             return true;
         }
         return false;
+    }
+
+    private void showAddContactBottomSheet() {
+        com.google.android.material.bottomsheet.BottomSheetDialog bottomSheet =
+            new com.google.android.material.bottomsheet.BottomSheetDialog(this);
+
+        View sheetView = getLayoutInflater().inflate(R.layout.bottom_sheet_add_contact, null);
+
+        // 扫码添加
+        sheetView.findViewById(R.id.btn_scan_qr).setOnClickListener(v -> {
+            bottomSheet.dismiss();
+            Intent intent = new Intent(this, ScanContactActivity.class);
+            startActivity(intent);
+        });
+
+        // 搜索添加好友
+        sheetView.findViewById(R.id.btn_search_friend).setOnClickListener(v -> {
+            bottomSheet.dismiss();
+            checkLoginAndNavigateToSearch();
+        });
+
+        // 取消
+        sheetView.findViewById(R.id.btn_cancel).setOnClickListener(v -> bottomSheet.dismiss());
+
+        bottomSheet.setContentView(sheetView);
+        bottomSheet.show();
+    }
+
+    private void checkLoginAndNavigateToSearch() {
+        com.ttt.safevault.network.TokenManager tokenManager =
+            new com.ttt.safevault.network.TokenManager(this);
+
+        if (!tokenManager.isLoggedIn()) {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("需要登录")
+                .setMessage("搜索添加好友需要先登录云端账号")
+                .setPositiveButton("去登录", (dialog, which) -> {
+                    Intent intent = new Intent(this, com.ttt.safevault.ui.LoginActivity.class);
+                    startActivity(intent);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+            return;
+        }
+
+        // 已登录，跳转到搜索页面
+        Intent intent = new Intent(this, com.ttt.safevault.ui.friend.ContactSearchActivity.class);
+        startActivity(intent);
     }
 }
