@@ -12,8 +12,6 @@ import com.google.gson.Gson;
 import com.ttt.safevault.dto.OnlineUserMessage;
 import com.ttt.safevault.dto.ShareNotificationMessage;
 
-import java.util.concurrent.TimeUnit;
-
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -21,15 +19,15 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 /**
- * WebSocket管理器
+ * WebSocket管理器 - 使用STOMP协议
  * 处理实时分享通知和在线用户更新
  * 支持心跳和自动重连机制
  */
 public class WebSocketManager {
     private static final String TAG = "WebSocketManager";
-    private static final long HEARTBEAT_INTERVAL = 30000; // 30秒心跳
-    private static final int MAX_RECONNECT_ATTEMPTS = 5; // 最大重连次数
-    private static final long RECONNECT_DELAY = 5000; // 重连延迟5秒
+    private static final int MAX_RECONNECT_ATTEMPTS = 5;
+    private static final long RECONNECT_DELAY = 5000;
+    private static final long HEARTBEAT_INTERVAL = 30000; // 30秒
 
     private WebSocket webSocket;
     private OkHttpClient client;
@@ -38,9 +36,11 @@ public class WebSocketManager {
     private boolean isConnected = false;
     private boolean isManualClose = false;
     private int reconnectAttempts = 0;
-    private Handler heartbeatHandler;
+    private final Handler reconnectHandler;
+    private final Handler heartbeatHandler;
     private Runnable heartbeatRunnable;
     private final Context context;
+    private String currentToken;
 
     public interface WebSocketEventListener {
         void onShareNotification(ShareNotificationMessage notification);
@@ -48,19 +48,18 @@ public class WebSocketManager {
         void onConnectionOpened();
         void onConnectionClosed();
         void onError(String error);
-        void onConnectionLost(); // 新增：连接丢失回调
+        void onConnectionLost();
     }
 
     public WebSocketManager(Context context) {
         this.context = context.getApplicationContext();
         this.gson = new Gson();
+        this.reconnectHandler = new Handler(Looper.getMainLooper());
         this.heartbeatHandler = new Handler(Looper.getMainLooper());
     }
 
     /**
-     * 连接WebSocket
-     * @param token 认证Token
-     * @param listener 事件监听器
+     * 连接WebSocket (使用STOMP协议)
      */
     public void connect(String token, WebSocketEventListener listener) {
         if (isConnected && webSocket != null) {
@@ -71,20 +70,188 @@ public class WebSocketManager {
         this.eventListener = listener;
         this.isManualClose = false;
         this.reconnectAttempts = 0;
+        this.currentToken = token;
 
-        // 创建客户端，配置心跳
-        client = new OkHttpClient.Builder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .pingInterval(HEARTBEAT_INTERVAL, TimeUnit.MILLISECONDS)
-            .build();
+        // 创建配置了SSL的OkHttpClient
+        client = SslUtils.createOkHttpClient(0, 0);
 
+        // 构建WebSocket请求
         Request request = new Request.Builder()
-            .url(ApiConstants.WS_URL + "?token=" + token)
-            .build();
+                .url(ApiConstants.WS_URL)
+                .build();
 
-        webSocket = client.newWebSocket(request, new ReconnectWebSocketListener());
+        webSocket = client.newWebSocket(request, new StompWebSocketListener());
+    }
 
-        startHeartbeat();
+    /**
+     * WebSocket监听器 - 处理STOMP协议
+     */
+    private class StompWebSocketListener extends WebSocketListener {
+        @Override
+        public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+            Log.d(TAG, "WebSocket connection opened");
+            // 发送STOMP CONNECT帧
+            sendStompConnect();
+        }
+
+        @Override
+        public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
+            Log.d(TAG, "Raw message received: " + text);
+            handleStompMessage(text);
+        }
+
+        @Override
+        public void onClosing(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
+            Log.d(TAG, "WebSocket closing: " + reason);
+        }
+
+        @Override
+        public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
+            Log.d(TAG, "WebSocket closed: " + reason);
+            isConnected = false;
+            stopHeartbeat();
+            if (!isManualClose) {
+                scheduleReconnect();
+            }
+            if (eventListener != null) {
+                eventListener.onConnectionClosed();
+            }
+        }
+
+        @Override
+        public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
+            Log.e(TAG, "WebSocket failure", t);
+            isConnected = false;
+            stopHeartbeat();
+            if (!isManualClose) {
+                scheduleReconnect();
+            }
+            if (eventListener != null) {
+                eventListener.onError(t.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 发送STOMP CONNECT帧
+     */
+    private void sendStompConnect() {
+        String connectFrame = "CONNECT\n" +
+                "accept-version:1.2,1.1,1.0\n" +
+                "heart-beat:30000,30000\n" +
+                "Authorization:" + currentToken + "\n" +
+                "\n\u0000";
+        webSocket.send(connectFrame);
+        Log.d(TAG, "STOMP CONNECT frame sent");
+    }
+
+    /**
+     * 订阅主题
+     */
+    private void subscribeToTopics(String userId) {
+        // 订阅用户特定的分享通知topic
+        String subscribeShares = "SUBSCRIBE\n" +
+                "id:sub-0\n" +
+                "destination:/user/" + userId + "/queue/shares\n" +
+                "\n\u0000";
+        webSocket.send(subscribeShares);
+        Log.d(TAG, "Subscribed to /user/" + userId + "/queue/shares");
+
+        // 订阅用户特定的在线用户更新topic
+        String subscribeOnlineUsers = "SUBSCRIBE\n" +
+                "id:sub-1\n" +
+                "destination:/user/" + userId + "/queue/online-users\n" +
+                "\n\u0000";
+        webSocket.send(subscribeOnlineUsers);
+        Log.d(TAG, "Subscribed to /user/" + userId + "/queue/online-users");
+
+        // 订阅公共的在线用户topic
+        String subscribePublicOnline = "SUBSCRIBE\n" +
+                "id:sub-2\n" +
+                "destination:/topic/online-users\n" +
+                "\n\u0000";
+        webSocket.send(subscribePublicOnline);
+        Log.d(TAG, "Subscribed to /topic/online-users");
+    }
+
+    /**
+     * 处理STOMP消息
+     */
+    private void handleStompMessage(String message) {
+        if (message.startsWith("CONNECTED")) {
+            Log.d(TAG, "STOMP connected successfully");
+            isConnected = true;
+            reconnectAttempts = 0;
+
+            // 订阅主题
+            String userId = TokenManager.getInstance(context).getUserId();
+            if (userId != null) {
+                subscribeToTopics(userId);
+            }
+
+            // 启动心跳
+            startHeartbeat();
+
+            if (eventListener != null) {
+                eventListener.onConnectionOpened();
+            }
+        } else if (message.startsWith("MESSAGE")) {
+            handleStompDataMessage(message);
+        } else if (message.startsWith("ERROR")) {
+            Log.e(TAG, "STOMP error: " + message);
+        }
+    }
+
+    /**
+     * 处理STOMP数据消息
+     */
+    private void handleStompDataMessage(String message) {
+        try {
+            // STOMP MESSAGE格式:
+            // MESSAGE
+            // destination:/user/xxx/queue/shares
+            // content-type:application/json
+            //
+            // {JSON payload}\u0000
+
+            String payload = extractStompPayload(message);
+            if (payload == null || payload.isEmpty()) {
+                return;
+            }
+
+            // 根据destination判断消息类型
+            if (message.contains("/queue/shares")) {
+                ShareNotificationMessage notification = gson.fromJson(payload, ShareNotificationMessage.class);
+                if (eventListener != null) {
+                    eventListener.onShareNotification(notification);
+                }
+            } else if (message.contains("/queue/online-users") || message.contains("/topic/online-users")) {
+                OnlineUserMessage userMessage = gson.fromJson(payload, OnlineUserMessage.class);
+                if (eventListener != null) {
+                    eventListener.onOnlineUserUpdate(userMessage);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to parse STOMP message", e);
+        }
+    }
+
+    /**
+     * 从STOMP消息中提取payload
+     */
+    private String extractStompPayload(String stompMessage) {
+        // STOMP消息格式：headers空行payload\u0000
+        int doubleNewlineIndex = stompMessage.indexOf("\n\n");
+        if (doubleNewlineIndex == -1) {
+            return null;
+        }
+
+        String payload = stompMessage.substring(doubleNewlineIndex + 2);
+        // 移除结尾的\u0000
+        if (payload.endsWith("\u0000")) {
+            payload = payload.substring(0, payload.length() - 1);
+        }
+        return payload;
     }
 
     /**
@@ -96,8 +263,8 @@ public class WebSocketManager {
             @Override
             public void run() {
                 if (webSocket != null && isConnected) {
-                    // 发送心跳包
-                    webSocket.send("{\"type\":\"ping\"}");
+                    // STOMP心跳是一个换行符
+                    webSocket.send("\n");
                     Log.d(TAG, "Heartbeat sent");
                 }
                 heartbeatHandler.postDelayed(this, HEARTBEAT_INTERVAL);
@@ -116,11 +283,10 @@ public class WebSocketManager {
     }
 
     /**
-     * 重连WebSocket
+     * 安排重连
      */
-    private void reconnect() {
+    private void scheduleReconnect() {
         if (isManualClose) {
-            Log.i(TAG, "Manual close, skip reconnect");
             return;
         }
 
@@ -133,11 +299,12 @@ public class WebSocketManager {
         }
 
         reconnectAttempts++;
-        Log.i(TAG, "Reconnecting... attempt " + reconnectAttempts);
+        Log.i(TAG, "Scheduling reconnect... attempt " + reconnectAttempts);
 
-        heartbeatHandler.postDelayed(() -> {
+        reconnectHandler.postDelayed(() -> {
             String token = TokenManager.getInstance(context).getAccessToken();
             if (token != null) {
+                disconnect();
                 connect(token, eventListener);
             }
         }, RECONNECT_DELAY);
@@ -148,17 +315,27 @@ public class WebSocketManager {
      */
     public void disconnect() {
         isManualClose = true;
+        isConnected = false;
         stopHeartbeat();
+
         if (webSocket != null) {
+            // 发送DISCONNECT帧
+            try {
+                webSocket.send("DISCONNECT\n\u0000");
+            } catch (Exception e) {
+                Log.e(TAG, "Error sending DISCONNECT", e);
+            }
             webSocket.close(1000, "Manual close");
             webSocket = null;
-            isConnected = false;
         }
+
         if (client != null) {
             client.dispatcher().executorService().shutdown();
             client.connectionPool().evictAll();
             client = null;
         }
+
+        reconnectHandler.removeCallbacksAndMessages(null);
     }
 
     /**
@@ -166,95 +343,11 @@ public class WebSocketManager {
      */
     public void sendHeartbeat() {
         if (webSocket != null && isConnected) {
-            webSocket.send("{\"type\":\"ping\"}");
-        }
-    }
-
-    /**
-     * 重连监听器
-     */
-    private class ReconnectWebSocketListener extends WebSocketListener {
-        @Override
-        public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
-            isConnected = true;
-            reconnectAttempts = 0; // 重置重连次数
-            Log.d(TAG, "WebSocket connected");
-            if (eventListener != null) {
-                eventListener.onConnectionOpened();
-            }
-        }
-
-        @Override
-        public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
-            Log.d(TAG, "WebSocket message received: " + text);
-            handleMessage(text);
-        }
-
-        @Override
-        public void onClosing(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
-            Log.d(TAG, "WebSocket closing: " + reason);
-        }
-
-        @Override
-        public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
-            isConnected = false;
-            Log.d(TAG, "WebSocket closed: " + reason);
-            stopHeartbeat();
-
-            if (!isManualClose) {
-                reconnect();
-            }
-
-            if (eventListener != null) {
-                eventListener.onConnectionClosed();
-            }
-        }
-
-        @Override
-        public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
-            isConnected = false;
-            Log.e(TAG, "WebSocket failure", t);
-            stopHeartbeat();
-
-            if (!isManualClose) {
-                reconnect();
-            }
-
-            if (eventListener != null) {
-                eventListener.onError(t.getMessage());
-            }
-        }
-    }
-
-    /**
-     * 处理收到的消息
-     */
-    private void handleMessage(String message) {
-        try {
-            // 简单解析消息类型
-            if (message.contains("\"type\":\"SHARE_NOTIFICATION\"") ||
-                message.contains("\"type\":\"NEW_SHARE\"") ||
-                message.contains("\"type\":\"NEW_DIRECT_SHARE\"") ||
-                message.contains("\"type\":\"SHARE_REVOKED\"") ||
-                message.contains("\"type\":\"FRIEND_REQUEST\"") ||
-                message.contains("\"type\":\"FRIEND_REQUEST_ACCEPTED\"") ||
-                message.contains("\"type\":\"FRIEND_DELETED\"")) {
-                ShareNotificationMessage notification = gson.fromJson(message, ShareNotificationMessage.class);
-                if (eventListener != null) {
-                    eventListener.onShareNotification(notification);
-                }
-            } else if (message.contains("\"type\":\"ONLINE_USER\"")) {
-                OnlineUserMessage userMessage = gson.fromJson(message, OnlineUserMessage.class);
-                if (eventListener != null) {
-                    eventListener.onOnlineUserUpdate(userMessage);
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to parse WebSocket message", e);
+            webSocket.send("\n");
         }
     }
 
     public boolean isConnected() {
-        return isConnected;
+        return isConnected && webSocket != null;
     }
 }
