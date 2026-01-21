@@ -32,6 +32,7 @@ public class ContactListActivity extends AppCompatActivity {
     private View emptyView;
     private ContactAdapter adapter;
     private ContactManager contactManager;
+    private com.google.android.material.badge.BadgeDrawable friendRequestBadge;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +52,22 @@ public class ContactListActivity extends AppCompatActivity {
         // Inflate toolbar menu
         toolbar.inflateMenu(R.menu.contact_list_menu);
         toolbar.setOnMenuItemClickListener(this::onMenuItemClick);
+
+        // Setup badge for friend requests (delay to ensure menu is prepared)
+        toolbar.post(() -> {
+            friendRequestBadge = com.google.android.material.badge.BadgeDrawable.create(this);
+            friendRequestBadge.setHorizontalOffset(8);
+            friendRequestBadge.setVerticalOffset(8);
+            android.view.MenuItem friendRequestItem = toolbar.getMenu().findItem(R.id.action_friend_requests);
+            android.view.View menuItemView = toolbar.findViewById(R.id.action_friend_requests);
+            if (menuItemView != null) {
+                com.google.android.material.badge.BadgeUtils.attachBadgeDrawable(
+                    friendRequestBadge,
+                    menuItemView,
+                    (android.widget.FrameLayout) menuItemView.getParent()
+                );
+            }
+        });
 
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
@@ -74,9 +91,16 @@ public class ContactListActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        updateFriendRequestBadge();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         loadContacts();
+        updateFriendRequestBadge();
     }
 
     private void loadContacts() {
@@ -224,5 +248,28 @@ public class ContactListActivity extends AppCompatActivity {
         // 已登录，跳转到搜索页面
         Intent intent = new Intent(this, com.ttt.safevault.ui.friend.ContactSearchActivity.class);
         startActivity(intent);
+    }
+
+    private void updateFriendRequestBadge() {
+        new Thread(() -> {
+            int count = com.ttt.safevault.data.AppDatabase.getInstance(this)
+                .friendRequestDao()
+                .getPendingCount();
+
+            runOnUiThread(() -> {
+                if (friendRequestBadge == null) return;
+                if (count > 0) {
+                    friendRequestBadge.setVisible(true);
+                    friendRequestBadge.setNumber(Math.min(count, 9));
+                    if (count > 9) {
+                        friendRequestBadge.setBadgeTextColor(
+                            getResources().getColor(android.R.color.white, getTheme())
+                        );
+                    }
+                } else {
+                    friendRequestBadge.setVisible(false);
+                }
+            });
+        }).start();
     }
 }
