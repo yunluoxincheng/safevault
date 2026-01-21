@@ -48,6 +48,10 @@ public class ContactListActivity extends AppCompatActivity {
         toolbar = findViewById(R.id.toolbar);
         toolbar.setNavigationOnClickListener(v -> finish());
 
+        // Inflate toolbar menu
+        toolbar.inflateMenu(R.menu.contact_list_menu);
+        toolbar.setOnMenuItemClickListener(this::onMenuItemClick);
+
         recyclerView = findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
 
@@ -166,5 +170,15 @@ public class ContactListActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    private boolean onMenuItemClick(android.view.MenuItem item) {
+        if (item.getItemId() == R.id.action_friend_requests) {
+            // 打开好友请求列表
+            Intent intent = new Intent(this, com.ttt.safevault.ui.friend.FriendRequestListActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        return false;
     }
 }
