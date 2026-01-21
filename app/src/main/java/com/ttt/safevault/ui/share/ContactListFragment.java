@@ -114,7 +114,7 @@ public class ContactListFragment extends Fragment {
         // 添加联系人浮动按钮
         FloatingActionButton fabAdd = view.findViewById(R.id.fabAdd);
         if (fabAdd != null) {
-            fabAdd.setOnClickListener(v -> openScanContact());
+            fabAdd.setOnClickListener(v -> showAddContactBottomSheet());
         }
 
         // 我的身份码按钮
@@ -325,6 +325,54 @@ public class ContactListFragment extends Fragment {
 
     private void openScanContact() {
         Intent intent = new Intent(requireContext(), ScanContactActivity.class);
+        startActivity(intent);
+    }
+
+    private void showAddContactBottomSheet() {
+        com.google.android.material.bottomsheet.BottomSheetDialog bottomSheet =
+            new com.google.android.material.bottomsheet.BottomSheetDialog(requireContext());
+
+        View sheetView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.bottom_sheet_add_contact, null);
+
+        // 扫码添加
+        sheetView.findViewById(R.id.btn_scan_qr).setOnClickListener(v -> {
+            bottomSheet.dismiss();
+            openScanContact();
+        });
+
+        // 搜索添加好友
+        sheetView.findViewById(R.id.btn_search_friend).setOnClickListener(v -> {
+            bottomSheet.dismiss();
+            checkLoginAndNavigateToSearch();
+        });
+
+        // 取消
+        sheetView.findViewById(R.id.btn_cancel).setOnClickListener(v -> bottomSheet.dismiss());
+
+        bottomSheet.setContentView(sheetView);
+        bottomSheet.show();
+    }
+
+    private void checkLoginAndNavigateToSearch() {
+        com.ttt.safevault.network.TokenManager tokenManager =
+            new com.ttt.safevault.network.TokenManager(requireContext());
+
+        if (!tokenManager.isLoggedIn()) {
+            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setTitle("需要登录")
+                .setMessage("搜索添加好友需要先登录云端账号")
+                .setPositiveButton("去登录", (dialog, which) -> {
+                    Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.LoginActivity.class);
+                    startActivity(intent);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+            return;
+        }
+
+        // 已登录，跳转到搜索页面
+        Intent intent = new Intent(requireContext(), com.ttt.safevault.ui.friend.ContactSearchActivity.class);
         startActivity(intent);
     }
 
