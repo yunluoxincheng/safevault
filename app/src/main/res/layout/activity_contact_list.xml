@@ -66,7 +66,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="点击右下角按钮扫描添加"
+                    android:text="点击右下角按钮添加联系人（扫码或搜索好友）"
                     android:textAppearance="?attr/textAppearanceBody2"
                     android:textColor="?android:textColorTertiary" />
 
