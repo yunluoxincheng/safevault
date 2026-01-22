@@ -68,6 +68,13 @@
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
             app:popExitAnim="@anim/slide_out_right" />
+        <action
+            android:id="@+id/action_settingsFragment_to_syncSettingsFragment"
+            app:destination="@id/syncSettingsFragment"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <!-- 账户安全设置页面 -->
@@ -90,6 +97,13 @@
         android:name="com.ttt.safevault.ui.AboutFragment"
         android:label="关于"
         tools:layout="@layout/fragment_about" />
+
+    <!-- 云同步设置页面 -->
+    <fragment
+        android:id="@+id/syncSettingsFragment"
+        android:name="com.ttt.safevault.ui.SyncSettingsFragment"
+        android:label="@string/cloud_sync"
+        tools:layout="@layout/fragment_sync_settings" />
 
     <!-- 密码详情页面 (子页面) -->
     <fragment
