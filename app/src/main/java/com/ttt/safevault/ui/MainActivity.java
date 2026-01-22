@@ -29,6 +29,7 @@ import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.service.ShareNotificationService;
+import com.ttt.safevault.sync.SyncTrigger;
 import com.ttt.safevault.utils.SearchHistoryManager;
 import com.ttt.safevault.viewmodel.PasswordListViewModel;
 
@@ -551,6 +552,11 @@ public class MainActivity extends AppCompatActivity {
 
         // 应用从后台返回时，检查是否需要重新锁定
         checkAutoLock();
+
+        // 新增：解锁后触发同步（仅在真正从后台返回时）
+        if (backendService != null && backendService.getBackgroundTime() > 0) {
+            SyncTrigger.getInstance(this).triggerSyncOnUnlock();
+        }
     }
 
     /**
