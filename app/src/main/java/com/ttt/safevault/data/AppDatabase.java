@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 /**
  * SafeVault应用数据库
  */
-@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class, FriendRequest.class}, version = 4, exportSchema = false)
+@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class, FriendRequest.class, SyncOperationEntity.class}, version = 5, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     private static final String DATABASE_NAME = "safevault_db";
@@ -21,6 +21,7 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract ContactDao contactDao();
     public abstract ShareRecordDao shareRecordDao();
     public abstract FriendRequestDao friendRequestDao();
+    public abstract SyncOperationDao syncOperationDao();
 
     // 数据库版本1到版本2的迁移：添加 encryptedTags 字段
     private static final Migration MIGRATION_1_2 = new Migration(1, 2) {
@@ -101,6 +102,27 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    // 数据库版本4到版本5的迁移：添加同步操作表
+    private static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 创建同步操作表
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS sync_operations (" +
+                "operationId TEXT PRIMARY KEY NOT NULL, " +
+                "operationType TEXT NOT NULL, " +
+                "passwordId INTEGER, " +
+                "timestamp INTEGER NOT NULL, " +
+                "retryCount INTEGER NOT NULL, " +
+                "status TEXT NOT NULL)"
+            );
+
+            // 创建索引
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_sync_operations_status ON sync_operations(status)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_sync_operations_timestamp ON sync_operations(timestamp)");
+        }
+    };
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -109,7 +131,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             context.getApplicationContext(),
                             AppDatabase.class,
                             DATABASE_NAME
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                      .build();
                 }
             }
