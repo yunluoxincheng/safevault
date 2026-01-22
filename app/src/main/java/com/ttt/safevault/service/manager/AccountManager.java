@@ -41,6 +41,40 @@ public class AccountManager {
     // 会话期间临时存储的主密码（用于当前会话）
     private String sessionMasterPassword;
 
+    // 用于从 CryptoManager 访问 AccountManager 的弱引用
+    private static volatile Context applicationContext;
+    private static volatile android.content.SharedPreferences appPrefs;
+
+    // 静态初始化：设置会话密码提供者
+    static {
+        com.ttt.safevault.crypto.CryptoManager.setSessionPasswordProvider(() -> {
+            if (applicationContext != null && appPrefs != null) {
+                try {
+                    String encryptedPassword = appPrefs.getString(PREF_BIOMETRIC_ENCRYPTED_PASSWORD, null);
+                    String ivString = appPrefs.getString(PREF_BIOMETRIC_IV, null);
+
+                    if (encryptedPassword != null && ivString != null) {
+                        BiometricKeyManager keyManager = BiometricKeyManager.getInstance();
+                        if (keyManager != null) {
+                            byte[] encrypted = android.util.Base64.decode(encryptedPassword, android.util.Base64.NO_WRAP);
+                            byte[] iv = android.util.Base64.decode(ivString, android.util.Base64.NO_WRAP);
+
+                            Cipher cipher = keyManager.getDecryptCipher(iv);
+                            byte[] decrypted = cipher.doFinal(encrypted);
+                            Log.d(TAG, "Master password restored from biometric storage");
+                            return new String(decrypted, StandardCharsets.UTF_8);
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to get master password from provider", e);
+                }
+            }
+            Log.w(TAG, "Master password provider: no credentials available");
+            return null;
+        });
+        Log.d(TAG, "Session password provider registered in CryptoManager");
+    }
+
     public AccountManager(@NonNull Context context,
                          @NonNull CryptoManager cryptoManager,
                          @NonNull PasswordManager passwordManager,
@@ -53,6 +87,10 @@ public class AccountManager {
         this.retrofitClient = retrofitClient;
         this.tokenManager = retrofitClient.getTokenManager();
         this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
+
+        // 保存引用供静态提供者使用
+        applicationContext = this.context;
+        appPrefs = this.prefs;
 
         // 初始化生物识别密钥管理器
         BiometricKeyManager keyManager = null;
@@ -461,13 +499,16 @@ public class AccountManager {
 
     /**
      * 设置当前会话的主密码
-     * 注意：主密码仅在内存中临时存储，不持久化到磁盘
+     * 注意：主密码会被保存到内存和生物识别存储（用于会话恢复）
      *
      * @param masterPassword 主密码
      */
     public void setSessionMasterPassword(@NonNull String masterPassword) {
         this.sessionMasterPassword = masterPassword;
-        Log.d(TAG, "Session master password set");
+        // 同时保存到生物识别存储，供会话恢复时使用
+        // 即使用户未启用生物识别，也保存密码以便云端同步功能正常工作
+        saveMasterPasswordForBiometric(masterPassword);
+        Log.d(TAG, "Session master password set and saved for recovery");
     }
 
     /**

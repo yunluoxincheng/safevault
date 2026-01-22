@@ -57,6 +57,24 @@ public class CryptoManager {
     private boolean isUnlocked = false;
     private String sessionPassword; // 临时会话密码（仅用于导出/导入操作）
 
+    /**
+     * 会话密码提供者接口
+     * 用于在会话恢复时获取主密码
+     */
+    public interface SessionPasswordProvider {
+        String getMasterPassword();
+    }
+
+    private static volatile SessionPasswordProvider sessionPasswordProvider;
+
+    /**
+     * 设置会话密码提供者
+     * 应该在应用初始化时由 AccountManager 调用
+     */
+    public static void setSessionPasswordProvider(SessionPasswordProvider provider) {
+        sessionPasswordProvider = provider;
+    }
+
     public CryptoManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -220,7 +238,15 @@ public class CryptoManager {
             throw new IllegalStateException("CryptoManager is locked");
         }
 
-        // 会话恢复后，密码可能为空
+        // 如果内存中没有密码，尝试从会话密码提供者获取
+        if (sessionPassword == null && sessionPasswordProvider != null) {
+            Log.d(TAG, "Session password is null, trying to get from provider");
+            sessionPassword = sessionPasswordProvider.getMasterPassword();
+            if (sessionPassword != null) {
+                Log.d(TAG, "Session password restored from provider");
+            }
+        }
+
         return sessionPassword;
     }
 
@@ -449,27 +475,39 @@ public class CryptoManager {
                 clearSessionKey();
                 return false;
             }
-            
+
             // 获取 Keystore 密钥
             SecretKey keystoreKey = getKeystoreKey();
             if (keystoreKey == null) {
                 Log.e(TAG, "Keystore key not found");
                 return false;
             }
-            
+
             // 解密主密钥
             byte[] encryptedKey = Base64.decode(encryptedKeyBase64, Base64.NO_WRAP);
             byte[] iv = Base64.decode(ivBase64, Base64.NO_WRAP);
-            
+
             Cipher cipher = Cipher.getInstance(ALGORITHM);
             GCMParameterSpec spec = new GCMParameterSpec(TAG_SIZE, iv);
             cipher.init(Cipher.DECRYPT_MODE, keystoreKey, spec);
-            
+
             byte[] keyBytes = cipher.doFinal(encryptedKey);
-            
+
             this.masterKey = new SecretKeySpec(keyBytes, "AES");
             this.isUnlocked = true;
-            
+
+            // 尝试恢复会话密码（用于云端同步）
+            if (sessionPasswordProvider != null) {
+                this.sessionPassword = sessionPasswordProvider.getMasterPassword();
+                if (this.sessionPassword != null) {
+                    Log.d(TAG, "Session password restored from provider");
+                } else {
+                    Log.d(TAG, "Session password provider returned null (user may not have biometric enabled)");
+                }
+            } else {
+                Log.d(TAG, "No session password provider available");
+            }
+
             Log.d(TAG, "Session restored successfully");
             return true;
         } catch (Exception e) {

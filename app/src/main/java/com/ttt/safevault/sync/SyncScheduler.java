@@ -156,8 +156,9 @@ public class SyncScheduler {
     /**
      * 手动触发同步（带条件检查）
      * 检查同步是否启用、网络是否可用、WiFi 限制等
+     * @param showConflictDialog 是否显示冲突解决对话框（下拉刷新时应该显示）
      */
-    public void syncNowIfAllowed() {
+    public void syncNowIfAllowed(boolean showConflictDialog) {
         SyncConfig config = syncStateManager.getCurrentConfig();
         if (config == null) {
             Log.w(TAG, "SyncConfig is null, cannot check sync permissions");
@@ -193,6 +194,11 @@ public class SyncScheduler {
             @Override
             public void onSyncConflict(long cloudVersion, long localVersion) {
                 Log.w(TAG, "Manual sync conflict: cloud=" + cloudVersion + ", local=" + localVersion);
+
+                // 如果需要显示冲突对话框，通过发送广播通知 UI 层
+                if (showConflictDialog) {
+                    showConflictResolutionDialog(cloudVersion, localVersion);
+                }
             }
 
             @Override
@@ -200,6 +206,28 @@ public class SyncScheduler {
                 Log.e(TAG, "Manual sync failed: " + errorMessage);
             }
         });
+    }
+
+    /**
+     * 手动触发同步（带条件检查）
+     * 检查同步是否启用、网络是否可用、WiFi 限制等
+     * 默认不显示冲突对话框（兼容旧调用）
+     */
+    public void syncNowIfAllowed() {
+        syncNowIfAllowed(false);
+    }
+
+    /**
+     * 显示冲突解决对话框
+     * 通过发送广播让前台的 Activity/Fragment 处理
+     */
+    private void showConflictResolutionDialog(long cloudVersion, long localVersion) {
+        android.content.Intent intent = new android.content.Intent("com.ttt.safevault.ACTION_SYNC_CONFLICT");
+        intent.setPackage(context.getPackageName());
+        intent.putExtra("cloudVersion", cloudVersion);
+        intent.putExtra("localVersion", localVersion);
+        context.sendBroadcast(intent);
+        Log.d(TAG, "Sent sync conflict broadcast");
     }
 
     /**

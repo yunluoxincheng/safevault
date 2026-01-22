@@ -1,6 +1,9 @@
 package com.ttt.safevault.ui;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -10,6 +13,7 @@ import android.view.MenuItem;
 import android.view.View;
 
 import com.ttt.safevault.SafeVaultApplication;
+import com.ttt.safevault.sync.VaultSyncManager;
 
 import java.util.List;
 
@@ -24,6 +28,7 @@ import androidx.navigation.ui.NavigationUI;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
@@ -48,6 +53,9 @@ public class MainActivity extends AppCompatActivity {
     private SearchHistoryManager searchHistoryManager;
     private BottomNavigationView bottomNavigationView;
     private FloatingActionButton fabAddPassword;
+
+    // 同步冲突广播接收器
+    private BroadcastReceiver syncConflictReceiver;
 
     // Search debounce handler
     private Handler searchDebounceHandler;
@@ -117,6 +125,9 @@ public class MainActivity extends AppCompatActivity {
         initFab();
         initViewModel();
         initCloudServices();
+
+        // 注册同步冲突广播接收器
+        registerSyncConflictReceiver();
 
         // 处理从自动填充返回的意图
         handleAutofillIntent();
@@ -683,9 +694,98 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
 
+        // 注销同步冲突广播接收器
+        if (syncConflictReceiver != null) {
+            unregisterReceiver(syncConflictReceiver);
+            syncConflictReceiver = null;
+        }
+
         // 清理 debounce handler
         if (searchDebounceHandler != null) {
             searchDebounceHandler.removeCallbacksAndMessages(null);
         }
+    }
+
+    /**
+     * 注册同步冲突广播接收器
+     */
+    private void registerSyncConflictReceiver() {
+        syncConflictReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+
+                long cloudVersion = intent.getLongExtra("cloudVersion", 0);
+                long localVersion = intent.getLongExtra("localVersion", 0);
+
+                android.util.Log.d("MainActivity", "Received sync conflict broadcast: cloud=" + cloudVersion + ", local=" + localVersion);
+
+                // 显示冲突解决对话框
+                showSyncConflictDialog(cloudVersion, localVersion);
+            }
+        };
+
+        IntentFilter filter = new IntentFilter("com.ttt.safevault.ACTION_SYNC_CONFLICT");
+
+        // Android 14+ 需要指定 RECEIVER_EXPORTED 或 RECEIVER_NOT_EXPORTED
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(syncConflictReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(syncConflictReceiver, filter);
+        }
+        android.util.Log.d("MainActivity", "Registered sync conflict broadcast receiver");
+    }
+
+    /**
+     * 显示同步冲突解决对话框
+     */
+    private void showSyncConflictDialog(long cloudVersion, long localVersion) {
+        if (isFinishing()) {
+            return;
+        }
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("数据冲突")
+                .setMessage("检测到数据冲突：\n云端版本: " + cloudVersion + "\n本地版本: " + localVersion + "\n\n请选择如何解决：")
+                .setPositiveButton("使用云端数据", (dialog, which) -> {
+                    android.util.Log.d("MainActivity", "User chose USE_CLOUD");
+                    resolveSyncConflict(VaultSyncManager.SyncStrategy.USE_CLOUD);
+                })
+                .setNegativeButton("使用本地数据", (dialog, which) -> {
+                    android.util.Log.d("MainActivity", "User chose USE_LOCAL");
+                    resolveSyncConflict(VaultSyncManager.SyncStrategy.USE_LOCAL);
+                })
+                .setNeutralButton("取消", (dialog, which) -> {
+                    android.util.Log.d("MainActivity", "User chose CANCEL");
+                    resolveSyncConflict(VaultSyncManager.SyncStrategy.CANCEL);
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    /**
+     * 解决同步冲突
+     */
+    private void resolveSyncConflict(VaultSyncManager.SyncStrategy strategy) {
+        VaultSyncManager vaultSyncManager = VaultSyncManager.getInstance(this);
+        vaultSyncManager.resolveConflict(strategy, new VaultSyncManager.SyncCallback() {
+            @Override
+            public void onSyncSuccess(long newVersion) {
+                android.widget.Toast.makeText(MainActivity.this, "冲突已解决，版本: " + newVersion, android.widget.Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onSyncConflict(long cloudVersion, long localVersion) {
+                // 不应该再次发生冲突
+                android.widget.Toast.makeText(MainActivity.this, "冲突解决失败", android.widget.Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onSyncFailure(String errorMessage) {
+                android.widget.Toast.makeText(MainActivity.this, "冲突解决失败: " + errorMessage, android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
     }
 }

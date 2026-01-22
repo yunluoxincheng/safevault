@@ -362,24 +362,34 @@ public class LoginActivity extends AppCompatActivity {
                     );
             accountManager.setCurrentUserEmail(email);
 
-            // 初始化 CryptoManager
+            // 初始化加密环境（通过 BackendService，确保密码正确保存）
+            com.ttt.safevault.model.BackendService backendService =
+                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+            // 检查用户是否已初始化（老用户使用 unlock，新用户使用 initialize）
+            // initialize() 会生成新的盐值，改变后会无法解密旧数据！
             com.ttt.safevault.crypto.CryptoManager cryptoManager =
                     com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
 
-            // 云端登录成功后，直接初始化本地加密环境
-            // 因为云端已经验证了主密码，我们可以信任这个密码
-            // 注意：initialize() 会覆盖之前的盐值（如果有）
-            if (!cryptoManager.initialize(password)) {
+            boolean isInitialized = cryptoManager.isInitialized();
+            android.util.Log.d(TAG, "用户已初始化状态: " + isInitialized);
+
+            boolean unlockSuccess;
+            if (isInitialized) {
+                // 老用户：使用 unlock()，保持原有盐值
+                android.util.Log.d(TAG, "老用户登录，使用 unlock() 保持原有盐值");
+                unlockSuccess = backendService.unlock(password);
+            } else {
+                // 新用户：使用 initialize()，生成新盐值
+                android.util.Log.d(TAG, "新用户登录，使用 initialize() 生成新盐值");
+                unlockSuccess = backendService.initialize(password);
+            }
+
+            if (!unlockSuccess) {
                 showError("初始化加密环境失败");
                 return;
             }
-
-            // 登录成功后，如果用户启用了生物识别，保存主密码用于生物识别解锁
-            saveMasterPasswordForBiometricIfNeeded(password);
-
-            // 保存会话密码到内存（无论是否启用生物识别都需要保存）
-            accountManager.setSessionMasterPassword(password);
-            android.util.Log.d(TAG, "会话密码已保存到内存");
+            android.util.Log.d(TAG, "加密环境已成功解锁，密码已保存到生物识别存储");
 
             // 处理新设备数据恢复
             if (response.getIsNewDevice() != null && response.getIsNewDevice()) {

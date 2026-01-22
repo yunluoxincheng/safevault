@@ -369,24 +369,55 @@ public class EncryptionSyncManager {
      */
     public SyncResult useCloudData() {
         Log.d(TAG, "Using cloud data to overwrite local");
-        BackendService.EncryptedVaultData cloudVault = downloadEncryptedVaultData();
 
-        if (cloudVault != null) {
-            try {
-                long cloudVersion = Long.parseLong(cloudVault.version);
-                // 解密并插入到本地数据库
+        // 获取云端数据（不在这里更新版本号，等导入成功后再更新）
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for vault download");
+                return SyncResult.failure("未找到用户ID");
+            }
+
+            com.ttt.safevault.dto.response.VaultResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .getVault(userId)
+                    .blockingFirst();
+
+            if (response != null && response.getEncryptedData() != null) {
+                long cloudVersion = response.getVersion();
+                Log.d(TAG, "Cloud vault version: " + cloudVersion);
+
+                // 创建 EncryptedVaultData 对象
+                BackendService.EncryptedVaultData cloudVault = new BackendService.EncryptedVaultData(
+                    response.getEncryptedData(),
+                    response.getDataIv(),
+                    response.getDataAuthTag(),
+                    String.valueOf(cloudVersion)
+                );
+
+                // 解密并导入数据
                 SyncResult result = decryptAndImportVaultData(cloudVault);
+
                 if (result.isSuccess()) {
+                    // 只在导入成功后才更新版本号
+                    prefs.edit()
+                        .putLong("vault_version", cloudVersion)
+                        .putLong("vault_last_sync", System.currentTimeMillis())
+                        .apply();
+                    Log.d(TAG, "Cloud data imported successfully, version updated to: " + cloudVersion);
                     return SyncResult.success(cloudVersion);
                 } else {
+                    // 导入失败，不更新版本号
+                    Log.e(TAG, "Failed to import cloud data: " + result.getMessage());
                     return result;
                 }
-            } catch (NumberFormatException e) {
-                return SyncResult.failure("无法解析云端版本号");
+            } else {
+                return SyncResult.failure("云端无数据");
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to download cloud data", e);
+            return SyncResult.failure("下载云端数据失败：" + e.getMessage());
         }
-
-        return SyncResult.failure("无法下载云端数据");
     }
 
     /**
@@ -566,8 +597,9 @@ public class EncryptionSyncManager {
             // 3. 获取主密码
             String masterPassword = cryptoManager.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
-                Log.e(TAG, "Cannot import vault: master password not available");
-                return SyncResult.failure("无法获取主密码，请重新解锁应用");
+                Log.e(TAG, "Cannot import vault: master password not available (session password was lost after app restart)");
+                Log.e(TAG, "Please log out and log in again to restore full functionality");
+                return SyncResult.failure("无法获取主密码，请退出后重新登录");
             }
             Log.d(TAG, "Master password obtained, length: " + masterPassword.length());
 

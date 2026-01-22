@@ -67,7 +67,7 @@ public class SyncTrigger {
      * @return 是否成功触发同步
      */
     public boolean triggerSyncOnRefresh() {
-        return performSync("刷新");
+        return performSync("刷新", true);
     }
 
     /**
@@ -85,17 +85,27 @@ public class SyncTrigger {
     /**
      * 执行同步
      * @param source 触发来源（用于日志）
+     * @param showConflictDialog 是否显示冲突解决对话框
      * @return 是否成功触发同步
      */
-    private boolean performSync(@NonNull String source) {
+    private boolean performSync(@NonNull String source, boolean showConflictDialog) {
         SyncConfig config = syncStateManager.getCurrentConfig();
         if (config == null || !config.isSyncEnabled()) {
             Log.d(TAG, "Sync on " + source + " skipped: sync disabled");
             return false;
         }
 
-        Log.d(TAG, "Triggering sync on " + source);
-        syncScheduler.syncNowIfAllowed();
+        Log.d(TAG, "Triggering sync on " + source + ", showConflictDialog=" + showConflictDialog);
+        syncScheduler.syncNowIfAllowed(showConflictDialog);
         return true;
+    }
+
+    /**
+     * 执行同步（默认不显示冲突对话框）
+     * @param source 触发来源（用于日志）
+     * @return 是否成功触发同步
+     */
+    private boolean performSync(@NonNull String source) {
+        return performSync(source, false);
     }
 }
