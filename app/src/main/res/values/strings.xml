@@ -639,6 +639,7 @@
 
     <!-- 云端同步 -->
     <string name="cloud_sync">云端同步</string>
+    <string name="sync_settings_description">管理云端同步设置</string>
     <string name="sync_enabled">自动同步密码到云端</string>
     <string name="sync_interval">同步间隔</string>
     <string name="wifi_only_sync">仅 WiFi 下同步</string>
