@@ -57,6 +57,10 @@ public class SettingsFragment extends BaseFragment {
         binding.cardAppearance.setOnClickListener(v ->
                 Navigation.findNavController(v).navigate(R.id.action_settings_to_appearanceSettings));
 
+        // 云端同步
+        binding.cardCloudSync.setOnClickListener(v ->
+                Navigation.findNavController(v).navigate(R.id.action_settingsFragment_to_syncSettingsFragment));
+
         // 关于
         binding.cardAbout.setOnClickListener(v ->
                 Navigation.findNavController(v).navigate(R.id.action_settings_to_about));
