@@ -24,6 +24,7 @@ import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.PasswordListAdapter;
+import com.ttt.safevault.sync.SyncTrigger;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.utils.AnimationUtils;
@@ -184,6 +185,9 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
 
     private void setupSwipeRefresh() {
         swipeRefreshLayout.setOnRefreshListener(() -> {
+            // 触发云端同步
+            SyncTrigger.getInstance(requireContext()).triggerSyncOnRefresh();
+            // 同时刷新本地数据
             viewModel.refresh();
         });
     }
