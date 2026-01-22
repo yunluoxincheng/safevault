@@ -10,7 +10,10 @@
       "Bash(npx openspec validate:*)",
       "Skill(openspec:apply)",
       "Bash(cat:*)",
-      "Bash(./gradlew.bat assembleDebug:*)"
+      "Bash(./gradlew.bat assembleDebug:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git worktree:*)"
     ]
   }
 }

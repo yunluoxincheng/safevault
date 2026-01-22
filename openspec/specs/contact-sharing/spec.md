@@ -1,7 +1,8 @@
-# 联系人分享功能规范
+# contact-sharing Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change simplify-contact-sharing. Update Purpose after archive.
+## Requirements
 ### Requirement: 用户只能分享密码给已添加的好友
 
 系统 MUST 确保用户只能将密码分享给已经建立好友关系的联系人。
@@ -164,36 +165,3 @@
 **Then** 系统返回用户 B 接收的所有分享
 **And** 每个分享包含发送者、密码数据、权限、状态
 
----
-
-## REMOVED Requirements
-
-### Requirement: 直接链接分享功能（已移除）
-
-**移除原因**：安全风险，与产品定位不符
-
-#### Scenario: 生成分享链接（已移除）
-
-用户可以生成分享链接，任何人通过链接都可以访问分享的密码。
-
-#### Scenario: 二维码分享（已移除）
-
-用户可以生成二维码，其他用户扫描后直接访问分享内容。
-
----
-
-### Requirement: 附近用户发现功能（已移除）
-
-**移除原因**：需要位置权限，使用频率低
-
-#### Scenario: 注册用户位置（已移除）
-
-用户可以注册自己的当前位置，用于附近用户发现。
-
-#### Scenario: 查找附近用户（已移除）
-
-用户可以查找指定半径内的其他 SafeVault 用户。
-
-#### Scenario: 向附近用户分享（已移除）
-
-用户可以向附近发现的用户直接分享密码。

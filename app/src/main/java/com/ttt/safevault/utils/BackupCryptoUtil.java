@@ -87,7 +87,7 @@ public class BackupCryptoUtil {
      *
      * @param plaintext 明文
      * @param password  密码
-     * @return 加密结果（包含 iv, salt, encryptedData, authTag）
+     * @return 加密结果（包含 encryptedData, iv, salt, authTag）
      */
     public static EncryptionResult encrypt(String plaintext, String password) {
         try {
@@ -109,14 +109,20 @@ public class BackupCryptoUtil {
             // 加密
             byte[] ciphertext = cipher.doFinal(plaintextBytes);
 
-            // 组合 IV 和密文（GCM模式下，密文包含认证标签）
-            byte[] combined = new byte[ivBytes.length + ciphertext.length];
-            System.arraycopy(ivBytes, 0, combined, 0, ivBytes.length);
-            System.arraycopy(ciphertext, 0, combined, ivBytes.length, ciphertext.length);
+            // GCM模式：密文末尾的 16 字节是认证标签（authTag）
+            int tagLength = GCM_TAG_LENGTH_BITS / 8; // 128 bits = 16 bytes
+            byte[] authTagBytes = new byte[tagLength];
+            byte[] actualCiphertext = new byte[ciphertext.length - tagLength];
 
-            String encryptedData = Base64.getEncoder().encodeToString(combined);
+            // 分离密文和认证标签
+            System.arraycopy(ciphertext, 0, actualCiphertext, 0, actualCiphertext.length);
+            System.arraycopy(ciphertext, actualCiphertext.length, authTagBytes, 0, tagLength);
 
-            return new EncryptionResult(encryptedData, iv, salt);
+            // 将密文编码为 Base64（不含 IV 和 authTag）
+            String encryptedData = Base64.getEncoder().encodeToString(actualCiphertext);
+            String authTag = Base64.getEncoder().encodeToString(authTagBytes);
+
+            return new EncryptionResult(encryptedData, iv, salt, authTag);
 
         } catch (Exception e) {
             Log.e(TAG, "Failed to encrypt data", e);
@@ -167,11 +173,13 @@ public class BackupCryptoUtil {
         private final String encryptedData;
         private final String iv;
         private final String salt;
+        private final String authTag;
 
-        public EncryptionResult(String encryptedData, String iv, String salt) {
+        public EncryptionResult(String encryptedData, String iv, String salt, String authTag) {
             this.encryptedData = encryptedData;
             this.iv = iv;
             this.salt = salt;
+            this.authTag = authTag;
         }
 
         public String getEncryptedData() {
@@ -184,6 +192,10 @@ public class BackupCryptoUtil {
 
         public String getSalt() {
             return salt;
+        }
+
+        public String getAuthTag() {
+            return authTag;
         }
     }
 }

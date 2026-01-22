@@ -298,8 +298,8 @@ public class BackendServiceImpl implements BackendService {
     }
 
     @Override
-    public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv) {
-        return encryptionSyncManager.uploadEncryptedVaultData(encryptedVaultData, iv);
+    public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv, String authTag) {
+        return encryptionSyncManager.uploadEncryptedVaultData(encryptedVaultData, iv, authTag);
     }
 
     @Override

@@ -62,6 +62,10 @@ dependencies {
     // Splash Screen API
     implementation 'androidx.core:core-splashscreen:1.0.1'
 
+    // WorkManager for background task scheduling
+    def work_version = "2.9.0"
+    implementation "androidx.work:work-runtime:$work_version"
+
     // Room for local data access (只访问Repository，不操作加密层)
     implementation 'androidx.room:room-runtime:2.5.0'
     annotationProcessor 'androidx.room:room-compiler:2.5.0'

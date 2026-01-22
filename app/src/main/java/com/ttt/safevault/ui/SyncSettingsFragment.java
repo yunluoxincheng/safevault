@@ -14,9 +14,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentSyncSettingsBinding;
 import com.ttt.safevault.sync.SyncConfig;
+import com.ttt.safevault.sync.SyncScheduler;
 import com.ttt.safevault.sync.SyncStateManager;
 import com.ttt.safevault.sync.SyncStatus;
 import com.ttt.safevault.sync.SyncState;
+import com.ttt.safevault.sync.VaultSyncManager;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
 /**
@@ -26,7 +28,12 @@ public class SyncSettingsFragment extends BaseFragment {
 
     private FragmentSyncSettingsBinding binding;
     private SyncStateManager syncStateManager;
+    private VaultSyncManager vaultSyncManager;
+    private SyncScheduler syncScheduler;
     private ViewModelFactory viewModelFactory;
+
+    // 用于跟踪是否正在处理冲突
+    private boolean isHandlingConflict = false;
 
     @Nullable
     @Override
@@ -39,44 +46,65 @@ public class SyncSettingsFragment extends BaseFragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        // 初始化管理器
         syncStateManager = SyncStateManager.getInstance();
+        vaultSyncManager = VaultSyncManager.getInstance(requireContext());
+        syncScheduler = SyncScheduler.getInstance(requireContext());
         viewModelFactory = new ViewModelFactory(requireActivity().getApplication());
 
-        setupClickListeners();
+        setupSyncControls();
         observeSyncState();
         observeSyncConfig();
     }
 
-    private void setupClickListeners() {
-        // 同步开关
+    /**
+     * 设置同步控件和点击监听器
+     */
+    private void setupSyncControls() {
+        // 同步开关切换
         binding.switchSyncEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
             SyncConfig config = syncStateManager.getCurrentConfig();
             if (config != null) {
                 config.setSyncEnabled(isChecked);
                 syncStateManager.updateConfig(config);
+
+                // 根据启用状态调度或取消同步
+                if (isChecked) {
+                    syncScheduler.scheduleSync();
+                    Toast.makeText(requireContext(), "自动同步已启用", Toast.LENGTH_SHORT).show();
+                } else {
+                    syncScheduler.cancelScheduledSync();
+                    Toast.makeText(requireContext(), "自动同步已禁用", Toast.LENGTH_SHORT).show();
+                }
             }
         });
 
-        // WiFi 限制开关
+        // WiFi 限制开关切换
         binding.switchWifiOnly.setOnCheckedChangeListener((buttonView, isChecked) -> {
             SyncConfig config = syncStateManager.getCurrentConfig();
             if (config != null) {
                 config.setWifiOnly(isChecked);
                 syncStateManager.updateConfig(config);
+
+                // 重新调度同步以应用新的 WiFi 限制
+                syncScheduler.rescheduleSync();
+
+                String message = isChecked ? "已启用仅 WiFi 同步" : "已允许使用移动数据同步";
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
             }
         });
 
         // 同步间隔选择
-        binding.cardSyncInterval.setOnClickListener(v -> showSyncIntervalDialog());
+        binding.cardSyncInterval.setOnClickListener(v -> showIntervalDialog());
 
-        // 手动同步
-        binding.btnManualSync.setOnClickListener(v -> {
-            Toast.makeText(requireContext(), "开始同步...", Toast.LENGTH_SHORT).show();
-            // TODO: 调用同步管理器执行同步
-        });
+        // 手动同步按钮
+        binding.btnManualSync.setOnClickListener(v -> performManualSync());
     }
 
-    private void showSyncIntervalDialog() {
+    /**
+     * 显示同步间隔选择对话框
+     */
+    private void showIntervalDialog() {
         SyncConfig config = syncStateManager.getCurrentConfig();
         int currentInterval = config != null ? config.getSyncIntervalMinutes() : SyncConfig.INTERVAL_30_MINUTES;
 
@@ -104,6 +132,12 @@ public class SyncSettingsFragment extends BaseFragment {
                     config.setSyncIntervalMinutes(values[which]);
                     syncStateManager.updateConfig(config);
                     updateIntervalText(values[which]);
+
+                    // 重新调度同步以应用新的间隔
+                    syncScheduler.rescheduleSync();
+
+                    String message = "同步间隔已设置为 " + intervals[which];
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
                 }
                 dialog.dismiss();
             })
@@ -111,6 +145,9 @@ public class SyncSettingsFragment extends BaseFragment {
             .show();
     }
 
+    /**
+     * 更新间隔文本显示
+     */
     private void updateIntervalText(int intervalMinutes) {
         String text;
         if (intervalMinutes == SyncConfig.INTERVAL_MANUAL_ONLY) {
@@ -123,6 +160,92 @@ public class SyncSettingsFragment extends BaseFragment {
         binding.tvSyncIntervalValue.setText(text);
     }
 
+    /**
+     * 执行手动同步
+     */
+    private void performManualSync() {
+        // 检查同步是否启用
+        SyncConfig config = syncStateManager.getCurrentConfig();
+        if (config != null && !config.isSyncEnabled()) {
+            Toast.makeText(requireContext(), "请先启用同步功能", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Toast.makeText(requireContext(), "开始同步...", Toast.LENGTH_SHORT).show();
+
+        // 调用同步管理器执行同步
+        vaultSyncManager.syncNow(new VaultSyncManager.SyncCallback() {
+            @Override
+            public void onSyncSuccess(long newVersion) {
+                // 成功会在 observeSyncState 中处理
+                Toast.makeText(requireContext(), "同步成功，版本: " + newVersion, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onSyncConflict(long cloudVersion, long localVersion) {
+                // 显示冲突对话框
+                if (!isHandlingConflict) {
+                    isHandlingConflict = true;
+                    showConflictDialog(cloudVersion, localVersion);
+                }
+            }
+
+            @Override
+            public void onSyncFailure(String errorMessage) {
+                // 失败会在 observeSyncState 中处理
+                Toast.makeText(requireContext(), "同步失败: " + errorMessage, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    /**
+     * 显示冲突解决对话框
+     */
+    private void showConflictDialog(long cloudVersion, long localVersion) {
+        new MaterialAlertDialogBuilder(requireContext())
+            .setTitle("数据冲突")
+            .setMessage("检测到数据冲突：\n云端版本: " + cloudVersion + "\n本地版本: " + localVersion + "\n\n请选择如何解决：")
+            .setPositiveButton("使用云端数据", (dialog, which) -> {
+                resolveConflict(VaultSyncManager.SyncStrategy.USE_CLOUD);
+            })
+            .setNegativeButton("使用本地数据", (dialog, which) -> {
+                resolveConflict(VaultSyncManager.SyncStrategy.USE_LOCAL);
+            })
+            .setNeutralButton("取消", (dialog, which) -> {
+                resolveConflict(VaultSyncManager.SyncStrategy.CANCEL);
+            })
+            .setOnDismissListener(dialog -> {
+                isHandlingConflict = false;
+            })
+            .show();
+    }
+
+    /**
+     * 解决同步冲突
+     */
+    private void resolveConflict(VaultSyncManager.SyncStrategy strategy) {
+        Toast.makeText(requireContext(), "正在解决冲突...", Toast.LENGTH_SHORT).show();
+
+        vaultSyncManager.resolveConflict(strategy, new VaultSyncManager.SyncCallback() {
+            @Override
+            public void onSyncSuccess(long newVersion) {
+                String message = "冲突已解决，版本: " + newVersion;
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onSyncConflict(long cloudVersion, long localVersion) {
+                // 不应该再次发生冲突
+                Toast.makeText(requireContext(), "冲突解决失败", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onSyncFailure(String errorMessage) {
+                Toast.makeText(requireContext(), "冲突解决失败: " + errorMessage, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     private void observeSyncState() {
         syncStateManager.getSyncState().observe(getViewLifecycleOwner(), this::updateSyncStateUI);
     }
@@ -131,22 +254,117 @@ public class SyncSettingsFragment extends BaseFragment {
         syncStateManager.getSyncConfig().observe(getViewLifecycleOwner(), this::updateSyncConfigUI);
     }
 
+    /**
+     * 更新同步状态 UI
+     */
     private void updateSyncStateUI(SyncState state) {
         if (state == null) return;
 
-        // 更新状态信息
-        if (state.getLastSyncTime() != null) {
-            binding.tvLastSyncTime.setText(formatSyncTime(state.getLastSyncTime()));
-        } else {
-            binding.tvLastSyncTime.setText("从未同步");
+        SyncStatus status = state.getStatus();
+        if (status == null) return;
+
+        // 根据状态更新 UI
+        switch (status) {
+            case SYNCING:
+                // 同步中：显示进度，禁用控件
+                binding.tvSyncStatus.setText("正在同步...");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.blue_500, null));
+                binding.syncProgressBar.setVisibility(View.VISIBLE);
+                binding.syncStatusIndicator.setVisibility(View.VISIBLE);
+                binding.btnManualSync.setEnabled(false);
+                binding.switchSyncEnabled.setEnabled(false);
+                binding.cardSyncInterval.setEnabled(false);
+                binding.switchWifiOnly.setEnabled(false);
+                break;
+
+            case SUCCESS:
+                // 同步成功：显示成功消息，更新最后同步时间
+                binding.tvSyncStatus.setText("同步成功");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.green_500, null));
+                binding.syncProgressBar.setVisibility(View.GONE);
+                binding.syncStatusIndicator.setVisibility(View.GONE);
+                binding.btnManualSync.setEnabled(true);
+                binding.switchSyncEnabled.setEnabled(true);
+                binding.cardSyncInterval.setEnabled(true);
+                binding.switchWifiOnly.setEnabled(true);
+
+                if (state.getLastSyncTime() != null) {
+                    binding.tvLastSyncTime.setText(formatSyncTime(state.getLastSyncTime()));
+                }
+                break;
+
+            case FAILED:
+                // 同步失败：显示错误消息
+                binding.tvSyncStatus.setText("同步失败");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.red_500, null));
+                binding.syncProgressBar.setVisibility(View.GONE);
+                binding.syncStatusIndicator.setVisibility(View.GONE);
+                binding.btnManualSync.setEnabled(true);
+                binding.switchSyncEnabled.setEnabled(true);
+                binding.cardSyncInterval.setEnabled(true);
+                binding.switchWifiOnly.setEnabled(true);
+
+                if (state.getErrorMessage() != null) {
+                    Toast.makeText(requireContext(), state.getErrorMessage(), Toast.LENGTH_LONG).show();
+                }
+                break;
+
+            case CONFLICT:
+                // 发生冲突：显示冲突状态
+                binding.tvSyncStatus.setText("数据冲突");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.orange_500, null));
+                binding.syncProgressBar.setVisibility(View.GONE);
+                binding.syncStatusIndicator.setVisibility(View.GONE);
+                binding.btnManualSync.setEnabled(true);
+                binding.switchSyncEnabled.setEnabled(true);
+                binding.cardSyncInterval.setEnabled(true);
+                binding.switchWifiOnly.setEnabled(true);
+                break;
+
+            case OFFLINE:
+                // 离线状态：显示离线指示器
+                binding.tvSyncStatus.setText("离线状态");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.gray_500, null));
+                binding.syncProgressBar.setVisibility(View.GONE);
+                binding.syncStatusIndicator.setVisibility(View.GONE);
+                binding.btnManualSync.setEnabled(true);
+                binding.switchSyncEnabled.setEnabled(true);
+                binding.cardSyncInterval.setEnabled(true);
+                binding.switchWifiOnly.setEnabled(true);
+                break;
+
+            case IDLE:
+            default:
+                // 空闲状态：恢复正常显示
+                binding.tvSyncStatus.setText("就绪");
+                binding.tvSyncStatus.setTextColor(getResources().getColor(R.color.gray_500, null));
+                binding.syncProgressBar.setVisibility(View.GONE);
+                binding.syncStatusIndicator.setVisibility(View.GONE);
+                binding.btnManualSync.setEnabled(true);
+                binding.switchSyncEnabled.setEnabled(true);
+                binding.cardSyncInterval.setEnabled(true);
+                binding.switchWifiOnly.setEnabled(true);
+                break;
         }
 
+        // 更新版本号显示
         if (state.getClientVersion() != null) {
             binding.tvClientVersion.setText(String.valueOf(state.getClientVersion()));
+        } else {
+            binding.tvClientVersion.setText("-");
         }
 
         if (state.getServerVersion() != null) {
             binding.tvServerVersion.setText(String.valueOf(state.getServerVersion()));
+        } else {
+            binding.tvServerVersion.setText("-");
+        }
+
+        // 更新最后同步时间（如果不是同步状态）
+        if (status != SyncStatus.SYNCING && state.getLastSyncTime() != null) {
+            binding.tvLastSyncTime.setText(formatSyncTime(state.getLastSyncTime()));
+        } else if (status != SyncStatus.SYNCING) {
+            binding.tvLastSyncTime.setText("从未同步");
         }
     }
 

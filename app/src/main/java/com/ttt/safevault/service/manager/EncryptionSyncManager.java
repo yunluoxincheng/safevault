@@ -172,7 +172,7 @@ public class EncryptionSyncManager {
     /**
      * 上传加密密码库数据
      */
-    public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv) {
+    public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv, String authTag) {
         try {
             String userId = tokenManager.getUserId();
             if (userId == null) {
@@ -186,7 +186,7 @@ public class EncryptionSyncManager {
             // 构建同步请求
             com.ttt.safevault.dto.request.VaultSyncRequest request =
                 new com.ttt.safevault.dto.request.VaultSyncRequest(
-                    encryptedVaultData, iv, "", currentVersion, false
+                    encryptedVaultData, iv, authTag, currentVersion, false
                 );
 
             com.ttt.safevault.dto.response.VaultSyncResponse response =
@@ -391,9 +391,72 @@ public class EncryptionSyncManager {
     private SyncResult uploadLocalVaultData(long localVersion) {
         Log.d(TAG, "Uploading local data to overwrite cloud. Local version: " + localVersion);
 
-        // 这里需要获取本地加密的密码库数据并上传
-        // 由于涉及加密操作，实际实现需要从 CryptoManager 获取加密数据
-        // 这里返回成功结果作为占位
-        return SyncResult.success(localVersion);
+        try {
+            // 1. 获取 CryptoManager 实例
+            com.ttt.safevault.crypto.CryptoManager cryptoManager =
+                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+
+            // 2. 检查应用是否已解锁
+            if (!cryptoManager.isUnlocked()) {
+                Log.e(TAG, "Cannot upload vault: app is locked");
+                return SyncResult.failure("应用已锁定，请先解锁");
+            }
+
+            // 3. 获取主密码（用于加密备份数据）
+            String masterPassword = cryptoManager.getMasterPassword();
+            if (masterPassword == null || masterPassword.isEmpty()) {
+                Log.e(TAG, "Cannot upload vault: master password not available");
+                return SyncResult.failure("无法获取主密码，请重新解锁应用");
+            }
+
+            // 4. 获取 BackendService 来读取所有密码条目
+            com.ttt.safevault.model.BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+            // 5. 获取所有密码数据
+            java.util.List<com.ttt.safevault.model.PasswordItem> items = backendService.getAllItems();
+            if (items == null || items.isEmpty()) {
+                Log.w(TAG, "No local data to upload");
+                // 即使没有数据也允许上传（清空云端）
+                items = new java.util.ArrayList<>();
+            }
+
+            Log.d(TAG, "Found " + items.size() + " items to upload");
+
+            // 6. 序列化为 JSON
+            String jsonData = com.ttt.safevault.utils.BackupJsonUtil.serializePasswordList(items);
+            Log.d(TAG, "Serialized data length: " + jsonData.length() + " characters");
+
+            // 7. 使用主密码加密数据
+            com.ttt.safevault.utils.BackupCryptoUtil.EncryptionResult encryptionResult =
+                com.ttt.safevault.utils.BackupCryptoUtil.encrypt(jsonData, masterPassword);
+
+            Log.d(TAG, "Data encrypted successfully");
+
+            // 8. 上传加密数据到服务器
+            boolean uploadSuccess = uploadEncryptedVaultData(
+                encryptionResult.getEncryptedData(),
+                encryptionResult.getIv(),
+                encryptionResult.getAuthTag()
+            );
+
+            if (uploadSuccess) {
+                Log.d(TAG, "Vault data uploaded successfully");
+                // 获取更新后的版本号
+                long newVersion = getVaultVersion();
+                return SyncResult.success(newVersion);
+            } else {
+                Log.e(TAG, "Failed to upload vault data to server");
+                return SyncResult.failure("上传到服务器失败");
+            }
+
+        } catch (IllegalStateException e) {
+            // 应用已锁定
+            Log.e(TAG, "Cannot upload vault: " + e.getMessage());
+            return SyncResult.failure("应用已锁定，请先解锁");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to upload local vault data", e);
+            return SyncResult.failure("上传失败：" + e.getMessage());
+        }
     }
 }

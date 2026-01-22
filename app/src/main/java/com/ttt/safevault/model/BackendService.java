@@ -426,9 +426,10 @@ public interface BackendService {
      * 用于同步密码数据到云端
      * @param encryptedVaultData 加密的密码库数据（Base64）
      * @param iv 初始化向量（Base64）
+     * @param authTag GCM认证标签（Base64）
      * @return true表示上传成功
      */
-    boolean uploadEncryptedVaultData(String encryptedVaultData, String iv);
+    boolean uploadEncryptedVaultData(String encryptedVaultData, String iv, String authTag);
 
     /**
      * 从云端下载加密的密码库数据
