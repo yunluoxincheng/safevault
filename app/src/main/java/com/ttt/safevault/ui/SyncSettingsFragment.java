@@ -171,6 +171,9 @@ public class SyncSettingsFragment extends BaseFragment {
             return;
         }
 
+        // 重置冲突处理标志
+        isHandlingConflict = false;
+
         Toast.makeText(requireContext(), "开始同步...", Toast.LENGTH_SHORT).show();
 
         // 调用同步管理器执行同步
@@ -183,10 +186,13 @@ public class SyncSettingsFragment extends BaseFragment {
 
             @Override
             public void onSyncConflict(long cloudVersion, long localVersion) {
+                android.util.Log.d("SyncSettingsFragment", "Sync conflict callback received - cloud: " + cloudVersion + ", local: " + localVersion + ", isHandlingConflict: " + isHandlingConflict);
                 // 显示冲突对话框
                 if (!isHandlingConflict) {
                     isHandlingConflict = true;
                     showConflictDialog(cloudVersion, localVersion);
+                } else {
+                    android.util.Log.w("SyncSettingsFragment", "Conflict dialog skipped because isHandlingConflict is already true");
                 }
             }
 
@@ -202,22 +208,40 @@ public class SyncSettingsFragment extends BaseFragment {
      * 显示冲突解决对话框
      */
     private void showConflictDialog(long cloudVersion, long localVersion) {
-        new MaterialAlertDialogBuilder(requireContext())
-            .setTitle("数据冲突")
-            .setMessage("检测到数据冲突：\n云端版本: " + cloudVersion + "\n本地版本: " + localVersion + "\n\n请选择如何解决：")
-            .setPositiveButton("使用云端数据", (dialog, which) -> {
-                resolveConflict(VaultSyncManager.SyncStrategy.USE_CLOUD);
-            })
-            .setNegativeButton("使用本地数据", (dialog, which) -> {
-                resolveConflict(VaultSyncManager.SyncStrategy.USE_LOCAL);
-            })
-            .setNeutralButton("取消", (dialog, which) -> {
-                resolveConflict(VaultSyncManager.SyncStrategy.CANCEL);
-            })
-            .setOnDismissListener(dialog -> {
-                isHandlingConflict = false;
-            })
-            .show();
+        android.util.Log.d("SyncSettingsFragment", "Attempting to show conflict dialog...");
+        // 检查 Fragment 是否仍然附加到 Activity
+        if (!isAdded() || getContext() == null) {
+            android.util.Log.e("SyncSettingsFragment", "Cannot show dialog - Fragment is not added or context is null");
+            isHandlingConflict = false;
+            return;
+        }
+
+        try {
+            new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("数据冲突")
+                .setMessage("检测到数据冲突：\n云端版本: " + cloudVersion + "\n本地版本: " + localVersion + "\n\n请选择如何解决：")
+                .setPositiveButton("使用云端数据", (dialog, which) -> {
+                    android.util.Log.d("SyncSettingsFragment", "User chose USE_CLOUD");
+                    resolveConflict(VaultSyncManager.SyncStrategy.USE_CLOUD);
+                })
+                .setNegativeButton("使用本地数据", (dialog, which) -> {
+                    android.util.Log.d("SyncSettingsFragment", "User chose USE_LOCAL");
+                    resolveConflict(VaultSyncManager.SyncStrategy.USE_LOCAL);
+                })
+                .setNeutralButton("取消", (dialog, which) -> {
+                    android.util.Log.d("SyncSettingsFragment", "User chose CANCEL");
+                    resolveConflict(VaultSyncManager.SyncStrategy.CANCEL);
+                })
+                .setOnDismissListener(dialog -> {
+                    android.util.Log.d("SyncSettingsFragment", "Conflict dialog dismissed");
+                    isHandlingConflict = false;
+                })
+                .show();
+            android.util.Log.d("SyncSettingsFragment", "Conflict dialog shown successfully");
+        } catch (Exception e) {
+            android.util.Log.e("SyncSettingsFragment", "Failed to show conflict dialog", e);
+            isHandlingConflict = false;
+        }
     }
 
     /**

@@ -134,7 +134,8 @@ public class DataImportExportManager {
                     dataContainer.getEncryptedData(),
                     masterPassword,
                     dataContainer.getSalt(),
-                    dataContainer.getIv()
+                    dataContainer.getIv(),
+                    dataContainer.getAuthTag()  // 添加 authTag 参数
             );
 
             // 5. 反序列化密码列表

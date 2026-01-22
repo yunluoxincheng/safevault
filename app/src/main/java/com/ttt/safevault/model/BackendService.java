@@ -444,11 +444,13 @@ public interface BackendService {
     class EncryptedVaultData {
         public String encryptedData;
         public String iv;
+        public String authTag;
         public String version;
 
-        public EncryptedVaultData(String encryptedData, String iv, String version) {
+        public EncryptedVaultData(String encryptedData, String iv, String authTag, String version) {
             this.encryptedData = encryptedData;
             this.iv = iv;
+            this.authTag = authTag;
             this.version = version;
         }
     }

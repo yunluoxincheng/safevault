@@ -11,6 +11,13 @@ import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.security.KeyManager;
 
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 /**
  * 加密数据同步管理器
  * 负责加密私钥和密码库数据的上传下载
@@ -70,12 +77,14 @@ public class EncryptionSyncManager {
     private final RetrofitClient retrofitClient;
     private final TokenManager tokenManager;
     private final android.content.SharedPreferences prefs;
+    private final ExecutorService databaseExecutor;  // 用于数据库操作的线程池
 
     public EncryptionSyncManager(@NonNull Context context, @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();
         this.retrofitClient = retrofitClient;
         this.tokenManager = retrofitClient.getTokenManager();
         this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
+        this.databaseExecutor = Executors.newSingleThreadExecutor();
     }
 
     /**
@@ -252,6 +261,7 @@ public class EncryptionSyncManager {
                 return new BackendService.EncryptedVaultData(
                     response.getEncryptedData(),
                     response.getDataIv(),
+                    response.getDataAuthTag(),  // 添加 authTag
                     String.valueOf(response.getVersion())
                 );
             }
@@ -328,9 +338,9 @@ public class EncryptionSyncManager {
                 Log.d(TAG, "No cloud data, uploading local data...");
                 return uploadLocalVaultData(localVersion);
             } else if (localVersion == 0) {
-                // 本地无数据（新设备），下载云端数据
-                Log.d(TAG, "No local data, cloud data downloaded");
-                return SyncResult.success(cloudVersion);
+                // 本地无数据（新设备），下载并解密云端数据
+                Log.d(TAG, "No local data, downloading and decrypting cloud data...");
+                return decryptAndImportVaultData(cloudVault);
             } else if (cloudVersion > localVersion) {
                 // 云端较新，返回冲突让用户选择
                 Log.d(TAG, "Cloud is newer, returning conflict");
@@ -353,6 +363,7 @@ public class EncryptionSyncManager {
 
     /**
      * 使用云端数据覆盖本地
+     * 解密云端数据并插入到本地数据库
      *
      * @return 同步结果
      */
@@ -363,7 +374,13 @@ public class EncryptionSyncManager {
         if (cloudVault != null) {
             try {
                 long cloudVersion = Long.parseLong(cloudVault.version);
-                return SyncResult.success(cloudVersion);
+                // 解密并插入到本地数据库
+                SyncResult result = decryptAndImportVaultData(cloudVault);
+                if (result.isSuccess()) {
+                    return SyncResult.success(cloudVersion);
+                } else {
+                    return result;
+                }
             } catch (NumberFormatException e) {
                 return SyncResult.failure("无法解析云端版本号");
             }
@@ -380,6 +397,29 @@ public class EncryptionSyncManager {
     public SyncResult uploadLocalVaultData() {
         long localVersion = getVaultVersion();
         return uploadLocalVaultData(localVersion);
+    }
+
+    /**
+     * 生成基于用户的固定 salt（用于密码库加密）
+     * 使用用户邮箱的哈希确保 salt 可重现
+     *
+     * @param email 用户邮箱
+     * @return Base64 编码的 salt
+     */
+    private String generateVaultSaltForUser(String email) {
+        try {
+            // 使用 SHA-256 哈希邮箱生成确定性的 32 字节 salt
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+
+            // 添加 "SafeVaultVaultSalt" 前缀以区分不同用途的 salt
+            String saltInput = "SafeVaultVaultSalt:" + email;
+            byte[] hash = digest.digest(saltInput.getBytes(StandardCharsets.UTF_8));
+
+            return android.util.Base64.encodeToString(hash, android.util.Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to generate vault salt", e);
+            throw new RuntimeException("无法生成 salt", e);
+        }
     }
 
     /**
@@ -413,11 +453,35 @@ public class EncryptionSyncManager {
             com.ttt.safevault.model.BackendService backendService =
                 com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
-            // 5. 获取所有密码数据
-            java.util.List<com.ttt.safevault.model.PasswordItem> items = backendService.getAllItems();
+            // 5. 获取所有密码数据（在后台线程执行）
+            java.util.List<com.ttt.safevault.model.PasswordItem> items;
+            try {
+                // 使用后台线程获取数据，避免主线程访问数据库
+                items = java.util.concurrent.Executors.newSingleThreadExecutor().submit(
+                    () -> backendService.getAllItems()
+                ).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to get items from database", e);
+                return SyncResult.failure("读取本地数据失败：" + e.getMessage());
+            }
+
             if (items == null || items.isEmpty()) {
                 Log.w(TAG, "No local data to upload");
-                // 即使没有数据也允许上传（清空云端）
+                // 重要提示：不要用空数据覆盖云端！
+                // 如果本地为空且云端有数据，应该下载云端数据
+                BackendService.EncryptedVaultData cloudVault = downloadEncryptedVaultData();
+                if (cloudVault != null && cloudVault.encryptedData != null && !cloudVault.encryptedData.isEmpty()) {
+                    try {
+                        long cloudVersion = Long.parseLong(cloudVault.version);
+                        if (cloudVersion > 0) {
+                            Log.w(TAG, "Local is empty but cloud has data (version " + cloudVersion + "), downloading from cloud instead");
+                            return decryptAndImportVaultData(cloudVault);
+                        }
+                    } catch (NumberFormatException e) {
+                        // 忽略版本解析错误，继续上传空数据
+                    }
+                }
+                // 如果云端也没有数据，允许上传空数据
                 items = new java.util.ArrayList<>();
             }
 
@@ -427,13 +491,28 @@ public class EncryptionSyncManager {
             String jsonData = com.ttt.safevault.utils.BackupJsonUtil.serializePasswordList(items);
             Log.d(TAG, "Serialized data length: " + jsonData.length() + " characters");
 
-            // 7. 使用主密码加密数据
+            // 7. 获取用户邮箱以生成固定 salt
+            // 注意：必须使用邮箱而不是 userId，因为 salt 需要跨设备一致
+            String email = tokenManager.getLastLoginEmail();
+            if (email == null || email.isEmpty()) {
+                // 降级：尝试从 SharedPreferences 获取
+                email = prefs.getString("user_email", "");
+            }
+            if (email == null || email.isEmpty()) {
+                Log.e(TAG, "Cannot get user email for salt generation");
+                return SyncResult.failure("无法获取用户邮箱");
+            }
+
+            String fixedSalt = generateVaultSaltForUser(email);
+            Log.d(TAG, "Using fixed salt for encryption based on email: " + email);
+
+            // 8. 使用主密码和固定 salt 加密数据
             com.ttt.safevault.utils.BackupCryptoUtil.EncryptionResult encryptionResult =
-                com.ttt.safevault.utils.BackupCryptoUtil.encrypt(jsonData, masterPassword);
+                com.ttt.safevault.utils.BackupCryptoUtil.encryptWithSalt(jsonData, masterPassword, fixedSalt);
 
-            Log.d(TAG, "Data encrypted successfully");
+            Log.d(TAG, "Data encrypted successfully with fixed salt");
 
-            // 8. 上传加密数据到服务器
+            // 9. 上传加密数据到服务器
             boolean uploadSuccess = uploadEncryptedVaultData(
                 encryptionResult.getEncryptedData(),
                 encryptionResult.getIv(),
@@ -457,6 +536,203 @@ public class EncryptionSyncManager {
         } catch (Exception e) {
             Log.e(TAG, "Failed to upload local vault data", e);
             return SyncResult.failure("上传失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 解密并导入密码库数据到本地数据库
+     *
+     * @param cloudVault 云端加密数据
+     * @return 同步结果
+     */
+    private SyncResult decryptAndImportVaultData(BackendService.EncryptedVaultData cloudVault) {
+        Log.d(TAG, "========== START decryptAndImportVaultData ==========");
+        Log.d(TAG, "Cloud vault version: " + cloudVault.version);
+        Log.d(TAG, "Encrypted data length: " + (cloudVault.encryptedData != null ? cloudVault.encryptedData.length() : "null"));
+        Log.d(TAG, "IV length: " + (cloudVault.iv != null ? cloudVault.iv.length() : "null"));
+
+        try {
+            // 1. 获取 CryptoManager 实例
+            com.ttt.safevault.crypto.CryptoManager cryptoManager =
+                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+            Log.d(TAG, "CryptoManager obtained, isUnlocked: " + cryptoManager.isUnlocked());
+
+            // 2. 检查应用是否已解锁
+            if (!cryptoManager.isUnlocked()) {
+                Log.e(TAG, "Cannot import vault: app is locked");
+                return SyncResult.failure("应用已锁定，请先解锁");
+            }
+
+            // 3. 获取主密码
+            String masterPassword = cryptoManager.getMasterPassword();
+            if (masterPassword == null || masterPassword.isEmpty()) {
+                Log.e(TAG, "Cannot import vault: master password not available");
+                return SyncResult.failure("无法获取主密码，请重新解锁应用");
+            }
+            Log.d(TAG, "Master password obtained, length: " + masterPassword.length());
+
+            // 4. 获取用户邮箱以生成固定 salt（与加密时相同）
+            // 注意：必须使用邮箱而不是 userId，确保与加密时使用相同的 salt
+            String email = tokenManager.getLastLoginEmail();
+            Log.d(TAG, "Email from tokenManager: " + (email != null ? email : "null"));
+
+            if (email == null || email.isEmpty()) {
+                // 降级：尝试从 SharedPreferences 获取
+                email = prefs.getString("user_email", "");
+                Log.d(TAG, "UserId from prefs: " + (email != null ? email : "null"));
+            }
+            if (email == null || email.isEmpty()) {
+                Log.e(TAG, "Cannot get user email for salt generation");
+                return SyncResult.failure("无法获取用户邮箱");
+            }
+
+            String fixedSalt = generateVaultSaltForUser(email);
+            Log.d(TAG, "Using fixed salt for decryption based on email: " + email);
+            Log.d(TAG, "Generated salt (Base64): " + fixedSalt);
+            Log.d(TAG, "Salt length: " + fixedSalt.length());
+            Log.d(TAG, "IV (Base64): " + cloudVault.iv);
+            Log.d(TAG, "AuthTag (Base64): " + (cloudVault.authTag != null ? cloudVault.authTag : "null"));
+
+            // 5. 解密数据（使用与加密时相同的固定 salt）
+            String decryptedJson;
+            try {
+                Log.d(TAG, "Starting decryption...");
+                Log.d(TAG, "Encrypted data (first 100 chars): " +
+                    (cloudVault.encryptedData.length() > 100 ? cloudVault.encryptedData.substring(0, 100) + "..." : cloudVault.encryptedData));
+
+                // 检查 authTag 是否可用
+                if (cloudVault.authTag == null || cloudVault.authTag.isEmpty()) {
+                    Log.e(TAG, "AuthTag is missing from cloud vault data!");
+                    return SyncResult.failure("云端数据缺少认证标签，无法解密");
+                }
+
+                decryptedJson = com.ttt.safevault.utils.BackupCryptoUtil.decrypt(
+                    cloudVault.encryptedData,
+                    masterPassword,
+                    fixedSalt,  // 使用基于邮箱生成的固定 salt
+                    cloudVault.iv,
+                    cloudVault.authTag  // 添加 authTag 参数
+                );
+
+                Log.d(TAG, "Vault data decrypted successfully");
+                Log.d(TAG, "Decrypted JSON length: " + decryptedJson.length());
+                Log.d(TAG, "Decrypted JSON (first 200 chars): " +
+                    (decryptedJson.length() > 200 ? decryptedJson.substring(0, 200) + "..." : decryptedJson));
+
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to decrypt vault data", e);
+                Log.e(TAG, "Exception type: " + e.getClass().getName());
+                Log.e(TAG, "Exception message: " + e.getMessage());
+                return SyncResult.failure("解密数据失败：" + e.getMessage());
+            }
+
+            // 6. 反序列化密码列表
+            java.util.List<com.ttt.safevault.model.PasswordItem> items;
+            try {
+                Log.d(TAG, "Starting deserialization...");
+                items = com.ttt.safevault.utils.BackupJsonUtil.deserializePasswordList(decryptedJson);
+                Log.d(TAG, "Deserialized " + items.size() + " password items");
+
+                // 打印每个密码的基本信息
+                for (int i = 0; i < items.size(); i++) {
+                    com.ttt.safevault.model.PasswordItem item = items.get(i);
+                    Log.d(TAG, "Item[" + i + "]: id=" + item.getId() +
+                        ", title=" + item.getTitle() +
+                        ", username=" + item.getUsername() +
+                        ", password_length=" + (item.getPassword() != null ? item.getPassword().length() : "null"));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to deserialize password list", e);
+                Log.e(TAG, "Exception type: " + e.getClass().getName());
+                Log.e(TAG, "Exception message: " + e.getMessage());
+                return SyncResult.failure("解析数据失败：" + e.getMessage());
+            }
+
+            // 7. 保存到本地数据库（在后台线程执行）
+            try {
+                com.ttt.safevault.model.BackendService backendService =
+                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                Log.d(TAG, "BackendService obtained");
+
+                // 使用 CountDownLatch 等待后台任务完成
+                CountDownLatch latch = new CountDownLatch(1);
+                final int[] importedCount = {0};
+                final int[] failedCount = {0};
+                final Exception[] saveException = {null};
+
+                databaseExecutor.execute(() -> {
+                    try {
+                        // 清空现有数据
+                        java.util.List<com.ttt.safevault.model.PasswordItem> existingItems =
+                            backendService.getAllItems();
+                        Log.d(TAG, "Existing local items count: " + existingItems.size());
+
+                        for (com.ttt.safevault.model.PasswordItem item : existingItems) {
+                            backendService.deleteItem(item.getId());
+                        }
+                        Log.d(TAG, "Cleared existing local data");
+
+                        // 插入新数据
+                        for (int i = 0; i < items.size(); i++) {
+                            com.ttt.safevault.model.PasswordItem item = items.get(i);
+                            // 使用负数ID表示新导入的条目
+                            item.setId(-1);
+
+                            Log.d(TAG, "Saving item[" + i + "]: title=" + item.getTitle());
+                            long newId = backendService.saveItem(item);
+
+                            if (newId > 0) {
+                                importedCount[0]++;
+                                Log.d(TAG, "Item saved successfully, new ID: " + newId);
+                            } else {
+                                failedCount[0]++;
+                                Log.e(TAG, "Failed to save item: " + item.getTitle());
+                            }
+                        }
+
+                        Log.d(TAG, "Import completed: " + importedCount[0] + " succeeded, " + failedCount[0] + " failed");
+
+                        // 验证数据是否真的保存了
+                        java.util.List<com.ttt.safevault.model.PasswordItem> verifyItems = backendService.getAllItems();
+                        Log.d(TAG, "Verification: database now contains " + verifyItems.size() + " items");
+
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to save items to database", e);
+                        saveException[0] = e;
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+
+                // 等待后台任务完成（最多30秒）
+                boolean completed = latch.await(30, TimeUnit.SECONDS);
+                if (!completed) {
+                    Log.e(TAG, "Database operation timeout");
+                    return SyncResult.failure("数据库操作超时");
+                }
+
+                // 检查是否有异常
+                if (saveException[0] != null) {
+                    throw saveException[0];
+                }
+
+                // 获取更新后的版本号
+                long cloudVersion = Long.parseLong(cloudVault.version);
+                Log.d(TAG, "========== END decryptAndImportVaultData SUCCESS ==========");
+                return SyncResult.success(cloudVersion);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to save items to database", e);
+                Log.e(TAG, "Exception type: " + e.getClass().getName());
+                Log.e(TAG, "Exception message: " + e.getMessage());
+                return SyncResult.failure("保存到本地数据库失败：" + e.getMessage());
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to decrypt and import vault data", e);
+            Log.e(TAG, "Exception type: " + e.getClass().getName());
+            Log.e(TAG, "Exception message: " + e.getMessage());
+            return SyncResult.failure("导入数据失败：" + e.getMessage());
         }
     }
 }

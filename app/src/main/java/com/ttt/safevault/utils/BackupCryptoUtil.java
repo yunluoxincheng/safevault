@@ -90,9 +90,23 @@ public class BackupCryptoUtil {
      * @return 加密结果（包含 encryptedData, iv, salt, authTag）
      */
     public static EncryptionResult encrypt(String plaintext, String password) {
+        // 生成随机盐值
+        String salt = generateSalt();
+        return encryptWithSalt(plaintext, password, salt);
+    }
+
+    /**
+     * 使用指定的 salt 加密数据
+     * 用于云端同步，salt 基于用户邮箱生成，确保可重现
+     *
+     * @param plaintext 明文
+     * @param password  密码
+     * @param salt      盐值（Base64编码）
+     * @return 加密结果（包含 encryptedData, iv, salt, authTag）
+     */
+    public static EncryptionResult encryptWithSalt(String plaintext, String password, String salt) {
         try {
-            // 生成盐值和IV
-            String salt = generateSalt();
+            // 生成随机IV（每次加密都使用新的IV）
             String iv = generateIV();
 
             // 派生密钥
@@ -125,21 +139,61 @@ public class BackupCryptoUtil {
             return new EncryptionResult(encryptedData, iv, salt, authTag);
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to encrypt data", e);
+            Log.e(TAG, "Failed to encrypt data with salt", e);
             throw new RuntimeException("加密失败", e);
         }
     }
 
     /**
-     * 解密数据
+     * 解密数据（用于云端同步，authTag 单独存储）
      *
-     * @param encryptedData 加密的数据（Base64编码）
+     * @param encryptedData 加密的数据（Base64编码，只包含密文）
+     * @param password       密码
+     * @param salt           盐值（Base64编码）
+     * @param iv             IV（Base64编码）
+     * @param authTag        GCM 认证标签（Base64编码）
+     * @return 解密后的明文
+     */
+    public static String decrypt(String encryptedData, String password, String salt, String iv, String authTag) {
+        try {
+            // 派生密钥
+            SecretKey key = deriveKey(password, salt);
+
+            // 解码数据
+            byte[] ciphertext = Base64.getDecoder().decode(encryptedData);
+            byte[] ivBytes = Base64.getDecoder().decode(iv);
+            byte[] authTagBytes = Base64.getDecoder().decode(authTag);
+
+            // 重新组合密文和认证标签（AES-GCM 需要认证标签进行解密验证）
+            byte[] combined = new byte[ciphertext.length + authTagBytes.length];
+            System.arraycopy(ciphertext, 0, combined, 0, ciphertext.length);
+            System.arraycopy(authTagBytes, 0, combined, ciphertext.length, authTagBytes.length);
+
+            // 解密
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION_GCM);
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, ivBytes);
+            cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec);
+
+            byte[] plaintextBytes = cipher.doFinal(combined);
+            return new String(plaintextBytes, StandardCharsets.UTF_8);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to decrypt data", e);
+            throw new RuntimeException("解密失败，请检查密码是否正确", e);
+        }
+    }
+
+    /**
+     * 解密数据（旧版本兼容，authTag 包含在 encryptedData 中）
+     *
+     * @param encryptedData 加密的数据（Base64编码，包含密文+authTag）
      * @param password       密码
      * @param salt           盐值（Base64编码）
      * @param iv             IV（Base64编码）
      * @return 解密后的明文
+     * @deprecated 使用 decrypt(String, String, String, String, String) 代替
      */
-    public static String decrypt(String encryptedData, String password, String salt, String iv) {
+    public static String decryptLegacy(String encryptedData, String password, String salt, String iv) {
         try {
             // 派生密钥
             SecretKey key = deriveKey(password, salt);

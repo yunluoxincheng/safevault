@@ -56,6 +56,9 @@ dependencies {
     // SwipeRefreshLayout
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 
+    // LocalBroadcastManager for cross-component communication
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+
     // Biometric authentication
     implementation 'androidx.biometric:biometric:1.1.0'
 

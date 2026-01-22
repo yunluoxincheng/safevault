@@ -312,9 +312,44 @@ public class SyncScheduler {
                 @Override
                 public void onSyncConflict(long cloudVersion, long localVersion) {
                     Log.w(TAG, "Scheduled sync conflict: cloud=" + cloudVersion + ", local=" + localVersion);
-                    // 冲突不算失败，但也不算成功，返回 success 让任务继续
-                    syncSuccess[0] = true;
-                    waitingForResult[0] = false;
+                    // 后台同步遇到冲突时，自动解决：
+                    // - 如果本地较新（localVersion > cloudVersion），使用本地数据
+                    // - 如果云端较新（cloudVersion > localVersion），使用云端数据
+                    VaultSyncManager.SyncStrategy strategy;
+                    if (localVersion > cloudVersion) {
+                        Log.d(TAG, "Local is newer, using USE_LOCAL strategy");
+                        strategy = VaultSyncManager.SyncStrategy.USE_LOCAL;
+                    } else {
+                        Log.d(TAG, "Cloud is newer, using USE_CLOUD strategy");
+                        strategy = VaultSyncManager.SyncStrategy.USE_CLOUD;
+                    }
+
+                    // 注意：不要在这里设置 waitingForResult[0] = false
+                    // 让它保持 true，等待 resolveConflict 的回调来设置
+                    // 自动解决冲突
+                    vaultSyncManager.resolveConflict(strategy, new VaultSyncManager.SyncCallback() {
+                        @Override
+                        public void onSyncSuccess(long newVersion) {
+                            Log.d(TAG, "Auto-resolved conflict successful, new version: " + newVersion);
+                            syncSuccess[0] = true;
+                            waitingForResult[0] = false;  // 现在才设置 false
+                        }
+
+                        @Override
+                        public void onSyncConflict(long cloudV, long localV) {
+                            // 理论上不应该再次冲突，但以防万一
+                            Log.e(TAG, "Unexpected conflict after auto-resolve");
+                            syncSuccess[0] = false;
+                            waitingForResult[0] = false;
+                        }
+
+                        @Override
+                        public void onSyncFailure(String errorMessage) {
+                            Log.e(TAG, "Auto-resolve conflict failed: " + errorMessage);
+                            syncSuccess[0] = false;
+                            waitingForResult[0] = false;
+                        }
+                    });
                 }
 
                 @Override

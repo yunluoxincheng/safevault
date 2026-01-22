@@ -1,12 +1,14 @@
 package com.ttt.safevault.sync;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.service.manager.EncryptionSyncManager;
@@ -21,6 +23,12 @@ import java.util.concurrent.Executors;
 public class VaultSyncManager {
 
     private static final String TAG = "VaultSyncManager";
+
+    /**
+     * 广播 Action：密码数据已变更
+     * 当同步成功后发送此广播，通知其他组件刷新数据
+     */
+    public static final String ACTION_DATA_CHANGED = "com.ttt.safevault.ACTION_DATA_CHANGED";
 
     /**
      * 同步策略枚举
@@ -254,6 +262,12 @@ public class VaultSyncManager {
                 callback.onSyncSuccess(result.getNewVersion());
             }
 
+            // 发送数据变更广播，通知其他组件刷新数据
+            Intent dataChangedIntent = new Intent(ACTION_DATA_CHANGED);
+            dataChangedIntent.putExtra("newVersion", result.getNewVersion());
+            LocalBroadcastManager.getInstance(context).sendBroadcast(dataChangedIntent);
+            Log.d(TAG, "Sent data changed broadcast: " + ACTION_DATA_CHANGED);
+
             // 延迟后恢复到 IDLE 状态
             mainHandler.postDelayed(() -> {
                 syncStateManager.updateStatus(SyncStatus.IDLE);
@@ -265,6 +279,7 @@ public class VaultSyncManager {
             if (message != null && message.contains("数据冲突")) {
                 // 数据冲突
                 Log.w(TAG, "Sync conflict detected: " + message);
+                Log.d(TAG, "Calling onSyncConflict callback...");
                 currentState.setStatus(SyncStatus.CONFLICT);
                 currentState.setErrorMessage(message);
 
@@ -288,7 +303,11 @@ public class VaultSyncManager {
                         Log.e(TAG, "Failed to parse version numbers from message", e);
                     }
 
+                    Log.d(TAG, "Invoking onSyncConflict with cloudVersion=" + cloudVersion + ", localVersion=" + localVersion);
                     callback.onSyncConflict(cloudVersion, localVersion);
+                    Log.d(TAG, "onSyncConflict callback invoked");
+                } else {
+                    Log.w(TAG, "No callback provided for conflict handling");
                 }
 
             } else {

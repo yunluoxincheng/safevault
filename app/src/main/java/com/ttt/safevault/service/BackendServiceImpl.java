@@ -153,6 +153,17 @@ public class BackendServiceImpl implements BackendService {
 
     // ==================== 密码管理相关 ====================
 
+    /**
+     * 增加本地密码库版本号
+     * 当本地数据发生变化（添加、修改、删除密码）时调用
+     * 用于标记本地数据已修改，需要在下次同步时上传到云端
+     */
+    private void incrementLocalVersion() {
+        long currentVersion = prefs.getLong("vault_version", 0L);
+        prefs.edit().putLong("vault_version", currentVersion + 1).apply();
+        Log.d(TAG, "Local vault version incremented from " + currentVersion + " to " + (currentVersion + 1));
+    }
+
     @Override
     public PasswordItem decryptItem(int id) {
         return passwordManager.decryptItem(id);
@@ -165,12 +176,24 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public int saveItem(PasswordItem item) {
-        return passwordManager.saveItem(item);
+        int result = passwordManager.saveItem(item);
+        // 保存成功后，增加本地版本号以标记数据已修改
+        if (result > 0) {
+            incrementLocalVersion();
+            Log.d(TAG, "Password saved, local version incremented");
+        }
+        return result;
     }
 
     @Override
     public boolean deleteItem(int id) {
-        return passwordManager.deleteItem(id);
+        boolean result = passwordManager.deleteItem(id);
+        // 删除成功后，增加本地版本号以标记数据已修改
+        if (result) {
+            incrementLocalVersion();
+            Log.d(TAG, "Password deleted, local version incremented");
+        }
+        return result;
     }
 
     @Override

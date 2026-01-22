@@ -1,15 +1,21 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
+import com.ttt.safevault.sync.VaultSyncManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +31,7 @@ public class PasswordListViewModel extends AndroidViewModel {
 
     private final BackendService backendService;
     private final ExecutorService executor;
+    private final Context applicationContext;
 
     // LiveData用于UI状态管理
     private final MutableLiveData<List<PasswordItem>> _passwordItems = new MutableLiveData<>();
@@ -47,10 +54,31 @@ public class PasswordListViewModel extends AndroidViewModel {
 
     private List<PasswordItem> allItems; // 保存原始数据
 
+    // 广播接收器：监听数据变更
+    private final BroadcastReceiver dataChangedReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (VaultSyncManager.ACTION_DATA_CHANGED.equals(intent.getAction())) {
+                long newVersion = intent.getLongExtra("newVersion", 0);
+                android.util.Log.d("PasswordListViewModel", "Received data changed broadcast, version: " + newVersion);
+                // 静默刷新数据
+                refreshSilently();
+            }
+        }
+    };
+
     public PasswordListViewModel(@NonNull Application application, BackendService backendService) {
         super(application);
         this.backendService = backendService;
         this.executor = Executors.newSingleThreadExecutor();
+        this.applicationContext = application.getApplicationContext();
+
+        // 注册广播接收器
+        LocalBroadcastManager.getInstance(applicationContext).registerReceiver(
+            dataChangedReceiver,
+            new IntentFilter(VaultSyncManager.ACTION_DATA_CHANGED)
+        );
+
         loadPasswordItems();
     }
 
@@ -344,6 +372,8 @@ public class PasswordListViewModel extends AndroidViewModel {
     @Override
     protected void onCleared() {
         super.onCleared();
+        // 注销广播接收器
+        LocalBroadcastManager.getInstance(applicationContext).unregisterReceiver(dataChangedReceiver);
         executor.shutdown();
     }
 }
