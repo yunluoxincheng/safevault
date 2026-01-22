@@ -1,5 +1,7 @@
 package com.ttt.safevault.data;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
@@ -11,16 +13,19 @@ import androidx.room.PrimaryKey;
 public class SyncOperationEntity {
 
     @PrimaryKey
+    @NonNull
     private String operationId;
 
     /**
      * 操作类型：CREATE, UPDATE, DELETE
      */
+    @NonNull
     private String operationType;
 
     /**
      * 密码条目ID（如果适用）
      */
+    @Nullable
     private Integer passwordId;
 
     /**
@@ -36,6 +41,7 @@ public class SyncOperationEntity {
     /**
      * 操作状态：PENDING, IN_PROGRESS, SUCCESS, FAILED
      */
+    @NonNull
     private String status;
 
     public SyncOperationEntity() {
