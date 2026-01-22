@@ -635,4 +635,38 @@
     <!-- ========== 密码选择对话框 ========== -->
     <string name="select_password_to_share">选择要分享的密码</string>
 
+    <!-- ========== 云端同步功能 ========== -->
+
+    <!-- 云端同步 -->
+    <string name="cloud_sync">云端同步</string>
+    <string name="sync_enabled">自动同步密码到云端</string>
+    <string name="sync_interval">同步间隔</string>
+    <string name="wifi_only_sync">仅 WiFi 下同步</string>
+    <string name="wifi_only_sync_summary">节省移动数据流量</string>
+    <string name="manual_sync">立即同步</string>
+    <string name="sync_status">同步状态</string>
+    <string name="last_sync">最后同步</string>
+    <string name="client_version">本地版本</string>
+    <string name="server_version">云端版本</string>
+    <string name="never_synced">从未同步</string>
+    <string name="syncing">同步中…</string>
+    <string name="sync_success">同步成功</string>
+    <string name="sync_failed">同步失败</string>
+    <string name="sync_conflict">检测到冲突</string>
+    <string name="sync_offline">离线模式</string>
+    <string name="sync_just_now">刚刚</string>
+    <string name="sync_minutes_ago">%d 分钟前</string>
+    <string name="sync_hours_ago">%d 小时前</string>
+    <string name="sync_days_ago">%d 天前</string>
+    <string name="sync_interval_30_minutes">30 分钟</string>
+    <string name="sync_interval_1_hour">1 小时</string>
+    <string name="sync_interval_2_hours">2 小时</string>
+    <string name="sync_interval_4_hours">4 小时</string>
+    <string name="sync_interval_manual_only">仅手动同步</string>
+    <string name="select_sync_interval">选择同步间隔</string>
+    <string name="keep_local">保留本地版本</string>
+    <string name="keep_server">保留云端版本</string>
+    <string name="conflict_detected">检测到冲突</string>
+    <string name="conflict_message">本地和云端都有修改，请选择保留哪个版本</string>
+
 </resources>
