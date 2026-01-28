@@ -10,6 +10,7 @@ import com.ttt.safevault.dto.response.EmailRegistrationResponse;
 import com.ttt.safevault.dto.response.LogoutResponse;
 import com.ttt.safevault.dto.response.RemoveDeviceResponse;
 import com.ttt.safevault.dto.response.VerifyEmailResponse;
+import com.ttt.safevault.dto.response.VerificationStatusResponse;
 
 import io.reactivex.rxjava3.core.Observable;
 import retrofit2.http.Body;
@@ -18,6 +19,7 @@ import retrofit2.http.GET;
 import retrofit2.http.Header;
 import retrofit2.http.POST;
 import retrofit2.http.Path;
+import retrofit2.http.Query;
 
 /**
  * 认证服务API接口
@@ -49,6 +51,9 @@ public interface AuthServiceApi {
 
     @POST("v1/auth/complete-registration")
     Observable<CompleteRegistrationResponse> completeRegistration(@Body CompleteRegistrationRequest request);
+
+    @GET("v1/auth/verification-status")
+    Observable<VerificationStatusResponse> checkVerificationStatus(@Query("email") String email);
 
     @POST("v1/auth/login-by-email")
     Observable<EmailLoginResponse> loginByEmail(@Body LoginByEmailRequest request);

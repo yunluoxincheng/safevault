@@ -70,6 +70,13 @@ public class RegisterActivity extends AppCompatActivity {
     private String registeredEmail;
     private String registeredUsername;
 
+    // 轮询相关
+    private android.os.Handler pollingHandler;
+    private Runnable pollingRunnable;
+    private static final long POLLING_INTERVAL_MS = 3000; // 3秒轮询一次
+    private static final long MAX_POLLING_TIME_MS = 10 * 60 * 1000; // 最多轮询10分钟
+    private long pollingStartTime;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -97,9 +104,6 @@ public class RegisterActivity extends AppCompatActivity {
         setupObservers();
         setupClickListeners();
         setupTextWatchers();
-
-        // 检查是否从邮箱验证跳转来
-        checkEmailVerificationAndNavigate();
     }
 
     private void initViews() {
@@ -145,7 +149,28 @@ public class RegisterActivity extends AppCompatActivity {
                         resendVerificationButton.setVisibility(View.VISIBLE);
                     }
                     showMessage("验证邮件已发送到 " + response.getEmail() + "，请查收");
+
+                    // 开始轮询检查验证状态
+                    startVerificationPolling(response.getEmail());
                 }
+            }
+        });
+
+        // 观察验证状态响应
+        authViewModel.getVerificationStatusResponse().observe(this, response -> {
+            if (response != null && isStepOne) {
+                if (response.isVerified()) {
+                    // 验证成功，停止轮询并进入第二步
+                    stopVerificationPolling();
+                    registeredEmail = response.getEmail();
+                    registeredUsername = response.getUsername();
+                    showStepTwo();
+                } else if (response.isNotFound()) {
+                    // 验证记录不存在（可能过期），停止轮询
+                    stopVerificationPolling();
+                    showError("验证链接已过期，请重新发送验证邮件");
+                }
+                // PENDING 状态继续轮询
             }
         });
 
@@ -641,27 +666,6 @@ public class RegisterActivity extends AppCompatActivity {
     }
 
     /**
-     * 检查邮箱验证状态并跳转到第二步
-     */
-    private void checkEmailVerificationAndNavigate() {
-        com.ttt.safevault.network.TokenManager tokenManager =
-            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
-
-        // 检查邮箱是否已验证
-        if (tokenManager.isEmailVerified()) {
-            String email = tokenManager.getVerifiedEmail();
-            String username = tokenManager.getVerifiedUsername();
-
-            if (email != null && username != null) {
-                // 跳转到第二步
-                registeredEmail = email;
-                registeredUsername = username;
-                showStepTwo();
-            }
-        }
-    }
-
-    /**
      * 导航到主界面
      */
     private void navigateToMain() {
@@ -669,13 +673,6 @@ public class RegisterActivity extends AppCompatActivity {
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // 每次返回时检查邮箱验证状态（从EmailVerificationActivity返回时需要）
-        checkEmailVerificationAndNavigate();
     }
 
     @Override
@@ -691,11 +688,66 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
-        // 第一步：清除验证状态并返回
+        // 第一步：停止轮询并清除验证状态
+        stopVerificationPolling();
         com.ttt.safevault.network.TokenManager tokenManager =
             com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
         tokenManager.clearEmailVerificationStatus();
 
         super.onBackPressed();
+    }
+
+    /**
+     * 开始轮询检查验证状态
+     */
+    private void startVerificationPolling(String email) {
+        stopVerificationPolling(); // 先停止之前的轮询
+
+        pollingHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        pollingStartTime = System.currentTimeMillis();
+
+        pollingRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // 检查是否超过最大轮询时间
+                if (System.currentTimeMillis() - pollingStartTime > MAX_POLLING_TIME_MS) {
+                    stopVerificationPolling();
+                    return;
+                }
+
+                // 检查是否还在第一步
+                if (!isStepOne) {
+                    stopVerificationPolling();
+                    return;
+                }
+
+                // 调用检查验证状态
+                authViewModel.checkVerificationStatus(email);
+
+                // 继续下一次轮询
+                pollingHandler.postDelayed(this, POLLING_INTERVAL_MS);
+            }
+        };
+
+        // 立即执行第一次检查
+        pollingHandler.post(pollingRunnable);
+    }
+
+    /**
+     * 停止轮询
+     */
+    private void stopVerificationPolling() {
+        if (pollingHandler != null && pollingRunnable != null) {
+            pollingHandler.removeCallbacks(pollingRunnable);
+            pollingHandler = null;
+            pollingRunnable = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 停止轮询
+        stopVerificationPolling();
     }
 }

@@ -86,23 +86,6 @@
             android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
-        <!-- 邮箱验证页面 -->
-        <activity
-            android:name=".ui.EmailVerificationActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.SafeVault.NoActionBar">
-            <!-- 处理邮箱验证 Deep Link -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="safevault"
-                    android:host="verify-email" />
-            </intent-filter>
-        </activity>
-
         <!-- 分享功能相关页面 -->
         <activity
             android:name=".ui.share.ShareActivity"

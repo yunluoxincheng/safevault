@@ -112,13 +112,45 @@ com.ttt.safevault/
 - **Security**: Biometric authentication, FLAG_SECURE
 - **Clipboard**: Custom ClipboardManager with 30-second auto-clear
 
-## Development Guidelines
+## ⚠️ CRITICAL RULE - MANDATORY SKILL USAGE ⚠️
 
-### Skill Usage Rule (重要)
-**在执行任何任务之前，必须先检查是否有可用的 skill：**
-- 如果有适用的 skill，**必须**使用该 skill 来执行任务
-- 特别是修改代码类的工作，必须使用相应的 skill
-- 这确保了任务的正确执行和代码质量
+**在执行任何任务之前，必须先检查是否有可用的 skill！**
+
+### 必须遵守的流程：
+1. **第一步**：查看可用技能列表，确认是否有匹配的 skill
+2. **第二步**：如果有适用的 skill，**必须使用 Skill 工具调用该 skill**
+3. **第三步**：只有当没有匹配的 skill 时，才直接执行任务
+
+### 必须使用 Skill 的情况（包括但不限于）：
+- ✅ 修改/添加/删除代码
+- ✅ 实现/修复功能
+- ✅ UI 现代化更新
+- ✅ 架构设计
+- ✅ 代码审查
+- ✅ 调试问题
+- ✅ 重构代码
+
+### 可用 Skills 列表：
+- `android-ui-modernization` - UI 现代化
+- `android-mvvm-pattern` - MVVM 架构
+- `android-security-practices` - 安全实践
+- `android-network-sync-fixes` - 网络同步修复
+- `android-biometric-fixes` - 生物识别修复
+- `android-email-verification-fixes` - 邮箱验证修复
+- `android-encryption-fixes` - 加密修复
+- `android-debugging-fixes` - 调试修复
+- `password-sharing-implementation` - 密码分享实现
+- `password-strength-algorithms` - 密码强度算法
+- `android-retrofit-network` - Retrofit 网络层
+- `documenting-code` - 代码文档
+- `refactoring-code` - 代码重构
+- `feature-design-advisor` - 功能设计顾问
+
+**⚠️ 违反此规则将被视为严重的执行错误！**
+
+---
+
+## Development Guidelines
 
 ### BackendService Implementation
 All data operations go through the `BackendService` interface. The frontend receives:

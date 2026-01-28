@@ -48,6 +48,7 @@ public class AuthViewModel extends AndroidViewModel {
     private final MutableLiveData<EmailRegistrationResponse> emailRegistrationLiveData = new MutableLiveData<>();
     private final MutableLiveData<VerifyEmailResponse> emailVerificationLiveData = new MutableLiveData<>();
     private final MutableLiveData<EmailLoginResponse> emailLoginLiveData = new MutableLiveData<>();
+    private final MutableLiveData<com.ttt.safevault.dto.response.VerificationStatusResponse> verificationStatusLiveData = new MutableLiveData<>();
 
     public AuthViewModel(@NonNull Application application) {
         super(application);
@@ -340,6 +341,33 @@ public class AuthViewModel extends AndroidViewModel {
     }
 
     /**
+     * 检查邮箱验证状态
+     * 用于轮询检查用户是否已在 Web 页面完成验证
+     *
+     * @param email 邮箱
+     */
+    public void checkVerificationStatus(String email) {
+        Disposable disposable = retrofitClient.getAuthServiceApi()
+            .checkVerificationStatus(email)
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                response -> {
+                    verificationStatusLiveData.setValue(response);
+                    Log.d(TAG, "Verification status check: " + response.getStatus() +
+                               ", email: " + response.getEmail());
+                },
+                error -> {
+                    String message = "检查验证状态失败: " + error.getMessage();
+                    Log.e(TAG, "Verification status check failed", error);
+                    // 静默失败，不显示错误给用户
+                }
+            );
+
+        disposables.add(disposable);
+    }
+
+    /**
      * 邮箱登录（支持设备管理）
      *
      * @param email       邮箱
@@ -486,6 +514,10 @@ public class AuthViewModel extends AndroidViewModel {
 
     public LiveData<EmailLoginResponse> getEmailLoginResponse() {
         return emailLoginLiveData;
+    }
+
+    public LiveData<com.ttt.safevault.dto.response.VerificationStatusResponse> getVerificationStatusResponse() {
+        return verificationStatusLiveData;
     }
 
     @Override
