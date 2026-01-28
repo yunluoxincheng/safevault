@@ -7,7 +7,15 @@ import android.util.Log;
 import com.ttt.safevault.dto.response.AuthResponse;
 import com.ttt.safevault.network.api.AuthServiceApi;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.Base64;
+import java.util.concurrent.TimeUnit;
+
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * Token管理器
@@ -47,7 +55,7 @@ public class TokenManager {
     }
     
     /**
-     * 保存Token
+     * 保存Token（带过期时间解析）
      */
     public void saveTokens(AuthResponse response) {
         if (response == null) {
@@ -60,6 +68,12 @@ public class TokenManager {
             .putString(KEY_USER_ID, response.getUserId())
             .putString(KEY_DISPLAY_NAME, response.getDisplayName())
             .commit();  // 使用 commit() 确保同步保存，避免后续读取时 Token 未就绪
+
+        // 解析并保存过期时间
+        long expiryTime = parseTokenExpiryTime(response.getAccessToken());
+        if (expiryTime > 0) {
+            saveTokenExpiryTime(expiryTime);
+        }
 
         Log.d(TAG, "Tokens saved for user: " + response.getDisplayName());
     }
@@ -85,7 +99,9 @@ public class TokenManager {
      * 获取访问Token
      */
     public String getAccessToken() {
-        return prefs.getString(KEY_ACCESS_TOKEN, null);
+        String token = prefs.getString(KEY_ACCESS_TOKEN, null);
+        Log.d(TAG, "getAccessToken() - Token present: " + (token != null) + ", Length: " + (token != null ? token.length() : 0));
+        return token;
     }
     
     /**
@@ -135,8 +151,9 @@ public class TokenManager {
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_USER_ID)
             .remove(KEY_DISPLAY_NAME)
+            .remove(KEY_TOKEN_EXPIRY_TIME)
             .apply();
-        
+
         Log.d(TAG, "Tokens cleared");
     }
     
@@ -254,5 +271,151 @@ public class TokenManager {
             .apply();
 
         Log.d(TAG, "Last login email cleared");
+    }
+
+    // ========== Token 过期检查与主动刷新 ==========
+
+    private static final String KEY_TOKEN_EXPIRY_TIME = "token_expiry_time";
+    private static final long REFRESH_THRESHOLD_MINUTES = 5; // 剩余5分钟时主动刷新
+
+    /**
+     * 从 JWT Token 中解析过期时间
+     * @param token JWT Token
+     * @return 过期时间的 Unix 时间戳（毫秒），解析失败返回 -1
+     */
+    private long parseTokenExpiryTime(String token) {
+        if (token == null || token.isEmpty()) {
+            return -1;
+        }
+
+        try {
+            // JWT 格式: header.payload.signature
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                Log.e(TAG, "Invalid JWT token format");
+                return -1;
+            }
+
+            // 解码 payload (Base64 URL safe)
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), "UTF-8");
+            JSONObject json = new JSONObject(payload);
+
+            // 获取 exp 字段（Unix 时间戳，秒）
+            if (json.has("exp")) {
+                long expSeconds = json.getLong("exp");
+                // 转换为毫秒
+                return expSeconds * 1000;
+            }
+
+            Log.e(TAG, "JWT token does not contain 'exp' field");
+            return -1;
+        } catch (JSONException e) {
+            Log.e(TAG, "Failed to parse JWT payload", e);
+            return -1;
+        } catch (IllegalArgumentException e) {
+            Log.e(TAG, "Failed to decode Base64 payload", e);
+            return -1;
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error parsing token", e);
+            return -1;
+        }
+    }
+
+    /**
+     * 保存 Token 过期时间
+     * @param expiryTime 过期时间的 Unix 时间戳（毫秒）
+     */
+    private void saveTokenExpiryTime(long expiryTime) {
+        prefs.edit()
+            .putLong(KEY_TOKEN_EXPIRY_TIME, expiryTime)
+            .apply();
+    }
+
+    /**
+     * 获取保存的 Token 过期时间
+     * @return 过期时间的 Unix 时间戳（毫秒），未保存返回 -1
+     */
+    private long getTokenExpiryTime() {
+        return prefs.getLong(KEY_TOKEN_EXPIRY_TIME, -1);
+    }
+
+    /**
+     * 判断 Token 是否需要刷新（剩余时间少于阈值或已过期）
+     * @return true 如果需要刷新，false 否则
+     */
+    public boolean shouldRefreshToken() {
+        String accessToken = getAccessToken();
+        if (accessToken == null) {
+            return false;
+        }
+
+        // 必须有 refresh token 才能刷新
+        String refreshToken = getRefreshToken();
+        if (refreshToken == null) {
+            Log.w(TAG, "No refresh token available, cannot proactive refresh");
+            return false;
+        }
+
+        // 先尝试从缓存获取过期时间
+        long expiryTime = getTokenExpiryTime();
+
+        // 如果缓存中没有，从 token 解析
+        if (expiryTime == -1) {
+            expiryTime = parseTokenExpiryTime(accessToken);
+            if (expiryTime > 0) {
+                saveTokenExpiryTime(expiryTime);
+            }
+        }
+
+        if (expiryTime <= 0) {
+            Log.w(TAG, "Cannot determine token expiry time, skipping proactive refresh");
+            return false;
+        }
+
+        long currentTime = System.currentTimeMillis();
+        long timeUntilExpiry = expiryTime - currentTime;
+        long thresholdMs = TimeUnit.MINUTES.toMillis(REFRESH_THRESHOLD_MINUTES);
+
+        // 修改逻辑：如果 token 已经过期或即将过期（剩余时间 < 阈值），都需要刷新
+        // 移除 && timeUntilExpiry > 0 条件，让已过期的 token 也能触发刷新
+        boolean shouldRefresh = timeUntilExpiry <= thresholdMs;
+
+        Log.d(TAG, String.format("Token expiry check: expiry=%d, current=%d, remaining=%dmin, threshold=%dmin, shouldRefresh=%b",
+            expiryTime, currentTime,
+            TimeUnit.MILLISECONDS.toMinutes(timeUntilExpiry),
+            REFRESH_THRESHOLD_MINUTES, shouldRefresh));
+
+        return shouldRefresh;
+    }
+
+    /**
+     * 如果 Token 快过期，主动刷新
+     * 刷新失败时不跳转登录页，仅记录日志
+     * @return Observable<String> 发送新的 token，失败时发送错误
+     */
+    public Observable<String> refreshIfNearExpiry() {
+        if (!shouldRefreshToken()) {
+            Log.d(TAG, "Token does not need proactive refresh");
+            return Observable.just(getAccessToken());
+        }
+
+        Log.d(TAG, "Token near expiry, initiating proactive refresh");
+
+        return refreshToken()
+            .map(authResponse -> authResponse.getAccessToken())
+            .doOnNext(newToken -> {
+                // 更新过期时间缓存
+                long expiryTime = parseTokenExpiryTime(newToken);
+                if (expiryTime > 0) {
+                    saveTokenExpiryTime(expiryTime);
+                }
+                Log.d(TAG, "Proactive token refresh successful");
+            })
+            .doOnError(error -> {
+                Log.w(TAG, "Proactive token refresh failed, will retry on next API call", error);
+                // 主动刷新失败时不清除 token，等待下次 API 调用时被动刷新
+            })
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread());
     }
 }

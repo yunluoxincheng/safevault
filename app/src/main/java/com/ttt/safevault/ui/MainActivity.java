@@ -175,8 +175,25 @@ public class MainActivity extends AppCompatActivity {
      */
     private void initCloudServices() {
         if (tokenManager != null && tokenManager.isLoggedIn()) {
+            // 主动检查 token 是否需要刷新
+            checkAndRefreshTokenIfNeeded();
             startNotificationService();
         }
+    }
+
+    /**
+     * 检查并主动刷新 token（如果快过期）
+     */
+    private void checkAndRefreshTokenIfNeeded() {
+        if (tokenManager == null) {
+            return;
+        }
+
+        tokenManager.refreshIfNearExpiry()
+            .subscribe(
+                newToken -> android.util.Log.d("MainActivity", "Token refresh check completed"),
+                error -> android.util.Log.w("MainActivity", "Token refresh check failed (non-critical)", error)
+            );
     }
 
     /**

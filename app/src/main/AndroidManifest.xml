@@ -274,6 +274,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- 认证状态接收器 -->
+        <receiver
+            android:name=".receiver.AuthReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ttt.safevault.action.TOKEN_EXPIRED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
