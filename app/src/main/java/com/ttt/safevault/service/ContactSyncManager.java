@@ -7,6 +7,9 @@ import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.ContactDao;
 import com.ttt.safevault.dto.response.FriendDto;
+import com.ttt.safevault.exception.AuthenticationException;
+import com.ttt.safevault.exception.NetworkException;
+import com.ttt.safevault.exception.TokenExpiredException;
 import com.ttt.safevault.network.RetrofitClient;
 
 import java.util.ArrayList;
@@ -18,6 +21,7 @@ import java.util.concurrent.Executors;
 
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
+import retrofit2.HttpException;
 
 /**
  * 联系人同步管理器
@@ -64,12 +68,12 @@ public class ContactSyncManager {
 
     /**
      * 获取云端好友列表（带重试机制）
+     * 错误会传播到调用者，由调用者统一处理
      */
     private Observable<List<FriendDto>> getCloudFriends() {
         return retrofitClient.getFriendServiceApi()
             .getFriendList()
-            .retry(3) // 网络失败重试3次
-            .onErrorReturnItem(new ArrayList<>()); // 失败后返回空列表
+            .retry(3); // 网络失败重试3次
     }
 
     /**
@@ -141,19 +145,25 @@ public class ContactSyncManager {
             contact.contactId = generateContactId();
             contact.cloudUserId = friend.getUserId();
             contact.userId = ""; // 本地派生ID留空
-            contact.username = friend.getUsername();
-            contact.displayName = friend.getDisplayName();
-            contact.publicKey = friend.getPublicKey();
+            contact.username = friend.getUsername() != null ? friend.getUsername() : "";
+            // displayName 是 @NonNull 字段，需要提供默认值
+            contact.displayName = friend.getDisplayName() != null && !friend.getDisplayName().isEmpty()
+                    ? friend.getDisplayName()
+                    : friend.getUsername();
+            // publicKey 是 @NonNull 字段，需要提供默认值
+            contact.publicKey = friend.getPublicKey() != null ? friend.getPublicKey() : "";
             contact.myNote = "";
             contact.addedAt = friend.getAddedAt() != null ? friend.getAddedAt() : System.currentTimeMillis();
             contact.lastUsedAt = 0;
 
             contactDao.insertContact(contact);
+            Log.d(TAG, "Inserted contact: " + contact.displayName + " (cloudUserId: " + contact.cloudUserId + ")");
         }
 
         // 2. 更新现有联系人
         for (Contact contact : result.getToUpdate()) {
             contactDao.updateContact(contact);
+            Log.d(TAG, "Updated contact: " + contact.displayName);
         }
 
         // 3. 保存最后同步时间

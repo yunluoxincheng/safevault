@@ -40,12 +40,12 @@ public class RetrofitClient {
     private RetrofitClient(Context context) {
         tokenManager = TokenManager.getInstance(context);
 
-        // 日志拦截器（使用 BASIC 级别避免记录敏感数据）
+        // 日志拦截器 - 使用 HEADERS 级别以查看 Authorization 头
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
-        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BASIC);
+        loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.HEADERS);
 
         // 认证拦截器
-        AuthInterceptor authInterceptor = new AuthInterceptor(tokenManager);
+        AuthInterceptor authInterceptor = new AuthInterceptor(tokenManager, context);
 
         // 创建信任所有证书的 TrustManager (仅用于开发测试)
         X509TrustManager trustAllCerts = new X509TrustManager() {

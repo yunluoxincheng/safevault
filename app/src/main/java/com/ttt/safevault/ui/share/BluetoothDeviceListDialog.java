@@ -21,7 +21,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import androidx.fragment.app.DialogFragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -189,7 +189,7 @@ public class BluetoothDeviceListDialog extends DialogFragment {
             isScanning = true;
             updateScanningState();
         } else {
-            new AlertDialog.Builder(requireContext())
+            new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("扫描失败")
                 .setMessage("无法启动设备扫描")
                 .setPositiveButton("确定", null)

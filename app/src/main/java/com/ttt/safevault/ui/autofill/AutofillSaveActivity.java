@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
@@ -228,7 +229,7 @@ public class AutofillSaveActivity extends AppCompatActivity {
         String existingTitle = existingItem.getTitle() != null ? existingItem.getTitle() : "";
         String existingUsername = existingItem.getUsername() != null ? existingItem.getUsername() : "";
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.duplicate_credential_title)
                 .setMessage(getString(R.string.duplicate_credential_message,
                         existingTitle, existingUsername))

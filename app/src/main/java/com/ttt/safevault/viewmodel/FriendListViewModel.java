@@ -10,6 +10,8 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.dto.response.FriendDto;
 import com.ttt.safevault.dto.response.UserSearchResult;
+import com.ttt.safevault.exception.AuthenticationException;
+import com.ttt.safevault.exception.TokenExpiredException;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.service.ContactSyncManager;
@@ -21,6 +23,7 @@ import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
+import retrofit2.HttpException;
 
 /**
  * 好友列表ViewModel
@@ -41,6 +44,7 @@ public class FriendListViewModel extends AndroidViewModel {
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> operationSuccess = new MutableLiveData<>(false);
     private final MutableLiveData<String> successMessage = new MutableLiveData<>();
+    private final MutableLiveData<Boolean> tokenExpired = new MutableLiveData<>(false);
 
     public LiveData<List<FriendDto>> getFriends() {
         return friends;
@@ -66,6 +70,10 @@ public class FriendListViewModel extends AndroidViewModel {
         return successMessage;
     }
 
+    public LiveData<Boolean> getTokenExpired() {
+        return tokenExpired;
+    }
+
     public FriendListViewModel(@NonNull Application application) {
         super(application);
         this.retrofitClient = RetrofitClient.getInstance(application);
@@ -84,6 +92,7 @@ public class FriendListViewModel extends AndroidViewModel {
 
         isLoading.setValue(true);
         errorMessage.setValue(null);
+        tokenExpired.setValue(false);
 
         Disposable disposable = retrofitClient.getFriendServiceApi()
             .getFriendList()
@@ -99,18 +108,84 @@ public class FriendListViewModel extends AndroidViewModel {
                     contactSyncManager.syncContacts()
                         .subscribe(
                             result -> Log.d(TAG, "Contacts synced: add=" + result.getToAdd().size()),
-                            error -> Log.e(TAG, "Contact sync failed", error)
+                            error -> {
+                                Log.e(TAG, "Contact sync failed", error);
+                                Throwable mappedError = mapApiError(error);
+                                handleSyncError(mappedError);
+                            }
                         );
                 },
                 error -> {
                     isLoading.setValue(false);
-                    String message = "加载好友列表失败: " + error.getMessage();
-                    errorMessage.setValue(message);
+                    Throwable mappedError = mapApiError(error);
+                    handleLoadError(mappedError);
                     Log.e(TAG, "Failed to load friend list", error);
                 }
             );
 
         disposables.add(disposable);
+    }
+
+    /**
+     * 将 API 错误映射到自定义异常类型
+     */
+    private Throwable mapApiError(Throwable error) {
+        // 如果已经是自定义异常，直接返回
+        if (error instanceof TokenExpiredException ||
+            error instanceof AuthenticationException) {
+            return error;
+        }
+
+        // 检查是否是 HttpException
+        if (error instanceof HttpException) {
+            HttpException httpException = (HttpException) error;
+            int code = httpException.code();
+
+            if (code == 401) {
+                return new TokenExpiredException("Authentication failed", error);
+            } else if (code >= 400 && code < 500) {
+                return new AuthenticationException("AUTH_ERROR", "Client error: " + code, error);
+            } else if (code >= 500) {
+                return new com.ttt.safevault.exception.NetworkException("SERVER_ERROR", "Server error: " + code, error);
+            }
+        }
+
+        // 检查是否是网络错误
+        if (error instanceof java.io.IOException) {
+            return new com.ttt.safevault.exception.NetworkException("NETWORK_ERROR", "Network connection failed", error);
+        }
+
+        // 其他错误保持原样
+        return error;
+    }
+
+    /**
+     * 处理同步错误
+     */
+    private void handleSyncError(Throwable error) {
+        if (error instanceof TokenExpiredException) {
+            tokenExpired.setValue(true);
+            errorMessage.setValue("登录已过期，请重新登录");
+        } else if (error instanceof AuthenticationException) {
+            errorMessage.setValue("认证失败: " + error.getMessage());
+        } else {
+            errorMessage.setValue("同步失败: " + error.getMessage());
+        }
+    }
+
+    /**
+     * 处理加载错误
+     */
+    private void handleLoadError(Throwable error) {
+        if (error instanceof TokenExpiredException) {
+            tokenExpired.setValue(true);
+            errorMessage.setValue("登录已过期，请重新登录");
+        } else if (error instanceof AuthenticationException) {
+            errorMessage.setValue("认证失败: " + error.getMessage());
+        } else {
+            String message = "加载好友列表失败: " + error.getMessage();
+            errorMessage.setValue(message);
+        }
     }
 
     /**

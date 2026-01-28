@@ -1,6 +1,6 @@
 package com.ttt.safevault.ui.share;
 
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
@@ -235,7 +235,7 @@ public class ContactListFragment extends Fragment {
                         ? contact.displayName
                         : contact.username);
 
-        new AlertDialog.Builder(requireContext())
+        new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(displayName)
                 .setItems(new CharSequence[]{"编辑备注", "查看详情", "删除联系人"},
                         (dialog, which) -> {
@@ -267,7 +267,7 @@ public class ContactListFragment extends Fragment {
         TextInputEditText editNote = dialogView.findViewById(R.id.edit_note);
         editNote.setText(contact.myNote != null ? contact.myNote : "");
 
-        new AlertDialog.Builder(requireContext())
+        new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("编辑备注")
                 .setView(dialogView)
                 .setPositiveButton("保存", (dialog, which) -> {
@@ -299,7 +299,7 @@ public class ContactListFragment extends Fragment {
                         ? contact.displayName
                         : contact.username);
 
-        new AlertDialog.Builder(requireContext())
+        new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("删除联系人")
                 .setMessage("确定要删除联系人 \"" + displayName + "\" 吗？")
                 .setPositiveButton("删除", (dialog, which) -> {
@@ -318,7 +318,7 @@ public class ContactListFragment extends Fragment {
                     loadContacts();
                     Toast.makeText(requireContext(), "联系人已删除", Toast.LENGTH_SHORT).show();
                 } else {
-                    new AlertDialog.Builder(requireContext())
+                    new MaterialAlertDialogBuilder(requireContext())
                             .setTitle("删除失败")
                             .setMessage("删除联系人时发生错误，请重试")
                             .setPositiveButton("确定", null)

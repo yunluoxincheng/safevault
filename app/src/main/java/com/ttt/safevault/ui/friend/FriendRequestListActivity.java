@@ -1,21 +1,24 @@
 package com.ttt.safevault.ui.friend;
 
-import android.app.AlertDialog;
 import android.os.Bundle;
 import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.FriendRequestAdapter;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.FriendRequest;
 import com.ttt.safevault.dto.request.RespondFriendRequestRequest;
 import com.ttt.safevault.dto.response.FriendRequestDto;
+import com.ttt.safevault.exception.AuthenticationException;
+import com.ttt.safevault.exception.TokenExpiredException;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.api.FriendServiceApi;
 import com.ttt.safevault.network.TokenManager;
+import com.ttt.safevault.service.ContactSyncManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,10 +157,32 @@ public class FriendRequestListActivity extends AppCompatActivity {
     private void handleRequestsError(Throwable throwable) {
         swipeRefreshLayout.setRefreshing(false);
 
-        // 加载本地数据库中的请求
+        // 检查是否是认证错误
+        if (throwable instanceof TokenExpiredException) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("登录已过期")
+                    .setMessage("您的登录已过期，请重新登录")
+                    .setPositiveButton("确定", (dialog, which) -> {
+                        // 清除 token 并返回登录
+                        tokenManager.clearTokens();
+                        finish();
+                    })
+                    .setCancelable(false)
+                    .show();
+            return;
+        } else if (throwable instanceof AuthenticationException) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle("认证失败")
+                    .setMessage("认证失败: " + throwable.getMessage())
+                    .setPositiveButton("确定", null)
+                    .show();
+            return;
+        }
+
+        // 其他错误：加载本地数据库中的请求
         loadLocalRequests();
 
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("加载失败")
                 .setMessage("无法从服务器加载好友请求，正在显示本地缓存")
                 .setPositiveButton("确定", null)
@@ -200,7 +225,7 @@ public class FriendRequestListActivity extends AppCompatActivity {
                 : "拒绝 " + (request.fromDisplayName != null && !request.fromDisplayName.isEmpty()
                     ? request.fromDisplayName : request.fromUsername) + " 的好友请求？";
 
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(action + "好友请求")
                 .setMessage(message)
                 .setPositiveButton(action, (dialog, which) -> {
@@ -224,6 +249,12 @@ public class FriendRequestListActivity extends AppCompatActivity {
                         swipeRefreshLayout.setRefreshing(false);
                         // 更新本地数据库
                         updateLocalRequestStatus(request, accept);
+
+                        // 如果接受了好友请求，同步联系人列表
+                        if (accept) {
+                            syncContactList();
+                        }
+
                         // 刷新列表
                         loadPendingRequests();
                         // 显示成功消息
@@ -248,8 +279,48 @@ public class FriendRequestListActivity extends AppCompatActivity {
         }).start();
     }
 
+    /**
+     * 同步联系人列表
+     * 接受好友请求后，将新好友同步到本地数据库
+     */
+    private void syncContactList() {
+        ContactSyncManager syncManager = new ContactSyncManager(this);
+        syncManager.syncContacts()
+                .subscribe(
+                        result -> {
+                            android.util.Log.d(TAG, "联系人同步成功: 新增=" + result.getToAdd().size()
+                                    + ", 更新=" + result.getToUpdate().size());
+                        },
+                        error -> {
+                            android.util.Log.e(TAG, "联系人同步失败", error);
+                            // 检查是否是认证错误
+                            if (error instanceof TokenExpiredException) {
+                                runOnUiThread(() -> {
+                                    new MaterialAlertDialogBuilder(this)
+                                            .setTitle("登录已过期")
+                                            .setMessage("您的登录已过期，请重新登录")
+                                            .setPositiveButton("确定", (dialog, which) -> {
+                                                tokenManager.clearTokens();
+                                                finish();
+                                            })
+                                            .setCancelable(false)
+                                            .show();
+                                });
+                            } else if (error instanceof AuthenticationException) {
+                                runOnUiThread(() -> {
+                                    new MaterialAlertDialogBuilder(this)
+                                            .setTitle("认证失败")
+                                            .setMessage("认证失败: " + error.getMessage())
+                                            .setPositiveButton("确定", null)
+                                            .show();
+                                });
+                            }
+                        }
+                );
+    }
+
     private void showMessage(String title, String message) {
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton("确定", null)
