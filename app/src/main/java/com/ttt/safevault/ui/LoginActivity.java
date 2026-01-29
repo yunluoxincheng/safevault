@@ -398,6 +398,22 @@ public class LoginActivity extends AppCompatActivity {
                 return;
             }
 
+            // 保存会话密码到 AccountManager（这会同时保存到生物识别存储）
+            // 注意：即使用户未启用生物识别，也保存密码以便云端同步功能正常工作
+            com.ttt.safevault.service.manager.AccountManager sessionAccountManager =
+                    new com.ttt.safevault.service.manager.AccountManager(
+                            LoginActivity.this,
+                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                            new com.ttt.safevault.service.manager.PasswordManager(
+                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
+                                    com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
+                            ),
+                            new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
+                            com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
+                    );
+            sessionAccountManager.setSessionMasterPassword(password);
+            android.util.Log.d(TAG, "会话密码已保存到 AccountManager 和生物识别存储");
+
             // 老设备登录，执行云端数据同步
             android.util.Log.d(TAG, "老设备登录，执行云端数据同步");
             handleCloudDataSync();

@@ -1,5 +1,6 @@
 package com.ttt.safevault.ui;
 
+import android.content.Context;
 import android.os.Bundle;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.view.LayoutInflater;
@@ -76,15 +77,42 @@ public class AccountSecurityFragment extends BaseFragment {
                     binding.switchBiometric.setChecked(false);
 
                     // 启用生物识别前要求用户验证身份
-                    // 直接触发生物识别验证
+                    // 启动生物识别验证，验证成功后从加密存储获取密码并启用
+                    android.util.Log.d("AccountSecurity", "启动生物识别验证");
                     showBiometricOnlyAuthentication(() -> {
-                        // 生物识别验证成功，从本地获取主密码并保存
-                        com.ttt.safevault.model.BackendService backendService =
-                                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        // 生物识别验证成功，现在可以从加密存储解密密码了
+                        android.util.Log.d("AccountSecurity", "生物识别验证成功，开始获取主密码");
+                        String masterPassword = null;
+                        try {
+                            android.content.SharedPreferences prefs =
+                                    requireContext().getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
+                            String encryptedPassword = prefs.getString("biometric_encrypted_password", null);
+                            String ivString = prefs.getString("biometric_iv", null);
 
-                        // 调试：检查是否能获取主密码
-                        String masterPassword = backendService.getMasterPassword();
-                        android.util.Log.d("AccountSecurity", "获取主密码: " + (masterPassword != null ? "成功" : "失败"));
+                            android.util.Log.d("AccountSecurity", "加密密码存在: " + (encryptedPassword != null));
+                            android.util.Log.d("AccountSecurity", "IV存在: " + (ivString != null));
+
+                            if (encryptedPassword != null && ivString != null) {
+                                // 创建 BiometricKeyManager 来解密（此时用户已通过生物识别验证）
+                                com.ttt.safevault.security.BiometricKeyManager keyManager =
+                                        com.ttt.safevault.security.BiometricKeyManager.getInstance();
+                                if (keyManager != null) {
+                                    byte[] encrypted = android.util.Base64.decode(encryptedPassword, android.util.Base64.NO_WRAP);
+                                    byte[] iv = android.util.Base64.decode(ivString, android.util.Base64.NO_WRAP);
+
+                                    javax.crypto.Cipher cipher = keyManager.getDecryptCipher(iv);
+                                    byte[] decrypted = cipher.doFinal(encrypted);
+                                    masterPassword = new String(decrypted, java.nio.charset.StandardCharsets.UTF_8);
+                                    android.util.Log.d("AccountSecurity", "成功从生物识别存储获取密码");
+                                } else {
+                                    android.util.Log.e("AccountSecurity", "BiometricKeyManager.getInstance() 返回 null");
+                                }
+                            } else {
+                                android.util.Log.e("AccountSecurity", "加密密码或IV为空");
+                            }
+                        } catch (Exception e) {
+                            android.util.Log.e("AccountSecurity", "从生物识别存储获取密码失败", e);
+                        }
 
                         if (masterPassword != null && !masterPassword.isEmpty()) {
                             com.ttt.safevault.service.manager.AccountManager accountManager =
@@ -98,11 +126,7 @@ public class AccountSecurityFragment extends BaseFragment {
                                             securityConfig,
                                             com.ttt.safevault.network.RetrofitClient.getInstance(requireContext())
                                     );
-
-                            android.util.Log.d("AccountSecurity", "调用 enableBiometricAuth");
                             boolean success = accountManager.enableBiometricAuth(masterPassword);
-                            android.util.Log.d("AccountSecurity", "enableBiometricAuth 结果: " + success);
-
                             if (success) {
                                 binding.switchBiometric.setChecked(true);
                                 Toast.makeText(requireContext(), "生物识别已启用", Toast.LENGTH_SHORT).show();
@@ -111,7 +135,7 @@ public class AccountSecurityFragment extends BaseFragment {
                                 Toast.makeText(requireContext(), "启用生物识别失败", Toast.LENGTH_SHORT).show();
                             }
                         } else {
-                            android.util.Log.e("AccountSecurity", "主密码为空或null");
+                            android.util.Log.e("AccountSecurity", "无法获取主密码");
                             binding.switchBiometric.setChecked(false);
                             Toast.makeText(requireContext(), "无法获取主密码，请重新登录", Toast.LENGTH_SHORT).show();
                         }

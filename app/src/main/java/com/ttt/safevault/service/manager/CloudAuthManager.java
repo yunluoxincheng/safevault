@@ -224,6 +224,9 @@ public class CloudAuthManager {
                     cryptoManager.initialize(masterPassword);
                 }
 
+                // 10. 保存主密码到生物识别存储（即使用户未启用生物识别，也需要保存以便后续操作使用）
+                saveMasterPasswordForBiometric(masterPassword);
+
                 Log.d(TAG, "Registration completed successfully for user: " + username);
             }
 
@@ -232,6 +235,42 @@ public class CloudAuthManager {
         } catch (Exception e) {
             Log.e(TAG, "Failed to complete registration", e);
             throw new RuntimeException("注册完成失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 保存主密码用于生物识别解锁
+     * 注意：即使用户未启用生物识别，也需要保存密码以便云端同步等功能正常工作
+     */
+    private void saveMasterPasswordForBiometric(String masterPassword) {
+        try {
+            com.ttt.safevault.security.BiometricKeyManager biometricKeyManager =
+                    com.ttt.safevault.security.BiometricKeyManager.getInstance();
+            if (biometricKeyManager == null) {
+                Log.w(TAG, "BiometricKeyManager not initialized, skipping password save");
+                return;
+            }
+
+            // 获取加密Cipher
+            javax.crypto.Cipher cipher = biometricKeyManager.getEncryptCipher();
+
+            // 加密主密码
+            byte[] encrypted = cipher.doFinal(masterPassword.getBytes(StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+
+            // 保存到 SharedPreferences
+            context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("biometric_encrypted_password",
+                            android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP))
+                    .putString("biometric_iv",
+                            android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
+                    .apply();
+
+            Log.d(TAG, "Master password saved for biometric unlock");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to save master password for biometric", e);
+            // 不抛出异常，允许注册继续完成
         }
     }
 
