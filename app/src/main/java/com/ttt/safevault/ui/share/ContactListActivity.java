@@ -3,8 +3,10 @@ package com.ttt.safevault.ui.share;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -13,12 +15,18 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ContactAdapter;
 import com.ttt.safevault.data.Contact;
+import com.ttt.safevault.service.ContactSyncManager;
 import com.ttt.safevault.service.manager.ContactManager;
+import com.ttt.safevault.network.TokenManager;
 
 import java.util.List;
 
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+
 /**
  * 联系人列表界面
+ * 支持本地联系人和云端好友的同步显示
  */
 public class ContactListActivity extends AppCompatActivity {
     private static final String TAG = "ContactListActivity";
@@ -32,6 +40,9 @@ public class ContactListActivity extends AppCompatActivity {
     private View emptyView;
     private ContactAdapter adapter;
     private ContactManager contactManager;
+    private ContactSyncManager contactSyncManager;
+    private TokenManager tokenManager;
+    private CompositeDisposable disposables = new CompositeDisposable();
     private com.google.android.material.badge.BadgeDrawable friendRequestBadge;
 
     @Override
@@ -40,9 +51,10 @@ public class ContactListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_contact_list);
 
         contactManager = new ContactManager(this);
+        contactSyncManager = new ContactSyncManager(this);
+        tokenManager = new TokenManager(this);
 
         initViews();
-        loadContacts();
     }
 
     private void initViews() {
@@ -76,7 +88,7 @@ public class ContactListActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
 
         swipeRefreshLayout = findViewById(R.id.swipe_refresh_layout);
-        swipeRefreshLayout.setOnRefreshListener(this::loadContacts);
+        swipeRefreshLayout.setOnRefreshListener(this::onRefresh);
 
         emptyView = findViewById(R.id.empty_view);
 
@@ -99,7 +111,8 @@ public class ContactListActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        loadContacts();
+        // 进入页面时同步云端好友并加载本地联系人
+        syncAndLoadContacts();
         updateFriendRequestBadge();
     }
 
@@ -271,5 +284,55 @@ public class ContactListActivity extends AppCompatActivity {
                 }
             });
         }).start();
+    }
+
+    /**
+     * 下拉刷新回调：触发云端同步并重新加载
+     */
+    private void onRefresh() {
+        syncAndLoadContacts();
+    }
+
+    /**
+     * 同步云端好友并加载本地联系人
+     * 如果已登录，先同步云端数据，再加载本地列表
+     * 如果未登录，直接加载本地数据
+     */
+    private void syncAndLoadContacts() {
+        if (tokenManager.isLoggedIn()) {
+            // 已登录：先同步云端好友，再加载本地列表
+            Log.d(TAG, "User logged in, syncing cloud contacts...");
+            disposables.add(
+                contactSyncManager.syncContacts()
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(
+                        result -> {
+                            Log.d(TAG, "Cloud sync completed: added=" + result.getToAdd().size()
+                                + ", updated=" + result.getToUpdate().size());
+                            if (result.getToAdd().size() > 0) {
+                                Toast.makeText(this, "已同步 " + result.getToAdd().size() + " 位云端好友",
+                                    Toast.LENGTH_SHORT).show();
+                            }
+                            loadContacts();
+                        },
+                        error -> {
+                            Log.e(TAG, "Cloud sync failed, loading local contacts only", error);
+                            // 同步失败时仍然加载本地数据
+                            loadContacts();
+                        }
+                    )
+            );
+        } else {
+            // 未登录：直接加载本地数据
+            Log.d(TAG, "User not logged in, loading local contacts only");
+            loadContacts();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // 清理 RxJava 订阅
+        disposables.clear();
     }
 }

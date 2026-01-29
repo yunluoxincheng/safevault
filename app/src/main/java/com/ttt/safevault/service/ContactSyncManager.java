@@ -103,10 +103,11 @@ public class ContactSyncManager {
                 // 云端有，本地没有 → 添加到本地
                 toAdd.add(cloudFriend);
             } else {
-                // 两边都有 → 检查是否需要更新
+                // 两边都有 → 检查是否需要更新（包括在线状态）
                 if (shouldUpdateContact(localContact, cloudFriend)) {
                     localContact.displayName = cloudFriend.getDisplayName();
                     localContact.publicKey = cloudFriend.getPublicKey();
+                    localContact.isOnline = cloudFriend.getIsOnline() != null ? cloudFriend.getIsOnline() : false;
                     toUpdate.add(localContact);
                 }
             }
@@ -146,6 +147,8 @@ public class ContactSyncManager {
             contact.cloudUserId = friend.getUserId();
             contact.userId = ""; // 本地派生ID留空
             contact.username = friend.getUsername() != null ? friend.getUsername() : "";
+            // 后端现在返回 email 字段
+            contact.email = friend.getEmail();
             // displayName 是 @NonNull 字段，需要提供默认值
             contact.displayName = friend.getDisplayName() != null && !friend.getDisplayName().isEmpty()
                     ? friend.getDisplayName()
@@ -153,11 +156,15 @@ public class ContactSyncManager {
             // publicKey 是 @NonNull 字段，需要提供默认值
             contact.publicKey = friend.getPublicKey() != null ? friend.getPublicKey() : "";
             contact.myNote = "";
-            contact.addedAt = friend.getAddedAt() != null ? friend.getAddedAt() : System.currentTimeMillis();
-            contact.lastUsedAt = 0;
+            // 后端返回的是秒级时间戳，需要转换为毫秒级
+            contact.addedAt = friend.getAddedAt() != null ? friend.getAddedAt() * 1000 : System.currentTimeMillis();
+            // 使用 addedAt 作为初始的 lastUsedAt
+            contact.lastUsedAt = contact.addedAt;
+            // 保存在线状态
+            contact.isOnline = friend.getIsOnline() != null ? friend.getIsOnline() : false;
 
             contactDao.insertContact(contact);
-            Log.d(TAG, "Inserted contact: " + contact.displayName + " (cloudUserId: " + contact.cloudUserId + ")");
+            Log.d(TAG, "Inserted contact: " + contact.displayName + " (cloudUserId: " + contact.cloudUserId + ", online: " + contact.isOnline + ")");
         }
 
         // 2. 更新现有联系人

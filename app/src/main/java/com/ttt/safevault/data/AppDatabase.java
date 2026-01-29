@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 /**
  * SafeVault应用数据库
  */
-@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class, FriendRequest.class, SyncOperationEntity.class}, version = 5, exportSchema = false)
+@Database(entities = {EncryptedPasswordEntity.class, Contact.class, ShareRecord.class, FriendRequest.class, SyncOperationEntity.class}, version = 7, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     private static final String DATABASE_NAME = "safevault_db";
@@ -123,6 +123,24 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    // 数据库版本5到版本6的迁移：添加联系人表email字段
+    private static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 为contacts表添加email列
+            database.execSQL("ALTER TABLE contacts ADD COLUMN email TEXT");
+        }
+    };
+
+    // 数据库版本6到版本7的迁移：添加联系人表is_online字段
+    private static final Migration MIGRATION_6_7 = new Migration(6, 7) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            // 为contacts表添加is_online列，默认值为0（false）
+            database.execSQL("ALTER TABLE contacts ADD COLUMN is_online INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -131,7 +149,7 @@ public abstract class AppDatabase extends RoomDatabase {
                             context.getApplicationContext(),
                             AppDatabase.class,
                             DATABASE_NAME
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                      .build();
                 }
             }

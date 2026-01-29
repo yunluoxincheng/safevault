@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -24,14 +25,20 @@ import com.ttt.safevault.adapter.ContactAdapter;
 import com.ttt.safevault.ui.MainActivity;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
+import com.ttt.safevault.service.ContactSyncManager;
 import com.ttt.safevault.service.manager.ContactManager;
+import com.ttt.safevault.network.TokenManager;
 
 import java.util.List;
 import java.util.concurrent.Executors;
 
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+
 /**
  * 联系人列表Fragment
  * 用于显示和管理联系人列表
+ * 支持本地联系人和云端好友的同步显示
  */
 public class ContactListFragment extends Fragment {
 
@@ -57,6 +64,9 @@ public class ContactListFragment extends Fragment {
     private View emptyView;
     private ContactAdapter adapter;
     private ContactManager contactManager;
+    private ContactSyncManager contactSyncManager;
+    private TokenManager tokenManager;
+    private CompositeDisposable disposables;
     private Mode mode = Mode.BROWSE;
     private String searchQuery = "";
 
@@ -76,6 +86,9 @@ public class ContactListFragment extends Fragment {
             mode = Mode.valueOf(modeStr);
         }
         contactManager = new ContactManager(requireContext());
+        contactSyncManager = new ContactSyncManager(requireContext());
+        tokenManager = new TokenManager(requireContext());
+        disposables = new CompositeDisposable();
     }
 
     @Nullable
@@ -106,7 +119,7 @@ public class ContactListFragment extends Fragment {
         // 设置下拉刷新
         swipeRefreshLayout = view.findViewById(R.id.swipe_refresh_layout);
         if (swipeRefreshLayout != null) {
-            swipeRefreshLayout.setOnRefreshListener(this::loadContacts);
+            swipeRefreshLayout.setOnRefreshListener(this::onRefresh);
         }
 
         // 空状态视图
@@ -149,7 +162,8 @@ public class ContactListFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        loadContacts();
+        // 进入页面时同步云端好友并加载本地联系人
+        syncAndLoadContacts();
         // 刷新 MainActivity 的菜单以更新好友请求 Badge
         if (getActivity() instanceof MainActivity) {
             ((MainActivity) getActivity()).refreshOptionsMenu();
@@ -394,5 +408,52 @@ public class ContactListFragment extends Fragment {
         swipeRefreshLayout = null;
         emptyView = null;
         adapter = null;
+        // 清理 RxJava 订阅
+        if (disposables != null) {
+            disposables.clear();
+        }
+    }
+
+    /**
+     * 下拉刷新回调：触发云端同步并重新加载
+     */
+    private void onRefresh() {
+        syncAndLoadContacts();
+    }
+
+    /**
+     * 同步云端好友并加载本地联系人
+     * 如果已登录，先同步云端数据，再加载本地列表
+     * 如果未登录，直接加载本地数据
+     */
+    private void syncAndLoadContacts() {
+        if (tokenManager.isLoggedIn()) {
+            // 已登录：先同步云端好友，再加载本地列表
+            Log.d(TAG, "User logged in, syncing cloud contacts...");
+            disposables.add(
+                contactSyncManager.syncContacts()
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(
+                        result -> {
+                            Log.d(TAG, "Cloud sync completed: added=" + result.getToAdd().size()
+                                + ", updated=" + result.getToUpdate().size());
+                            if (result.getToAdd().size() > 0 && getActivity() != null) {
+                                Toast.makeText(getActivity(), "已同步 " + result.getToAdd().size() + " 位云端好友",
+                                    Toast.LENGTH_SHORT).show();
+                            }
+                            loadContacts();
+                        },
+                        error -> {
+                            Log.e(TAG, "Cloud sync failed, loading local contacts only", error);
+                            // 同步失败时仍然加载本地数据
+                            loadContacts();
+                        }
+                    )
+            );
+        } else {
+            // 未登录：直接加载本地数据
+            Log.d(TAG, "User not logged in, loading local contacts only");
+            loadContacts();
+        }
     }
 }

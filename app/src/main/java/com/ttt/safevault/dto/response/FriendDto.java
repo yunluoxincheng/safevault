@@ -6,6 +6,7 @@ package com.ttt.safevault.dto.response;
 public class FriendDto {
     private String userId;
     private String username;
+    private String email;
     private String displayName;
     private String publicKey;
     private Long addedAt;
@@ -28,6 +29,14 @@ public class FriendDto {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public String getDisplayName() {

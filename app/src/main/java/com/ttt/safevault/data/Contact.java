@@ -44,9 +44,16 @@ public class Contact {
     @ColumnInfo(name = "cloud_user_id")
     public String cloudUserId;      // 云端用户ID（用于云端分享）
 
+    @ColumnInfo(name = "email")
+    public String email;            // 邮箱地址（用于显示）
+
+    @ColumnInfo(name = "is_online")
+    public boolean isOnline;        // 是否在线
+
     public Contact() {
         this.addedAt = System.currentTimeMillis();
         this.lastUsedAt = System.currentTimeMillis();
+        this.isOnline = false;
     }
 
     @Ignore
@@ -131,5 +138,21 @@ public class Contact {
 
     public void setCloudUserId(String cloudUserId) {
         this.cloudUserId = cloudUserId;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public boolean isOnline() {
+        return isOnline;
+    }
+
+    public void setOnline(boolean online) {
+        this.isOnline = online;
     }
 }

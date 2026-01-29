@@ -70,6 +70,7 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ViewHold
         private final TextView textNote;
         private final TextView textLastUsed;
         private final View menuButton;
+        private final View onlineStatusView;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -80,38 +81,53 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ViewHold
             textNote = itemView.findViewById(R.id.text_note);
             textLastUsed = itemView.findViewById(R.id.text_last_used);
             menuButton = itemView.findViewById(R.id.btn_menu);
+            onlineStatusView = itemView.findViewById(R.id.view_online_status);
         }
 
         public void bind(Contact contact) {
-            // 显示名称（如果有备注则显示备注，否则显示原显示名称）
-            String displayText = contact.myNote != null && !contact.myNote.isEmpty()
-                    ? contact.myNote
-                    : (contact.displayName != null && !contact.displayName.isEmpty()
-                        ? contact.displayName
-                        : contact.username);
+            // 第一行：显示名称（使用 displayName，如果为空则使用 username）
+            String displayText = (contact.displayName != null && !contact.displayName.isEmpty())
+                    ? contact.displayName
+                    : contact.username;
             textDisplayName.setText(displayText);
 
-            // 用户名
-            textUsername.setText(contact.username);
+            // 第二行：完整邮箱地址（如果有的话）
+            if (contact.email != null && !contact.email.isEmpty()) {
+                textUsername.setText(contact.email);
+                textUsername.setVisibility(View.VISIBLE);
+            } else {
+                textUsername.setVisibility(View.GONE);
+            }
 
-            // 备注显示
+            // 第三行：备注（仅当有备注时显示）
             if (contact.myNote != null && !contact.myNote.isEmpty()) {
-                textNote.setVisibility(View.VISIBLE);
                 textNote.setText("备注: " + contact.myNote);
+                textNote.setVisibility(View.VISIBLE);
             } else {
                 textNote.setVisibility(View.GONE);
             }
 
-            // 最后使用时间
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
-            textLastUsed.setText(sdf.format(new Date(contact.lastUsedAt)));
+            // 第四行：最后使用时间（仅在确实有使用记录时显示）
+            // 使用条件：lastUsedAt > 0 且 lastUsedAt != addedAt
+            if (contact.lastUsedAt > 0 && contact.lastUsedAt != contact.addedAt) {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
+                textLastUsed.setText("最后使用: " + sdf.format(new Date(contact.lastUsedAt)));
+                textLastUsed.setVisibility(View.VISIBLE);
+            } else {
+                textLastUsed.setVisibility(View.GONE);
+            }
 
-            // 头像（取首字母）
-            String firstLetter = displayText.isEmpty() ? "?" : String.valueOf(displayText.charAt(0));
-            imageAvatar.setImageDrawable(null); // 可以使用 TextDrawable 或其他库
-            // 这里简化处理，可以后续添加首字母头像
+            // 在线状态指示器（绿色圆点）
+            // 🟢 在线时显示，⚫ 离线时不显示
+            if (contact.isOnline() && onlineStatusView != null) {
+                onlineStatusView.setVisibility(View.VISIBLE);
+            } else {
+                onlineStatusView.setVisibility(View.GONE);
+            }
+
+            // 头像背景
+            imageAvatar.setImageDrawable(null);
             imageAvatar.setBackgroundResource(R.drawable.circle_avatar_background);
-            // 可以用 Canvas 绘制文字
 
             // 点击事件
             cardView.setOnClickListener(v -> {
