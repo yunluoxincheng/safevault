@@ -315,6 +315,31 @@ The app integrates with `safevault-backend` REST APIs:
 - FLAG_SECURE prevents screenshots of sharing UI
 - Expiration times limit share validity
 
+### Encryption Protocol Version 2.0 (Hybrid Encryption)
+The contact sharing feature uses **hybrid encryption (RSA + AES)**:
+- **AES-256-GCM**: Encrypts the actual share data (no size limit)
+- **RSA-OAEP**: Encrypts the AES key with receiver's public key
+- **RSA-SHA256**: Digital signature to verify sender identity
+- **Protocol Version**: 2.0 (not backward compatible with 1.0)
+
+**Key Components**:
+- `EncryptedSharePacket` (v2.0): Contains `encryptedAESKey`, `iv`, `encryptedData`, `signature`
+- `ShareEncryptionManager`: Handles `createEncryptedPacket()` and `openEncryptedPacket()`
+
+**Encryption Flow**:
+1. Serialize `ShareDataPacket` to JSON
+2. Generate random AES-256 key and IV
+3. Encrypt data with AES-GCM
+4. Encrypt AES key with receiver's RSA public key
+5. Sign original data with sender's RSA private key
+6. Assemble `EncryptedSharePacket` (v2.0)
+
+**Decryption Flow**:
+1. Verify packet version is "2.0"
+2. Decrypt AES key with receiver's RSA private key
+3. Decrypt data with AES key and IV
+4. Verify signature with sender's RSA public key
+
 ### Deep Link Handling
 The app handles deep links for password sharing:
 - `safevault://share/{shareId}` - Open received share

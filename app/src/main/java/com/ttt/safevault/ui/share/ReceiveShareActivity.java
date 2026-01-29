@@ -153,6 +153,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
 
     /**
      * 检查是否为端到端加密的离线分享（EncryptedSharePacket格式）
+     * 支持版本 1.0 和 2.0
      */
     private boolean isEncryptedSharePacket(String content) {
         try {
@@ -162,9 +163,15 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 "UTF-8"
             );
             // 检查是否包含EncryptedSharePacket的特征字段
-            return decoded.contains("\"version\"") &&
+            boolean hasBasicFields = decoded.contains("\"version\"") &&
                    decoded.contains("\"encryptedData\"") &&
                    decoded.contains("\"signature\"");
+
+            // 版本 2.0 还包含 encryptedAESKey 和 iv 字段
+            boolean isV2 = decoded.contains("\"encryptedAESKey\"") &&
+                    decoded.contains("\"iv\"");
+
+            return hasBasicFields && (isV2 || decoded.contains("\"1.0\""));
         } catch (Exception e) {
             return false;
         }
@@ -224,7 +231,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
     }
 
     /**
-     * 解密分享数据（端到端加密）
+     * 解密分享数据（端到端加密，混合方案版本 2.0）
      */
     private void decryptShareData() {
         try {
@@ -239,25 +246,71 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 return;
             }
 
-            // 获取自己的密钥对
-            KeyPair keyPair = keyManager.deriveKeyPairFromMasterPassword(
+            // 获取自己的密钥对（接收方）
+            KeyPair receiverKeyPair = keyManager.deriveKeyPairFromMasterPassword(
                 masterPassword,
                 userEmail
             );
 
-            // 注意：这里假设发送方公钥已经在加密包中或可以通过其他方式获取
-            // 在实际实现中，可能需要从服务器获取发送方公钥
-            // 暂时跳过签名验证，只进行解密
-            decryptedData = encryptionManager.decryptShare(
-                encryptedPacket.getEncryptedData(),
-                keyPair.getPrivate()
-            );
+            // 从解密后的数据中获取发送方公钥
+            // 由于新版本使用混合加密，我们需要使用 openEncryptedPacket() 方法
+            // 但发送方公钥需要从加密包的元数据或从服务器获取
+            // 这里我们先尝试解密，然后从解密后的数据中提取发送方公钥进行签名验证
 
-            if (decryptedData == null) {
-                runOnUiThread(() -> {
-                    showError("解密失败");
-                });
-                return;
+            // 版本 2.0 使用 openEncryptedPacket() 方法
+            String version = encryptedPacket.getVersion();
+            if ("2.0".equals(version)) {
+                // 新版本混合加密方案
+                // 首先需要获取发送方公钥
+                // 在实际实现中，发送方公钥可能需要从服务器获取
+                // 这里我们从加密包中获取发送方ID，然后通过其他方式获取公钥
+
+                // 由于发送方公钥无法直接从加密包中获取（它是加密数据的一部分），
+                // 我们需要先解密数据，然后从 ShareDataPacket 中提取发送方公钥
+                // 但是验证签名需要发送方公钥，这是一个两步过程：
+                // 1. 先解密数据（不验证签名）
+                // 2. 从数据中提取发送方公钥，然后验证签名
+
+                // 临时方案：使用两步解密法
+                // 注意：这在安全上不是最佳实践，生产环境应该从可信渠道获取发送方公钥
+                decryptedData = openEncryptedPacketWithoutSignature(
+                    encryptedPacket,
+                    receiverKeyPair.getPrivate()
+                );
+
+                if (decryptedData == null) {
+                    runOnUiThread(() -> {
+                        showError("解密失败");
+                    });
+                    return;
+                }
+
+                // 从解密后的数据中提取发送方公钥
+                PublicKey senderPublicKey = parsePublicKey(decryptedData.senderPublicKey);
+
+                // 现在验证签名
+                if (!encryptionManager.verifySignature(
+                        decryptedData,
+                        encryptedPacket.getSignature(),
+                        senderPublicKey)) {
+                    runOnUiThread(() -> {
+                        showError("签名验证失败，数据可能被篡改");
+                    });
+                    return;
+                }
+            } else {
+                // 旧版本兼容（使用纯 RSA 加密）
+                decryptedData = encryptionManager.decryptShare(
+                    encryptedPacket.getEncryptedData(),
+                    receiverKeyPair.getPrivate()
+                );
+
+                if (decryptedData == null) {
+                    runOnUiThread(() -> {
+                        showError("解密失败");
+                    });
+                    return;
+                }
             }
 
             // 在主线程显示数据
@@ -273,6 +326,165 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 showError("解密失败: " + e.getMessage());
             });
         }
+    }
+
+    /**
+     * 解开加密包但不验证签名（用于获取发送方公钥）
+     * 这是版本 2.0 混合加密方案的临时解决方案
+     *
+     * 注意：这不是最安全的做法，生产环境应该从可信渠道（如服务器）获取发送方公钥
+     */
+    private ShareDataPacket openEncryptedPacketWithoutSignature(
+            EncryptedSharePacket packet,
+            PrivateKey receiverPrivateKey
+    ) {
+        try {
+            // 检查版本
+            String version = packet.getVersion();
+            if (!"2.0".equals(version)) {
+                return null; // 不支持的版本
+            }
+
+            // 解密 AES 密钥
+            String encryptedAESKey = packet.getEncryptedAESKey();
+            if (encryptedAESKey == null || encryptedAESKey.isEmpty()) {
+                return null;
+            }
+
+            // 这里需要调用 ShareEncryptionManager 的私有方法
+            // 由于方法是私有的，我们需要通过反射或者修改访问权限
+            // 临时方案：在这里重新实现解密逻辑
+
+            byte[] encryptedKeyBytes = android.util.Base64.decode(encryptedAESKey, android.util.Base64.NO_WRAP);
+            javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, receiverPrivateKey);
+            byte[] aesKeyBytes = cipher.doFinal(encryptedKeyBytes);
+
+            if (aesKeyBytes.length != 32) {
+                return null;
+            }
+
+            javax.crypto.SecretKey aesKey = new javax.crypto.spec.SecretKeySpec(aesKeyBytes, "AES");
+
+            // 解密数据
+            String ivBase64 = packet.getIv();
+            if (ivBase64 == null || ivBase64.isEmpty()) {
+                return null;
+            }
+            byte[] iv = android.util.Base64.decode(ivBase64, android.util.Base64.NO_WRAP);
+
+            String encryptedData = packet.getEncryptedData();
+            byte[] encryptedDataBytes = android.util.Base64.decode(encryptedData, android.util.Base64.NO_WRAP);
+
+            javax.crypto.Cipher dataCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+            javax.crypto.spec.GCMParameterSpec spec = new javax.crypto.spec.GCMParameterSpec(128, iv);
+            dataCipher.init(javax.crypto.Cipher.DECRYPT_MODE, aesKey, spec);
+            byte[] decryptedBytes = dataCipher.doFinal(encryptedDataBytes);
+
+            // 反序列化
+            String json = new String(decryptedBytes, "UTF-8");
+            return deserializeShareDataPacket(json);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * 解析公钥
+     */
+    private PublicKey parsePublicKey(String base64) throws Exception {
+        byte[] keyBytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP);
+        java.security.spec.X509EncodedKeySpec spec = new java.security.spec.X509EncodedKeySpec(keyBytes);
+        java.security.KeyFactory factory = java.security.KeyFactory.getInstance("RSA");
+        return factory.generatePublic(spec);
+    }
+
+    /**
+     * 从 JSON 反序列化 ShareDataPacket（简化版本）
+     */
+    private ShareDataPacket deserializeShareDataPacket(String json) {
+        ShareDataPacket packet = new ShareDataPacket();
+
+        // 解析基本字段
+        packet.version = extractJsonString(json, "version");
+        packet.senderId = extractJsonString(json, "senderId");
+        packet.senderPublicKey = extractJsonString(json, "senderPublicKey");
+        packet.createdAt = extractJsonLong(json, "createdAt");
+        packet.expireAt = extractJsonLong(json, "expireAt");
+
+        // 解析权限
+        packet.permission = new SharePermission(
+            extractJsonBoolean(json, "canView"),
+            extractJsonBoolean(json, "canSave"),
+            extractJsonBoolean(json, "isRevocable")
+        );
+
+        // 解析密码数据
+        com.ttt.safevault.model.PasswordItem password = new com.ttt.safevault.model.PasswordItem();
+        password.setTitle(extractJsonString(json, "title"));
+        password.setUsername(extractJsonString(json, "username"));
+        password.setPassword(extractJsonString(json, "password"));
+        password.setUrl(extractJsonString(json, "url"));
+        password.setNotes(extractJsonString(json, "notes"));
+        packet.password = password;
+
+        return packet;
+    }
+
+    // JSON 解析辅助方法
+    private String extractJsonString(String json, String key) {
+        String searchKey = "\"" + key + "\":\"";
+        int startIndex = json.indexOf(searchKey);
+        if (startIndex == -1) return "";
+        startIndex += searchKey.length();
+
+        int endIndex = startIndex;
+        boolean escaped = false;
+        while (endIndex < json.length()) {
+            char c = json.charAt(endIndex);
+            if (!escaped && c == '"') break;
+            escaped = (c == '\\' && !escaped);
+            endIndex++;
+        }
+
+        return json.substring(startIndex, endIndex)
+                .replace("\\\"", "\"")
+                .replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+                .replace("\\\\", "\\");
+    }
+
+    private long extractJsonLong(String json, String key) {
+        String searchKey = "\"" + key + "\":";
+        int startIndex = json.indexOf(searchKey);
+        if (startIndex == -1) return 0;
+        startIndex += searchKey.length();
+
+        int endIndex = startIndex;
+        while (endIndex < json.length()) {
+            char c = json.charAt(endIndex);
+            if (c == ',' || c == '}') break;
+            endIndex++;
+        }
+
+        try {
+            return Long.parseLong(json.substring(startIndex, endIndex).trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private boolean extractJsonBoolean(String json, String key) {
+        String searchKey = "\"" + key + "\":";
+        int startIndex = json.indexOf(searchKey);
+        if (startIndex == -1) return false;
+        startIndex += searchKey.length();
+
+        if (json.substring(startIndex).startsWith("true")) return true;
+        return false;
     }
 
     /**

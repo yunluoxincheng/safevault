@@ -8,13 +8,25 @@ import androidx.annotation.NonNull;
 /**
  * 加密分享包
  * 包含加密后的密码数据和数字签名
+ *
+ * 版本 2.0 支持混合加密方案（RSA + AES）：
+ * - encryptedData: AES-GCM 加密的分享数据
+ * - encryptedAESKey: RSA 加密的 AES 密钥
+ * - iv: AES-GCM 初始化向量
+ * - signature: RSA-SHA256 数字签名
  */
 public class EncryptedSharePacket implements Parcelable {
     // 协议版本
     private String version;
 
-    // 加密数据（Base64编码）
+    // 加密数据（Base64编码）- 版本 2.0 中为 AES-GCM 加密
     private String encryptedData;
+
+    // RSA 加密的 AES 密钥（Base64编码）- 版本 2.0 新增
+    private String encryptedAESKey;
+
+    // AES-GCM 初始化向量（Base64编码）- 版本 2.0 新增
+    private String iv;
 
     // 数字签名（Base64编码）
     private String signature;
@@ -27,7 +39,7 @@ public class EncryptedSharePacket implements Parcelable {
     private long expireAt;
 
     public EncryptedSharePacket() {
-        this.version = "1.0";
+        this.version = "2.0";
         this.createdAt = System.currentTimeMillis();
         this.expireAt = 0;
     }
@@ -61,6 +73,22 @@ public class EncryptedSharePacket implements Parcelable {
 
     public void setEncryptedData(String encryptedData) {
         this.encryptedData = encryptedData;
+    }
+
+    public String getEncryptedAESKey() {
+        return encryptedAESKey;
+    }
+
+    public void setEncryptedAESKey(String encryptedAESKey) {
+        this.encryptedAESKey = encryptedAESKey;
+    }
+
+    public String getIv() {
+        return iv;
+    }
+
+    public void setIv(String iv) {
+        this.iv = iv;
     }
 
     public String getSignature() {
@@ -118,10 +146,25 @@ public class EncryptedSharePacket implements Parcelable {
 
     /**
      * 验证包的基本完整性
+     * 版本 2.0 需要验证：encryptedAESKey 和 iv 字段
      */
     public boolean isValid() {
-        return version != null && !version.isEmpty()
-                && encryptedData != null && !encryptedData.isEmpty()
+        if (version == null || version.isEmpty()) {
+            return false;
+        }
+
+        // 版本 2.0 需要额外的字段验证
+        if ("2.0".equals(version)) {
+            return encryptedData != null && !encryptedData.isEmpty()
+                    && encryptedAESKey != null && !encryptedAESKey.isEmpty()
+                    && iv != null && !iv.isEmpty()
+                    && signature != null && !signature.isEmpty()
+                    && senderId != null && !senderId.isEmpty()
+                    && !isExpired();
+        }
+
+        // 旧版本兼容性（已弃用）
+        return encryptedData != null && !encryptedData.isEmpty()
                 && signature != null && !signature.isEmpty()
                 && senderId != null && !senderId.isEmpty()
                 && !isExpired();
@@ -136,6 +179,8 @@ public class EncryptedSharePacket implements Parcelable {
                 ", expireAt=" + expireAt +
                 ", isExpired=" + isExpired() +
                 ", dataSize=" + (encryptedData != null ? encryptedData.length() : 0) +
+                ", hasAESKey=" + (encryptedAESKey != null && !encryptedAESKey.isEmpty()) +
+                ", hasIV=" + (iv != null && !iv.isEmpty()) +
                 ", hasSignature=" + (signature != null && !signature.isEmpty()) +
                 '}';
     }
@@ -144,6 +189,8 @@ public class EncryptedSharePacket implements Parcelable {
     protected EncryptedSharePacket(Parcel in) {
         version = in.readString();
         encryptedData = in.readString();
+        encryptedAESKey = in.readString();
+        iv = in.readString();
         signature = in.readString();
         senderId = in.readString();
         createdAt = in.readLong();
@@ -154,6 +201,8 @@ public class EncryptedSharePacket implements Parcelable {
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeString(version);
         dest.writeString(encryptedData);
+        dest.writeString(encryptedAESKey);
+        dest.writeString(iv);
         dest.writeString(signature);
         dest.writeString(senderId);
         dest.writeLong(createdAt);

@@ -461,14 +461,16 @@ public class ShareActivity extends AppCompatActivity {
                 request.setExpireInMinutes(getExpireMinutes());
                 request.setPermission(dataPacket.permission);
 
-                // 6. 调用云端API创建分享
+                // 6. 调用云端API创建分享（必须在主线程调用ViewModel）
                 int expireMinutes = getExpireMinutes();
-                viewModel.createCloudShare(
-                    passwordId,
-                    selectedContact.cloudUserId,
-                    expireMinutes,
-                    dataPacket.permission
-                );
+                runOnUiThread(() -> {
+                    viewModel.createCloudShare(
+                        passwordId,
+                        selectedContact.cloudUserId,
+                        expireMinutes,
+                        dataPacket.permission
+                    );
+                });
 
                 // 7. 保存本地分享记录
                 recordManager.createShareRecord(
