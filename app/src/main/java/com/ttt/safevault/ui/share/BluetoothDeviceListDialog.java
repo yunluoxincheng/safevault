@@ -37,6 +37,7 @@ import java.util.Set;
 /**
  * 蓝牙设备选择对话框
  * 显示已配对设备并可扫描新设备
+ * 区分显示已配对和新发现的设备
  */
 public class BluetoothDeviceListDialog extends DialogFragment {
 
@@ -48,11 +49,37 @@ public class BluetoothDeviceListDialog extends DialogFragment {
         void onDeviceSelected(BluetoothDevice device);
     }
 
+    /**
+     * 设备项，包含设备和配对状态
+     */
+    private static class DeviceItem {
+        final BluetoothDevice device;
+        final boolean isPaired;
+
+        DeviceItem(BluetoothDevice device, boolean isPaired) {
+            this.device = device;
+            this.isPaired = isPaired;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null || getClass() != obj.getClass()) return false;
+            DeviceItem deviceItem = (DeviceItem) obj;
+            return device != null && device.equals(deviceItem.device);
+        }
+
+        @Override
+        public int hashCode() {
+            return device != null ? device.hashCode() : 0;
+        }
+    }
+
     private int passwordId;
     private OnDeviceSelectedListener listener;
     private BluetoothTransferManager bluetoothManager;
     private DeviceAdapter adapter;
-    private List<BluetoothDevice> devices = new ArrayList<>();
+    private List<DeviceItem> devices = new ArrayList<>();
     private ProgressBar progressBar;
     private TextView textStatus;
     private boolean isScanning = false;
@@ -64,9 +91,12 @@ public class BluetoothDeviceListDialog extends DialogFragment {
 
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                if (device != null && !devices.contains(device)) {
-                    devices.add(device);
-                    adapter.notifyDataSetChanged();
+                if (device != null) {
+                    DeviceItem item = new DeviceItem(device, false);
+                    if (!devices.contains(item)) {
+                        devices.add(item);
+                        adapter.notifyDataSetChanged();
+                    }
                 }
             } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
                 isScanning = false;
@@ -153,14 +183,16 @@ public class BluetoothDeviceListDialog extends DialogFragment {
 
     private void loadPairedDevices() {
         Set<BluetoothDevice> pairedDevices = bluetoothManager.getPairedDevices();
+        devices.clear();
         if (pairedDevices != null && !pairedDevices.isEmpty()) {
-            devices.clear();
-            devices.addAll(pairedDevices);
-            adapter.notifyDataSetChanged();
+            for (BluetoothDevice device : pairedDevices) {
+                devices.add(new DeviceItem(device, true));
+            }
             textStatus.setText("已配对设备");
         } else {
             textStatus.setText("没有已配对的设备，请点击扫描");
         }
+        adapter.notifyDataSetChanged();
     }
 
     private void toggleScanning() {
@@ -242,14 +274,14 @@ public class BluetoothDeviceListDialog extends DialogFragment {
     }
 
     static class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.ViewHolder> {
-        private final List<BluetoothDevice> devices;
+        private final List<DeviceItem> devices;
         private final OnDeviceClickListener listener;
 
         interface OnDeviceClickListener {
             void onDeviceClick(BluetoothDevice device);
         }
 
-        DeviceAdapter(List<BluetoothDevice> devices, OnDeviceClickListener listener) {
+        DeviceAdapter(List<DeviceItem> devices, OnDeviceClickListener listener) {
             this.devices = devices;
             this.listener = listener;
         }
@@ -264,8 +296,8 @@ public class BluetoothDeviceListDialog extends DialogFragment {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            BluetoothDevice device = devices.get(position);
-            holder.bind(device);
+            DeviceItem item = devices.get(position);
+            holder.bind(item);
         }
 
         @Override
@@ -276,22 +308,34 @@ public class BluetoothDeviceListDialog extends DialogFragment {
         class ViewHolder extends RecyclerView.ViewHolder {
             private final TextView textDeviceName;
             private final TextView textDeviceAddress;
+            private final TextView textStatus;
             private final MaterialCardView cardDevice;
 
             ViewHolder(View itemView) {
                 super(itemView);
                 textDeviceName = itemView.findViewById(R.id.textDeviceName);
                 textDeviceAddress = itemView.findViewById(R.id.textDeviceAddress);
+                textStatus = itemView.findViewById(R.id.textStatus);
                 cardDevice = itemView.findViewById(R.id.cardDevice);
             }
 
-            void bind(BluetoothDevice device) {
+            void bind(DeviceItem item) {
+                BluetoothDevice device = item.device;
                 String name = device.getName();
                 if (name == null || name.isEmpty()) {
                     name = "未知设备";
                 }
                 textDeviceName.setText(name);
                 textDeviceAddress.setText(device.getAddress());
+
+                // 显示配对状态
+                if (item.isPaired) {
+                    textStatus.setText("已配对");
+                    textStatus.setTextColor(itemView.getContext().getColor(R.color.success_green));
+                } else {
+                    textStatus.setText("新设备");
+                    textStatus.setTextColor(itemView.getContext().getColor(R.color.primary_blue));
+                }
 
                 cardDevice.setOnClickListener(v -> {
                     if (listener != null) {

@@ -25,15 +25,22 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * 扫描二维码Activity
- * 使用ZXing库实现二维码扫描功能
+ * 通用二维码扫描Activity
+ * 支持扫描：
+ * 1. safevault://identity/{base64} - 身份码
+ * 2. safevault://share/{shareId} - 分享码
+ * 3. safevault://user/{userId} - 好友码（兼容旧版）
  */
 public class ScanQRCodeActivity extends AppCompatActivity {
 
     private static final String TAG = "ScanQRCodeActivity";
+    private static final String IDENTITY_QR_PREFIX = "safevault://identity/";
+    private static final String SHARE_QR_PREFIX = "safevault://share/";
+    private static final String USER_QR_PREFIX = "safevault://user/";
+
     private DecoratedBarcodeView barcodeView;
     private BeepManager beepManager;
-    private String scanType; // "share" 或 "friend"
+    private String scanType; // "universal", "share", "friend"
 
     private final ActivityResultLauncher<String> requestCameraPermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -78,7 +85,7 @@ public class ScanQRCodeActivity extends AppCompatActivity {
 
         // 初始化扫描视图
         barcodeView = findViewById(R.id.barcode_scanner);
-        
+
         // 配置扫描格式（只扫描二维码）
         Collection<BarcodeFormat> formats = Arrays.asList(BarcodeFormat.QR_CODE);
         barcodeView.getBarcodeView().setDecoderFactory(new DefaultDecoderFactory(formats));
@@ -91,7 +98,18 @@ public class ScanQRCodeActivity extends AppCompatActivity {
         // 设置toolbar
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            String title = "friend".equals(scanType) ? "扫描好友二维码" : "扫描分享二维码";
+            String title;
+            switch (scanType) {
+                case "universal":
+                    title = "扫一扫";
+                    break;
+                case "friend":
+                    title = "扫描身份码";
+                    break;
+                default:
+                    title = "扫描分享二维码";
+                    break;
+            }
             getSupportActionBar().setTitle(title);
         }
 
@@ -113,36 +131,95 @@ public class ScanQRCodeActivity extends AppCompatActivity {
     }
 
     private void handleScanResult(String result) {
+        android.util.Log.d(TAG, "扫描到二维码: " + result);
+
         // 暂停扫描
         barcodeView.pause();
 
-        // 根据扫描类型处理结果
-        if ("friend".equals(scanType)) {
-            // 好友二维码：safevault://user/{userId}
-            if (result.startsWith("safevault://user/")) {
-                Intent resultIntent = new Intent();
-                resultIntent.putExtra("qr_data", result);
-                setResult(RESULT_OK, resultIntent);
-                finish();
-            } else {
-                Toast.makeText(this, "无效的好友二维码", Toast.LENGTH_SHORT).show();
-                // 继续扫描
-                barcodeView.resume();
-            }
-        } else {
-            // 分享二维码：safevault://share/{shareId}
-            if (result.startsWith("safevault://share/")) {
-                // 启动接收分享Activity
-                Intent intent = new Intent(this, ReceiveShareActivity.class);
-                intent.setData(android.net.Uri.parse(result));
-                startActivity(intent);
-                finish();
-            } else {
-                Toast.makeText(this, "无效的分享二维码", Toast.LENGTH_SHORT).show();
-                // 继续扫描
-                barcodeView.resume();
-            }
+        // 通用扫描模式：识别所有类型的二维码
+        if ("universal".equals(scanType)) {
+            handleUniversalScan(result);
+            return;
         }
+
+        // 好友扫描模式
+        if ("friend".equals(scanType)) {
+            handleFriendScan(result);
+            return;
+        }
+
+        // 分享扫描模式（默认）
+        handleShareScan(result);
+    }
+
+    /**
+     * 通用扫描模式：识别身份码和分享码
+     */
+    private void handleUniversalScan(String result) {
+        // 识别身份码
+        if (result.startsWith(IDENTITY_QR_PREFIX)) {
+            android.util.Log.d(TAG, "识别为身份码");
+            // 跳转到添加联系人界面
+            Intent intent = new Intent(this, ScanContactActivity.class);
+            intent.putExtra("scanned_qr_content", result);
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        // 识别分享码
+        if (result.startsWith(SHARE_QR_PREFIX)) {
+            android.util.Log.d(TAG, "识别为分享码");
+            // 跳转到接收分享界面
+            Intent intent = new Intent(this, ReceiveShareActivity.class);
+            intent.setData(android.net.Uri.parse(result));
+            startActivity(intent);
+            finish();
+            return;
+        }
+
+        // 无法识别的二维码
+        Toast.makeText(this, "无法识别此二维码\n仅支持身份码和分享码", Toast.LENGTH_LONG).show();
+        barcodeView.resume();
+    }
+
+    /**
+     * 好友扫描模式（也识别身份码）
+     */
+    private void handleFriendScan(String result) {
+        // 支持身份码和用户码
+        if (result.startsWith(IDENTITY_QR_PREFIX) || result.startsWith(USER_QR_PREFIX)) {
+            returnResult(result);
+        } else {
+            Toast.makeText(this, "无效的身份码或好友二维码", Toast.LENGTH_SHORT).show();
+            barcodeView.resume();
+        }
+    }
+
+    /**
+     * 分享扫描模式
+     */
+    private void handleShareScan(String result) {
+        if (result.startsWith(SHARE_QR_PREFIX)) {
+            // 启动接收分享Activity
+            Intent intent = new Intent(this, ReceiveShareActivity.class);
+            intent.setData(android.net.Uri.parse(result));
+            startActivity(intent);
+            finish();
+        } else {
+            Toast.makeText(this, "无效的分享二维码", Toast.LENGTH_SHORT).show();
+            barcodeView.resume();
+        }
+    }
+
+    /**
+     * 返回扫描结果
+     */
+    private void returnResult(String qrData) {
+        Intent resultIntent = new Intent();
+        resultIntent.putExtra("qr_data", qrData);
+        setResult(RESULT_OK, resultIntent);
+        finish();
     }
 
     @Override

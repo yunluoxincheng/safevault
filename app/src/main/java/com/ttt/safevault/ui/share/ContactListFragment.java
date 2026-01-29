@@ -218,8 +218,10 @@ public class ContactListFragment extends Fragment {
     }
 
     private void onContactClick(Contact contact) {
-        // 更新最后使用时间
-        contactManager.updateLastUsed(contact.contactId);
+        // 更新最后使用时间（后台线程，避免主线程访问数据库异常）
+        Executors.newSingleThreadExecutor().execute(() ->
+            contactManager.updateLastUsed(contact.contactId)
+        );
 
         if (mode == Mode.SELECT) {
             // 选择模式：返回结果给调用者

@@ -1,10 +1,7 @@
 package com.ttt.safevault.ui.share;
 
 import android.content.Intent;
-import android.nfc.NdefMessage;
-import android.nfc.NfcAdapter;
 import android.os.Bundle;
-import android.os.Parcelable;
 import android.view.View;
 import android.widget.Toast;
 
@@ -27,7 +24,6 @@ import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.ShareDataPacket;
 import com.ttt.safevault.model.SharePermission;
-import com.ttt.safevault.utils.NFCTransferManager;
 import com.ttt.safevault.viewmodel.ReceiveShareViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
@@ -45,6 +41,8 @@ import java.util.Locale;
  * 支持两种分享模式：
  * 1. 离线分享（端到端加密）：使用 RSA-OAEP 加密，接收方用自己的私钥解密
  * 2. 云端分享：通过后端服务器传输，支持直接链接、用户对用户、附近用户
+ *
+ * 注意：NFC 功能已移除，因为 Android 10+ 不支持点对点传输
  */
 public class ReceiveShareActivity extends AppCompatActivity {
 
@@ -70,7 +68,6 @@ public class ReceiveShareActivity extends AppCompatActivity {
     private boolean isCloudShare = false;  // 是否为云端分享
     private boolean isOfflineEncrypted = false;  // 是否为端到端加密的离线分享
     private String actualPassword = "";
-    private NFCTransferManager nfcManager;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -92,13 +89,11 @@ public class ReceiveShareActivity extends AppCompatActivity {
         // 初始化加密管理器
         keyManager = new KeyDerivationManager(this);
         encryptionManager = new ShareEncryptionManager();
-        nfcManager = new NFCTransferManager(this);
 
         // 获取分享数据，支持多种方式：
         // 1. 通过Intent Extra传递：getStringExtra(EXTRA_SHARE_DATA) 或 EXTRA_QR_CONTENT
         // 2. 通过Intent Extra传递（兼容旧版）：getStringExtra("SHARE_ID") 或 "SHARE_TOKEN"
         // 3. 通过URI传递：safevault://share/{shareId} 或 safevault://offline/{data}
-        // 4. 通过NFC传递
         String shareData = getIntent().getStringExtra(EXTRA_SHARE_DATA);
         String qrContent = getIntent().getStringExtra(EXTRA_QR_CONTENT);
 
@@ -128,11 +123,6 @@ public class ReceiveShareActivity extends AppCompatActivity {
                     }
                 }
             }
-        }
-
-        // 尝试从NFC Intent中获取数据
-        if (shareData == null && qrContent == null) {
-            shareData = handleNfcIntent(getIntent());
         }
 
         // 优先处理端到端加密的离线分享
@@ -580,33 +570,6 @@ public class ReceiveShareActivity extends AppCompatActivity {
         binding = null;
     }
     
-    /**
-     * 处理NFC Intent
-     * @param intent 从 NFC 获取的 Intent
-     * @return 解析出的分享数据，失败返回null
-     */
-    private String handleNfcIntent(Intent intent) {
-        String action = intent.getAction();
-        
-        // 检查是否是NDEF发现事件
-        if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
-            Parcelable[] rawMessages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
-            if (rawMessages != null && rawMessages.length > 0) {
-                NdefMessage message = (NdefMessage) rawMessages[0];
-                String data = nfcManager.extractDataFromMessage(message);
-                
-                if (data != null && !data.isEmpty()) {
-                    Toast.makeText(this, R.string.nfc_read_success, Toast.LENGTH_SHORT).show();
-                    return data;
-                } else {
-                    Toast.makeText(this, R.string.nfc_read_failed, Toast.LENGTH_SHORT).show();
-                }
-            }
-        }
-        
-        return null;
-    }
-
     /**
      * 显示云端分享详情
      */

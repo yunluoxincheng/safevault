@@ -11,6 +11,8 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
@@ -50,7 +52,17 @@ public class ShareActivity extends AppCompatActivity {
 
     public static final String EXTRA_PASSWORD_ID = "password_id";
     public static final String EXTRA_CONTACT_ID = "contact_id";
-    private static final int REQUEST_CODE_CONTACT_LIST = 100;
+
+    // 使用 ActivityResultLauncher 替代 startActivityForResult
+    private final ActivityResultLauncher<Intent> contactListLauncher =
+        registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                String selectedContactId = result.getData().getStringExtra(ContactListActivity.EXTRA_CONTACT_ID);
+                if (selectedContactId != null) {
+                    loadContact(selectedContactId);
+                }
+            }
+        });
 
     private ShareViewModel viewModel;
     private BackendService backendService;
@@ -143,7 +155,7 @@ public class ShareActivity extends AppCompatActivity {
             btnSelectContact.setOnClickListener(v -> {
                 // 跳转到联系人列表
                 Intent intent = new Intent(this, ContactListActivity.class);
-                startActivityForResult(intent, REQUEST_CODE_CONTACT_LIST);
+                contactListLauncher.launch(intent);
             });
         }
 
@@ -215,18 +227,23 @@ public class ShareActivity extends AppCompatActivity {
     }
 
     private void loadContact(String contactId) {
-        List<Contact> contacts = contactManager.getAllContacts();
-        for (Contact contact : contacts) {
-            if (contact.contactId.equals(contactId)) {
-                selectedContact = contact;
-                if (textContactName != null) {
-                    textContactName.setText(contact.displayName != null && !contact.displayName.isEmpty()
-                        ? contact.displayName
-                        : contact.username);
+        // 在后台线程查询联系人数据，避免主线程访问数据库异常
+        new Thread(() -> {
+            List<Contact> contacts = contactManager.getAllContacts();
+            for (Contact contact : contacts) {
+                if (contact.contactId.equals(contactId)) {
+                    selectedContact = contact;
+                    runOnUiThread(() -> {
+                        if (textContactName != null) {
+                            textContactName.setText(contact.displayName != null && !contact.displayName.isEmpty()
+                                ? contact.displayName
+                                : contact.username);
+                        }
+                    });
+                    break;
                 }
-                break;
             }
-        }
+        }).start();
     }
 
     /**
@@ -520,18 +537,6 @@ public class ShareActivity extends AppCompatActivity {
         // 从 SharedPreferences 获取用户邮箱
         return getSharedPreferences("backend_prefs", MODE_PRIVATE)
             .getString("user_email", null);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == REQUEST_CODE_CONTACT_LIST && resultCode == RESULT_OK && data != null) {
-            String selectedContactId = data.getStringExtra(ContactListActivity.EXTRA_CONTACT_ID);
-            if (selectedContactId != null) {
-                loadContact(selectedContactId);
-            }
-        }
     }
 
     @Override

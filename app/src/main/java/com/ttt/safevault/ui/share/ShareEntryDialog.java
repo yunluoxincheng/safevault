@@ -1,13 +1,9 @@
 package com.ttt.safevault.ui.share;
 
 import android.content.Intent;
-import android.nfc.NfcAdapter;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.Window;
-import android.view.WindowManager;
 import android.widget.Button;
 
 import androidx.annotation.NonNull;
@@ -21,7 +17,8 @@ import com.ttt.safevault.R;
 
 /**
  * 分享方式选择对话框
- * 提供：联系人分享（QR码）、蓝牙分享、NFC分享三种方式
+ * 提供：联系人分享（QR码）、蓝牙分享两种方式
+ * 注意：NFC 功能已移除，因为 Android 10+ 不支持点对点传输
  */
 public class ShareEntryDialog extends DialogFragment {
 
@@ -80,12 +77,9 @@ public class ShareEntryDialog extends DialogFragment {
         MaterialCardView cardBluetooth = view.findViewById(R.id.cardBluetoothShare);
         cardBluetooth.setOnClickListener(v -> openBluetoothShare());
 
-        // NFC分享
+        // NFC分享已移除（Android 10+ 不支持点对点传输）
         MaterialCardView cardNfc = view.findViewById(R.id.cardNfcShare);
-        cardNfc.setOnClickListener(v -> openNfcShare());
-
-        // 检查NFC是否可用
-        if (!isNfcAvailable()) {
+        if (cardNfc != null) {
             cardNfc.setVisibility(View.GONE);
         }
 
@@ -128,27 +122,5 @@ public class ShareEntryDialog extends DialogFragment {
         intent.putExtra(BluetoothShareActivity.EXTRA_PASSWORD_ID, passwordId);
         startActivity(intent);
         dismiss();
-    }
-
-    /**
-     * 打开NFC分享
-     */
-    private void openNfcShare() {
-        if (activity == null) return;
-
-        Intent intent = new Intent(activity, NFCSendActivity.class);
-        intent.putExtra(NFCSendActivity.EXTRA_PASSWORD_ID, passwordId);
-        startActivity(intent);
-        dismiss();
-    }
-
-    /**
-     * 检查NFC是否可用
-     */
-    private boolean isNfcAvailable() {
-        if (activity == null) return false;
-
-        NfcAdapter nfcAdapter = NfcAdapter.getDefaultAdapter(activity);
-        return nfcAdapter != null;
     }
 }

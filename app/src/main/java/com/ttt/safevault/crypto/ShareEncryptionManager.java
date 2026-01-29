@@ -16,6 +16,7 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.SignatureException;
+import java.security.interfaces.RSAKey;
 import javax.crypto.Cipher;
 
 /**
@@ -255,11 +256,24 @@ public class ShareEncryptionManager {
 
     /**
      * 获取RSA密钥的最大加密块大小
+     * RSA 2048位密钥最多可加密 245 字节（使用OAEPWithSHA-256AndMGF1Padding）
      */
     private int getMaxBlockSize(PublicKey publicKey) {
-        int keySize = publicKey.getEncoded().length;
-        // OAEP 开销：42 字节（SHA-256）
-        return (keySize / 8) - 42;
+        // 使用 RSAKey 接口获取密钥的模数长度（位数）
+        int keySizeBits;
+        if (publicKey instanceof RSAKey) {
+            keySizeBits = ((RSAKey) publicKey).getModulus().bitLength();
+        } else {
+            // 兼容非RSAKey的情况，使用保守估计
+            keySizeBits = 2048; // 默认使用2048位
+            Log.w(TAG, "PublicKey is not RSAKey, using default key size: " + keySizeBits);
+        }
+
+        // OAEP 开销：42 字节（使用SHA-256）
+        // keySizeBits / 8 得到字节数，再减去OAEP开销
+        int maxBlockSize = (keySizeBits / 8) - 42;
+        Log.d(TAG, "RSA key size: " + keySizeBits + " bits, max block size: " + maxBlockSize + " bytes");
+        return maxBlockSize;
     }
 
     /**

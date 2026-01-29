@@ -53,6 +53,7 @@ public class MainActivity extends AppCompatActivity {
     private SearchHistoryManager searchHistoryManager;
     private BottomNavigationView bottomNavigationView;
     private FloatingActionButton fabAddPassword;
+    private FloatingActionButton fabScan;
 
     // 同步冲突广播接收器
     private BroadcastReceiver syncConflictReceiver;
@@ -347,21 +348,44 @@ public class MainActivity extends AppCompatActivity {
 
     private void initFab() {
         fabAddPassword = findViewById(R.id.fab_add_password);
+        fabScan = findViewById(R.id.fab_scan);
+
         if (fabAddPassword != null && navController != null) {
             fabAddPassword.setOnClickListener(v -> {
                 // 导航到编辑密码页面（新建模式）
                 navController.navigate(R.id.action_passwordListFragment_to_editPasswordFragment);
             });
+        }
 
-            // 监听导航变化，只在密码库页面显示 FAB
+        if (fabScan != null && navController != null) {
+            fabScan.setOnClickListener(v -> {
+                // 直接启动通用扫描器（竖屏）
+                Intent intent = new Intent(this, com.ttt.safevault.ui.share.ScanQRCodeActivity.class);
+                intent.putExtra("scan_type", "universal"); // 通用扫描模式
+                startActivity(intent);
+            });
+        }
+
+        // 监听导航变化，只在密码库页面显示 FAB
+        if (navController != null) {
             navController.addOnDestinationChangedListener((controller, destination, arguments) -> {
                 int destinationId = destination.getId();
                 boolean shouldShowFab = destinationId == R.id.nav_passwords;
 
-                if (shouldShowFab) {
-                    fabAddPassword.show();
-                } else {
-                    fabAddPassword.hide();
+                if (fabAddPassword != null) {
+                    if (shouldShowFab) {
+                        fabAddPassword.show();
+                    } else {
+                        fabAddPassword.hide();
+                    }
+                }
+
+                if (fabScan != null) {
+                    if (shouldShowFab) {
+                        fabScan.show();
+                    } else {
+                        fabScan.hide();
+                    }
                 }
             });
         }

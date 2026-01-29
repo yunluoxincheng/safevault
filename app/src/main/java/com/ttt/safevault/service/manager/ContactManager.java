@@ -189,12 +189,7 @@ public class ContactManager {
      */
     @NonNull
     public List<Contact> getAllContacts() {
-        try {
-            return contactDao.getAllContacts();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to get all contacts", e);
-            return new ArrayList<>();
-        }
+        return contactDao.getAllContacts();
     }
 
     /**

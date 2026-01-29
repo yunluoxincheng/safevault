@@ -36,9 +36,27 @@ public class ContactAdapter extends ListAdapter<Contact, ContactAdapter.ViewHold
 
         @Override
         public boolean areContentsTheSame(@NonNull Contact oldItem, @NonNull Contact newItem) {
-            return oldItem.displayName.equals(newItem.displayName) &&
-                   oldItem.myNote != null && oldItem.myNote.equals(newItem.myNote) &&
-                   oldItem.lastUsedAt == newItem.lastUsedAt;
+            // 安全比较 displayName
+            boolean displayNameSame = false;
+            if (oldItem.displayName == null && newItem.displayName == null) {
+                displayNameSame = true;
+            } else if (oldItem.displayName != null && oldItem.displayName.equals(newItem.displayName)) {
+                displayNameSame = true;
+            }
+
+            // 安全比较 myNote
+            boolean myNoteSame = false;
+            if (oldItem.myNote == null && newItem.myNote == null) {
+                myNoteSame = true;
+            } else if (oldItem.myNote != null && oldItem.myNote.equals(newItem.myNote)) {
+                myNoteSame = true;
+            }
+
+            // 比较其他字段
+            boolean lastUsedSame = oldItem.lastUsedAt == newItem.lastUsedAt;
+            boolean isOnlineSame = oldItem.isOnline() == newItem.isOnline();
+
+            return displayNameSame && myNoteSame && lastUsedSame && isOnlineSame;
         }
     };
 

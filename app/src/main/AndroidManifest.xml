@@ -19,10 +19,7 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    
-    <!-- NFC权限 -->
-    <uses-permission android:name="android.permission.NFC" />
-    
+
     <!-- 写入外部存储权限（用于自动填充调试日志） -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -38,11 +35,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- 相机和NFC功能要求（可选） -->
+    <!-- 相机功能要求（可选） -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-    <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
+    <!-- 注意：NFC 功能已移除，因为 Android 10+ 不支持点对点传输 -->
 
     <application
         android:name=".SafeVaultApplication"
@@ -106,12 +104,6 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="safevault" android:host="share" />
             </intent-filter>
-            <!-- 处理NFC -->
-            <intent-filter>
-                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.safevault.share" />
-            </intent-filter>
         </activity>
         
         <activity
@@ -139,27 +131,6 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
-
-        <!-- NFC发送 -->
-        <activity
-            android:name=".ui.share.NFCSendActivity"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.SafeVault.NoActionBar" />
-
-        <!-- NFC接收 -->
-        <activity
-            android:name=".ui.share.NFCReceiveActivity"
-            android:exported="true"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.SafeVault.NoActionBar">
-            <!-- 处理NFC推送 -->
-            <intent-filter>
-                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/com.ttt.safevault" />
-            </intent-filter>
-        </activity>
 
         <!-- 分享历史页面 -->
         <activity

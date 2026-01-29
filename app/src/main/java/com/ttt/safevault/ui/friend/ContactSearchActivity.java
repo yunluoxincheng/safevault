@@ -22,10 +22,14 @@ import com.ttt.safevault.dto.response.FriendRequestResponse;
 import com.ttt.safevault.dto.response.UserSearchResult;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.api.FriendServiceApi;
+import com.ttt.safevault.service.manager.ContactManager;
+import com.ttt.safevault.data.Contact;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
@@ -49,7 +53,11 @@ public class ContactSearchActivity extends AppCompatActivity {
 
     private UserSearchResultAdapter adapter;
     private FriendServiceApi friendServiceApi;
+    private ContactManager contactManager;
     private CompositeDisposable disposables = new CompositeDisposable();
+
+    // 好友过滤：存储已添加好友的 cloudUserId
+    private Set<String> friendCloudUserIds = new HashSet<>();
 
     private Handler searchHandler = new Handler(Looper.getMainLooper());
     private Runnable searchRunnable;
@@ -61,9 +69,28 @@ public class ContactSearchActivity extends AppCompatActivity {
         setContentView(R.layout.activity_contact_search);
 
         friendServiceApi = RetrofitClient.getInstance(this).getFriendServiceApi();
+        contactManager = new ContactManager(this);
 
         initViews();
         setupSearchListener();
+
+        // 加载好友过滤器
+        loadFriendFilter();
+    }
+
+    /**
+     * 加载已添加好友的 cloudUserId，用于过滤搜索结果
+     */
+    private void loadFriendFilter() {
+        new Thread(() -> {
+            List<Contact> contacts = contactManager.getAllContacts();
+            friendCloudUserIds.clear();
+            for (Contact contact : contacts) {
+                if (contact.cloudUserId != null && !contact.cloudUserId.isEmpty()) {
+                    friendCloudUserIds.add(contact.cloudUserId);
+                }
+            }
+        }).start();
     }
 
     private void initViews() {
@@ -142,6 +169,16 @@ public class ContactSearchActivity extends AppCompatActivity {
         disposables.add(
             friendServiceApi.searchUsers(query)
                 .subscribeOn(Schedulers.io())
+                .map(results -> {
+                    // 过滤掉已添加的好友
+                    List<UserSearchResult> filtered = new ArrayList<>();
+                    for (UserSearchResult result : results) {
+                        if (!friendCloudUserIds.contains(result.getUserId())) {
+                            filtered.add(result);
+                        }
+                    }
+                    return filtered;
+                })
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                     results -> {

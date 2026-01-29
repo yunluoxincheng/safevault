@@ -18,11 +18,14 @@ import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.service.ContactSyncManager;
 import com.ttt.safevault.service.manager.ContactManager;
 import com.ttt.safevault.network.TokenManager;
+import com.ttt.safevault.network.RetrofitClient;
+import com.ttt.safevault.network.api.FriendServiceApi;
 
 import java.util.List;
 
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * 联系人列表界面
@@ -42,6 +45,7 @@ public class ContactListActivity extends AppCompatActivity {
     private ContactManager contactManager;
     private ContactSyncManager contactSyncManager;
     private TokenManager tokenManager;
+    private FriendServiceApi friendServiceApi;
     private CompositeDisposable disposables = new CompositeDisposable();
     private com.google.android.material.badge.BadgeDrawable friendRequestBadge;
 
@@ -53,6 +57,7 @@ public class ContactListActivity extends AppCompatActivity {
         contactManager = new ContactManager(this);
         contactSyncManager = new ContactSyncManager(this);
         tokenManager = new TokenManager(this);
+        friendServiceApi = RetrofitClient.getInstance(this).getFriendServiceApi();
 
         initViews();
     }
@@ -67,17 +72,20 @@ public class ContactListActivity extends AppCompatActivity {
 
         // Setup badge for friend requests (delay to ensure menu is prepared)
         toolbar.post(() -> {
-            friendRequestBadge = com.google.android.material.badge.BadgeDrawable.create(this);
-            friendRequestBadge.setHorizontalOffset(8);
-            friendRequestBadge.setVerticalOffset(8);
-            android.view.MenuItem friendRequestItem = toolbar.getMenu().findItem(R.id.action_friend_requests);
-            android.view.View menuItemView = toolbar.findViewById(R.id.action_friend_requests);
-            if (menuItemView != null) {
+            try {
+                friendRequestBadge = com.google.android.material.badge.BadgeDrawable.create(this);
+                friendRequestBadge.setHorizontalOffset(8);
+                friendRequestBadge.setVerticalOffset(8);
+                friendRequestBadge.setVisible(false);
+
+                // 使用 Toolbar 的方式来附加 Badge (传入 Toolbar 和菜单项 ID)
                 com.google.android.material.badge.BadgeUtils.attachBadgeDrawable(
                     friendRequestBadge,
-                    menuItemView,
-                    (android.widget.FrameLayout) menuItemView.getParent()
+                    toolbar,
+                    R.id.action_friend_requests
                 );
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to setup friend request badge", e);
             }
         });
 
@@ -117,30 +125,45 @@ public class ContactListActivity extends AppCompatActivity {
     }
 
     private void loadContacts() {
-        List<Contact> contacts = contactManager.getAllContacts();
-        adapter.submitList(contacts);
+        // 在后台线程查询数据库，避免主线程访问数据库异常
+        disposables.add(
+            io.reactivex.rxjava3.core.Observable.fromCallable(() -> contactManager.getAllContacts())
+                .subscribeOn(io.reactivex.rxjava3.schedulers.Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                    contacts -> {
+                        Log.d(TAG, "loadContacts: loaded " + contacts.size() + " contacts");
+                        adapter.submitList(contacts);
 
-        // 更新空状态视图
-        if (contacts.isEmpty()) {
-            emptyView.setVisibility(View.VISIBLE);
-            recyclerView.setVisibility(View.GONE);
-        } else {
-            emptyView.setVisibility(View.GONE);
-            recyclerView.setVisibility(View.VISIBLE);
-        }
+                        // 更新空状态视图
+                        if (contacts.isEmpty()) {
+                            emptyView.setVisibility(View.VISIBLE);
+                            recyclerView.setVisibility(View.GONE);
+                        } else {
+                            emptyView.setVisibility(View.GONE);
+                            recyclerView.setVisibility(View.VISIBLE);
+                        }
 
-        swipeRefreshLayout.setRefreshing(false);
+                        swipeRefreshLayout.setRefreshing(false);
+                    },
+                    error -> {
+                        Log.e(TAG, "Failed to load contacts", error);
+                        swipeRefreshLayout.setRefreshing(false);
+                        Toast.makeText(this, "加载联系人失败", Toast.LENGTH_SHORT).show();
+                    }
+                )
+        );
     }
 
     private void onContactClick(Contact contact) {
+        // 先更新最后使用时间（后台线程）
+        new Thread(() -> contactManager.updateLastUsed(contact.contactId)).start();
+
         // 返回选中的联系人ID到调用者
         Intent result = new Intent();
         result.putExtra(EXTRA_CONTACT_ID, contact.contactId);
         setResult(RESULT_OK, result);
         finish();
-
-        // 更新最后使用时间
-        contactManager.updateLastUsed(contact.contactId);
     }
 
     private void onContactLongClick(Contact contact) {
@@ -190,18 +213,68 @@ public class ContactListActivity extends AppCompatActivity {
                         ? contact.displayName
                         : contact.username) + " 吗？")
                 .setPositiveButton("删除", (dialog, which) -> {
-                    boolean success = contactManager.deleteContact(contact.contactId);
-                    if (success) {
-                        loadContacts();
-                    } else {
-                        new MaterialAlertDialogBuilder(this)
-                                .setTitle("删除失败")
-                                .setMessage("删除联系人时发生错误，请重试")
-                                .setPositiveButton("确定", null)
-                                .show();
-                    }
+                    deleteContactAndFriend(contact);
                 })
                 .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 删除联系人（同时删除云端和本地数据）
+     * @param contact 要删除的联系人
+     */
+    private void deleteContactAndFriend(Contact contact) {
+        // 如果是云端好友，先调用云端 API 删除
+        if (contact.cloudUserId != null && !contact.cloudUserId.isEmpty() && friendServiceApi != null) {
+            disposables.add(
+                friendServiceApi.deleteFriend(contact.cloudUserId)
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(
+                        response -> {
+                            // 云端删除成功后，删除本地数据
+                            boolean success = contactManager.deleteContact(contact.contactId);
+                            if (success) {
+                                loadContacts();
+                                Toast.makeText(this, "已删除好友", Toast.LENGTH_SHORT).show();
+                            } else {
+                                showDeleteErrorDialog();
+                            }
+                        },
+                        error -> {
+                            Log.e(TAG, "Failed to delete friend from cloud", error);
+                            showDeleteErrorDialog("删除失败: " + error.getMessage());
+                        }
+                    )
+            );
+        } else {
+            // 本地联系人，直接删除
+            boolean success = contactManager.deleteContact(contact.contactId);
+            if (success) {
+                loadContacts();
+                Toast.makeText(this, "已删除联系人", Toast.LENGTH_SHORT).show();
+            } else {
+                showDeleteErrorDialog();
+            }
+        }
+    }
+
+    /**
+     * 显示删除错误对话框
+     */
+    private void showDeleteErrorDialog() {
+        showDeleteErrorDialog("删除联系人时发生错误，请重试");
+    }
+
+    /**
+     * 显示删除错误对话框
+     * @param message 错误消息
+     */
+    private void showDeleteErrorDialog(String message) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("删除失败")
+                .setMessage(message)
+                .setPositiveButton("确定", null)
                 .show();
     }
 
@@ -299,6 +372,10 @@ public class ContactListActivity extends AppCompatActivity {
      * 如果未登录，直接加载本地数据
      */
     private void syncAndLoadContacts() {
+        swipeRefreshLayout.setRefreshing(true);
+        Log.d(TAG, "syncAndLoadContacts: Starting contact sync process");
+        Log.d(TAG, "syncAndLoadContacts: Is logged in? " + tokenManager.isLoggedIn());
+
         if (tokenManager.isLoggedIn()) {
             // 已登录：先同步云端好友，再加载本地列表
             Log.d(TAG, "User logged in, syncing cloud contacts...");
@@ -313,11 +390,13 @@ public class ContactListActivity extends AppCompatActivity {
                                 Toast.makeText(this, "已同步 " + result.getToAdd().size() + " 位云端好友",
                                     Toast.LENGTH_SHORT).show();
                             }
+                            Log.d(TAG, "Cloud sync completed, now loading local contacts");
                             loadContacts();
                         },
                         error -> {
                             Log.e(TAG, "Cloud sync failed, loading local contacts only", error);
                             // 同步失败时仍然加载本地数据
+                            Log.d(TAG, "Attempting to load local contacts despite sync failure");
                             loadContacts();
                         }
                     )

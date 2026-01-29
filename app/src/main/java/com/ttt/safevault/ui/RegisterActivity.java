@@ -547,6 +547,10 @@ public class RegisterActivity extends AppCompatActivity {
                         continueButton.setEnabled(true);
                     }
 
+                    // 保存邮箱到 TokenManager
+                    com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
+                            .getTokenManager().saveLastLoginEmail(registeredEmail);
+
                     // 清除验证状态
                     com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
                             .getTokenManager().clearEmailVerificationStatus();
