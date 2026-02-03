@@ -8,6 +8,8 @@
 
 **认证方式**: JWT Bearer Token 或 X-User-Id Header
 
+**注册状态追踪**: 系统会追踪用户注册状态，超时未完成注册的用户会被自动清理（默认5分钟）。
+
 ---
 
 ## 1. 邮箱注册（第一步）
@@ -199,6 +201,9 @@ Content-Type: application/json
 | HTTP 状态码 | 错误码 | 说明 |
 |------------|--------|------|
 | 400 | EMAIL_NOT_VERIFIED | 邮箱未验证 |
+| 400 | INVALID_REGISTRATION_STATUS | 注册状态无效（用户不在 EMAIL_VERIFIED 状态） |
+| 400 | REGISTRATION_TIMEOUT | 注册超时（用户验证邮箱后超过配置时间未完成注册） |
+| 400 | REGISTRATION_ALREADY_COMPLETED | 注册已完成，请直接登录 |
 | 400 | INVALID_CRYPTO_DATA | 加密数据无效 |
 
 ---
@@ -357,7 +362,19 @@ X-User-Id: usr_abc123xyz
 用户输入邮箱 → 发送验证邮件 → 输入验证码
      ↓
 验证成功 → 设置密码 → 生成密钥对 → 完成注册
+
+注册状态转换：
+Redis (PendingUser) → 验证邮箱 → DB (EMAIL_VERIFIED) → 完成注册 → DB (ACTIVE)
+                               ↓                    ↓
+                         10分钟过期              5分钟超时清理
 ```
+
+### 注册状态说明
+
+| 状态 | 说明 | 超时处理 |
+|------|------|----------|
+| EMAIL_VERIFIED | 邮箱已验证，等待设置密码 | 验证后5分钟内未完成注册将被自动删除 |
+| ACTIVE | 注册完成，可以正常使用 | 无超时限制 |
 
 ### 登录流程
 
@@ -369,5 +386,9 @@ X-User-Id: usr_abc123xyz
 
 ---
 
-**版本**: 1.0.0
-**最后更新**: 2026-01-14
+**版本**: 1.1.0
+**最后更新**: 2026-02-03
+**变更**:
+- 新增注册状态追踪功能
+- 新增 `REGISTRATION_TIMEOUT` 和 `INVALID_REGISTRATION_STATUS` 错误码
+- 添加注册状态说明和超时清理机制
