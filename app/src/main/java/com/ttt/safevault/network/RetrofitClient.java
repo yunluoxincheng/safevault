@@ -5,17 +5,15 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.ttt.safevault.BuildConfig;
 import com.ttt.safevault.network.api.AuthServiceApi;
 import com.ttt.safevault.network.api.FriendServiceApi;
 import com.ttt.safevault.network.api.ShareServiceApi;
 import com.ttt.safevault.network.api.VaultServiceApi;
 
-import java.security.cert.X509Certificate;
 import java.util.concurrent.TimeUnit;
 
-import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import okhttp3.OkHttpClient;
@@ -47,35 +45,6 @@ public class RetrofitClient {
         // 认证拦截器
         AuthInterceptor authInterceptor = new AuthInterceptor(tokenManager, context);
 
-        // 创建信任所有证书的 TrustManager (仅用于开发测试)
-        X509TrustManager trustAllCerts = new X509TrustManager() {
-            @Override
-            public void checkClientTrusted(X509Certificate[] chain, String authType) {
-            }
-
-            @Override
-            public void checkServerTrusted(X509Certificate[] chain, String authType) {
-            }
-
-            @Override
-            public X509Certificate[] getAcceptedIssuers() {
-                return new X509Certificate[]{};
-            }
-        };
-
-        // 创建 SSLContext
-        SSLContext sslContext;
-        SSLSocketFactory sslSocketFactory;
-        try {
-            sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, new TrustManager[]{trustAllCerts}, null);
-            sslSocketFactory = sslContext.getSocketFactory();
-            Log.d("RetrofitClient", "SSL context configured to trust all certificates");
-        } catch (Exception e) {
-            Log.e("RetrofitClient", "Failed to configure SSL", e);
-            sslSocketFactory = null;
-        }
-
         // 构建 OkHttpClient
         OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()
                 .addInterceptor(loggingInterceptor)
@@ -84,11 +53,31 @@ public class RetrofitClient {
                 .readTimeout(ApiConstants.READ_TIMEOUT, TimeUnit.SECONDS)
                 .writeTimeout(ApiConstants.WRITE_TIMEOUT, TimeUnit.SECONDS);
 
-        // 配置 SSL
-        if (sslSocketFactory != null) {
-            okHttpBuilder.sslSocketFactory(sslSocketFactory, trustAllCerts);
-            okHttpBuilder.hostnameVerifier((hostname, session) -> true);
+        // SSL 配置：根据构建类型区分
+        if (BuildConfig.DEBUG) {
+            // Debug 版本：只对指定域名信任自签证书
+            // 符合 security-hardening-phase1 网络安全规格的 Debug 构建例外条款
+            Log.d("RetrofitClient", "DEBUG BUILD: 使用域名白名单 SSL 配置");
+
+            X509TrustManager debugTrustManager = DebugSslProvider.getTrustManager();
+            SSLSocketFactory sslSocketFactory = DebugSslProvider.getSSLSocketFactory();
+
+            if (sslSocketFactory != null && debugTrustManager != null) {
+                okHttpBuilder.sslSocketFactory(sslSocketFactory, debugTrustManager);
+                // 只对白名单域名跳过主机名验证
+                okHttpBuilder.hostnameVerifier((hostname, session) -> {
+                    boolean allowed = DebugSslProvider.isDomainAllowed(hostname);
+                    Log.d("RetrofitClient", "Hostname verification: " + hostname + " -> " + allowed);
+                    return allowed;
+                });
+            } else {
+                Log.w("RetrofitClient", "Failed to create debug SSL config, using default");
+            }
+        } else {
+            // Release 版本：使用系统默认证书验证
+            Log.i("RetrofitClient", "RELEASE BUILD: 使用系统默认证书验证");
         }
+        // 系统默认 SSL 验证自动生效，无需自定义配置
 
         OkHttpClient okHttpClient = okHttpBuilder.build();
         
