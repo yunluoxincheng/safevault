@@ -1,6 +1,8 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -32,6 +34,7 @@ public class PasswordListViewModel extends AndroidViewModel {
     private final BackendService backendService;
     private final ExecutorService executor;
     private final Context applicationContext;
+    private final ClipboardManager clipboardManager;
 
     // LiveData用于UI状态管理
     private final MutableLiveData<List<PasswordItem>> _passwordItems = new MutableLiveData<>();
@@ -72,6 +75,7 @@ public class PasswordListViewModel extends AndroidViewModel {
         this.backendService = backendService;
         this.executor = Executors.newSingleThreadExecutor();
         this.applicationContext = application.getApplicationContext();
+        this.clipboardManager = (ClipboardManager) application.getSystemService(Context.CLIPBOARD_SERVICE);
 
         // 注册广播接收器
         LocalBroadcastManager.getInstance(applicationContext).registerReceiver(
@@ -266,8 +270,8 @@ public class PasswordListViewModel extends AndroidViewModel {
             try {
                 PasswordItem item = backendService.decryptItem(itemId);
                 if (item != null && item.getPassword() != null) {
-                    // TODO: 使用剪贴板管理器复制密码
-                    // clipboardManager.copy(item.getPassword());
+                    ClipData clip = ClipData.newPlainText("密码", item.getPassword());
+                    clipboardManager.setPrimaryClip(clip);
                 }
             } catch (Exception e) {
                 _errorMessage.postValue("复制失败: " + e.getMessage());

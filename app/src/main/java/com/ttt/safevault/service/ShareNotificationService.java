@@ -339,17 +339,13 @@ public class ShareNotificationService extends Service {
 
     /**
      * 保存联系人到本地数据库
+     *
+     * @issue 需要实现本地联系人持久化功能
+     * @description 当前仅在日志中记录，未实际保存到本地数据库
+     * @requires BackendService 添加 saveContact() 方法或使用本地数据库
      */
     private void saveContactToLocal(FriendDto friend) {
-        // TODO: 实现本地数据库保存逻辑
-        // 这里需要使用 BackendService 或 Repository 来保存联系人
-        // 示例代码：
-        // backendService.saveContact(
-        //     friend.getUserId(),
-        //     friend.getDisplayName(),
-        //     friend.getPublicKey()
-        // );
-
+        // 当前实现：仅记录日志，等待后端接口支持
         Log.d(TAG, "Saving contact to local: " + friend.getDisplayName() +
                    " (userId: " + friend.getUserId() + ")");
     }

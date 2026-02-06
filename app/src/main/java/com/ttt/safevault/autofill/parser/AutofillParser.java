@@ -912,14 +912,16 @@ public class AutofillParser {
             writer = new FileWriter(logFile, true);
             writer.write(logMessage);
         } catch (IOException e) {
-            // 忽略日志写入错误
+            // 日志写入失败，使用系统日志记录
+            android.util.Log.e(TAG, "Failed to write to log file", e);
         } finally {
             // 确保FileWriter正确关闭，防止资源泄漏
             if (writer != null) {
                 try {
                     writer.close();
                 } catch (IOException e) {
-                    // 忽略关闭错误
+                    // 关闭失败时记录日志
+                    android.util.Log.e(TAG, "Failed to close log file writer", e);
                 }
             }
         }

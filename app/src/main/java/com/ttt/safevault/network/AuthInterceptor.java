@@ -282,7 +282,10 @@ public class AuthInterceptor implements Interceptor {
                 new Thread(() -> {
                     try {
                         Thread.sleep(100);
-                    } catch (InterruptedException ignored) {}
+                    } catch (InterruptedException ignored) {
+                        // 延迟重置线程被中断，继续执行状态重置
+                        Thread.currentThread().interrupt();
+                    }
                     refreshState.set(RefreshState.IDLE);
                 }).start();
             } else {

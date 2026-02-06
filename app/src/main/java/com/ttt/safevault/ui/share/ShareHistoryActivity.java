@@ -198,8 +198,15 @@ public class ShareHistoryActivity extends AppCompatActivity {
                 .show();
     }
 
+    /**
+     * 保存分享的密码到本地密码库
+     *
+     * @issue 需要实现将收到的分享密码保存到密码库的功能
+     * @description 当前显示"即将推出"对话框
+     * @requires 需要解密分享数据并通过 BackendService 保存
+     */
     private void saveShareToLocal(ShareRecord record) {
-        // TODO: 实现保存到密码库的功能
+        // 当前实现：显示"即将推出"对话框
         new android.app.AlertDialog.Builder(this)
                 .setTitle(R.string.coming_soon)
                 .setMessage(R.string.save_to_local_coming_soon)

@@ -111,7 +111,8 @@ public class ClipboardManager {
             try {
                 systemClipboard.setPrimaryClip(ClipData.newPlainText("", null));
             } catch (Exception e) {
-                // 忽略错误
+                // 清除剪贴板失败，记录日志但不影响功能
+                android.util.Log.w(TAG, "Failed to clear system clipboard", e);
             }
         }
 

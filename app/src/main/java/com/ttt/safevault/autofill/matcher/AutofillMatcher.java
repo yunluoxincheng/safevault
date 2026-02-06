@@ -278,7 +278,8 @@ public class AutofillMatcher {
             writer.write(logMessage);
             writer.close();
         } catch (IOException e) {
-            // 忽略日志写入错误
+            // 日志写入失败，使用系统日志记录
+            android.util.Log.e(TAG, "Failed to write to log file", e);
         }
     }
 }

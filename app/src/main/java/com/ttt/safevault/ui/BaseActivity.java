@@ -31,8 +31,6 @@ public abstract class BaseActivity extends AppCompatActivity {
 
         // 获取安全管理器单例
         securityManager = SecurityManager.getInstance(this);
-        // TODO: 获取BackendService实例
-        // backendService = Injector.get().getBackendService();
 
         // 应用安全措施
         applySecurityMeasures();
