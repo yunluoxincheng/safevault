@@ -3,6 +3,7 @@ package com.ttt.safevault.ui.share;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Base64;
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -483,7 +484,7 @@ public class ShareActivity extends AppCompatActivity {
                 );
 
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "创建云端分享失败", e);
                 runOnUiThread(() -> {
                     hideLoading();
                     Toast.makeText(this, "分享失败: " + e.getMessage(), Toast.LENGTH_LONG).show();

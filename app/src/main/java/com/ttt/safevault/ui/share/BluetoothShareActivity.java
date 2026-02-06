@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -335,7 +336,7 @@ public class BluetoothShareActivity extends AppCompatActivity {
                     sendViaBluetooth();
                 });
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "生成分享数据包失败", e);
                 runOnUiThread(() -> {
                     Toast.makeText(this, "数据准备失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });

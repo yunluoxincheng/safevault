@@ -67,11 +67,10 @@ public class AuthInterceptor implements Interceptor {
         Request.Builder requestBuilder = original.newBuilder();
 
         Log.d(TAG, "Intercepting: " + original.method() + " " + original.url().encodedPath());
-        Log.d(TAG, "Token present: " + (token != null) + ", Token length: " + (token != null ? token.length() : 0));
 
         if (token != null) {
             requestBuilder.header("Authorization", "Bearer " + token);
-            Log.d(TAG, "Authorization header added: Bearer " + token.substring(0, Math.min(20, token.length())) + "...");
+            Log.d(TAG, "Authorization header added");
         } else {
             Log.e(TAG, "No token available! Request will be sent without authorization.");
         }

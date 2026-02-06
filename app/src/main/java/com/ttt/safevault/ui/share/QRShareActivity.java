@@ -3,6 +3,7 @@ package com.ttt.safevault.ui.share;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Base64;
+import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -319,7 +320,7 @@ public class QRShareActivity extends AppCompatActivity {
                 });
 
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "生成离线分享失败", e);
                 runOnUiThread(() -> {
                     Toast.makeText(this, "分享生成失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
@@ -337,7 +338,7 @@ public class QRShareActivity extends AppCompatActivity {
                 cardQRCode.setVisibility(View.VISIBLE);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "QR码生成失败", e);
             Toast.makeText(this, "QR码生成失败", Toast.LENGTH_SHORT).show();
         }
     }

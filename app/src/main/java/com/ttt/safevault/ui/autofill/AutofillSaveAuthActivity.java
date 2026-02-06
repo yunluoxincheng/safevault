@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.WindowManager;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -16,6 +17,8 @@ import androidx.appcompat.app.AppCompatActivity;
  * 认证通过后再跳转到 AutofillSaveActivity
  */
 public class AutofillSaveAuthActivity extends AppCompatActivity {
+    private static final String TAG = "AutofillSaveAuthActivity";
+
     // 待传递给 AutofillSaveActivity 的数据
     private String username;
     private String password;
@@ -83,7 +86,7 @@ public class AutofillSaveAuthActivity extends AppCompatActivity {
             editor.remove("unlock_time");
             editor.apply();
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "清除会话主密钥失败", e);
         }
     }
 

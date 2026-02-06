@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,6 +23,7 @@ import com.ttt.safevault.databinding.FragmentSettingsBinding;
  * 显示四个主要设置分类的入口
  */
 public class SettingsFragment extends BaseFragment {
+    private static final String TAG = "SettingsFragment";
 
     private FragmentSettingsBinding binding;
 
@@ -147,7 +149,7 @@ public class SettingsFragment extends BaseFragment {
                 try {
                     startActivity(new Intent(Settings.ACTION_SETTINGS));
                 } catch (Exception ex) {
-                    ex.printStackTrace();
+                    Log.e(TAG, "打开设置页面失败", ex);
                 }
             }
         }

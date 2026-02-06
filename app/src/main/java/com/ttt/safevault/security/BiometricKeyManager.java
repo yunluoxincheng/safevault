@@ -51,13 +51,19 @@ public class BiometricKeyManager {
         KeyGenerator keyGenerator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
 
-        KeyGenParameterSpec keyGenParameterSpec = new KeyGenParameterSpec.Builder(
+        KeyGenParameterSpec.Builder builder = new KeyGenParameterSpec.Builder(
             KEY_ALIAS,
             KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_CBC)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7)
-            .setUserAuthenticationRequired(false)  // 不需要每次认证，因为生物识别认证在应用层完成
-            .build();
+            .setUserAuthenticationRequired(true);  // 需要用户生物识别认证才能使用密钥
+
+        // 设置认证有效期为30秒（Android 10+）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            builder.setUserAuthenticationValidityDurationSeconds(30);
+        }
+
+        KeyGenParameterSpec keyGenParameterSpec = builder.build();
 
         keyGenerator.init(keyGenParameterSpec);
         keyGenerator.generateKey();

@@ -30,6 +30,9 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  * 密钥管理器
  * 负责生成和存储RSA密钥对，以及主密码派生密钥
+ *
+ * ⚠️ 安全警告：当前RSA私钥以Base64明文形式存储在SharedPreferences中
+ * TODO: 第二阶段需要迁移到AndroidKeyStore（见proposal.md）
  */
 public class KeyManager {
     private static final String TAG = "KeyManager";
@@ -37,6 +40,27 @@ public class KeyManager {
     private static final String KEY_PUBLIC_KEY = "public_key";
     private static final String KEY_PRIVATE_KEY = "private_key";
     private static final String KEY_DEVICE_ID = "device_id";
+
+    // 密钥迁移状态标记（为第二阶段迁移做准备）
+    private static final String KEY_MIGRATION_STATUS = "key_migration_status";
+    private static final String KEY_STORAGE_TYPE = "key_storage_type"; // "LEGACY" or "ANDROID_KEYSTORE"
+
+    /**
+     * 密钥存储类型枚举
+     */
+    public enum KeyStorageType {
+        /**
+         * 旧式存储：SharedPreferences明文存储（不安全）
+         * ⚠️ 安全风险：私钥可被root设备或备份应用读取
+         */
+        LEGACY,
+
+        /**
+         * 新式存储：AndroidKeyStore硬件保护存储（安全）
+         * ✅ 安全特性：私钥受硬件保护，导出受限
+         */
+        ANDROID_KEYSTORE
+    }
 
     // 密钥派生相关常量
     private static final int PBKDF2_ITERATIONS = 100000;  // PBKDF2 迭代次数
@@ -85,6 +109,14 @@ public class KeyManager {
             try {
                 this.keyPair = loadKeyPair(publicKeyStr, privateKeyStr);
                 Log.d(TAG, "Loaded existing key pair");
+
+                // 检查并标记密钥存储类型（为迁移做准备）
+                KeyStorageType storageType = detectKeyStorageType();
+                if (storageType == KeyStorageType.LEGACY) {
+                    Log.w(TAG, "⚠️ [SECURITY] Keys stored in LEGACY format (SharedPreferences)");
+                    Log.w(TAG, "⚠️ [SECURITY] Keys should be migrated to AndroidKeyStore (Phase 2)");
+                    recordKeyStorageStatus(KeyStorageType.LEGACY);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Failed to load keys, generating new ones", e);
                 generateAndSaveKeys();
@@ -504,5 +536,118 @@ public class KeyManager {
         public String getSalt() {
             return salt;
         }
+    }
+
+    // ========== 密钥迁移相关方法（第二阶段准备） ==========
+
+    /**
+     * 检测当前密钥存储类型
+     *
+     * @return 密钥存储类型（LEGACY 或 ANDROID_KEYSTORE）
+     */
+    public KeyStorageType detectKeyStorageType() {
+        // 检查是否已记录存储类型
+        String recordedType = prefs.getString(KEY_STORAGE_TYPE, null);
+        if (recordedType != null) {
+            return KeyStorageType.valueOf(recordedType);
+        }
+
+        // 检测当前存储方式
+        String publicKeyStr = prefs.getString(KEY_PUBLIC_KEY, null);
+        String privateKeyStr = prefs.getString(KEY_PRIVATE_KEY, null);
+
+        if (publicKeyStr != null && privateKeyStr != null) {
+            // 密钥存储在SharedPreferences中 = LEGACY
+            Log.w(TAG, "[KeyMigration] Detected LEGACY key storage (SharedPreferences)");
+            return KeyStorageType.LEGACY;
+        }
+
+        // 无密钥存储
+        Log.d(TAG, "[KeyMigration] No keys stored yet");
+        return null;
+    }
+
+    /**
+     * 记录密钥存储状态到SharedPreferences
+     *
+     * @param storageType 密钥存储类型
+     */
+    private void recordKeyStorageStatus(KeyStorageType storageType) {
+        if (storageType == null) {
+            return;
+        }
+
+        // 只记录一次，避免重复日志
+        String lastRecorded = prefs.getString(KEY_STORAGE_TYPE, null);
+        if (storageType.name().equals(lastRecorded)) {
+            return;
+        }
+
+        prefs.edit()
+                .putString(KEY_STORAGE_TYPE, storageType.name())
+                .putLong(KEY_MIGRATION_STATUS, System.currentTimeMillis())
+                .apply();
+
+        Log.i(TAG, "[KeyMigration] Key storage status recorded: " + storageType.name());
+        Log.i(TAG, "[KeyMigration] Status recorded at: " + new java.util.Date());
+
+        // 输出迁移建议
+        if (storageType == KeyStorageType.LEGACY) {
+            Log.w(TAG, "╔═══════════════════════════════════════════════════════════════╗");
+            Log.w(TAG, "║  ⚠️  SECURITY WARNING: Legacy Key Storage Detected             ║");
+            Log.w(TAG, "║  -------------------------------------------------------------  ║");
+            Log.w(TAG, "║  Current: Private keys stored in SharedPreferences            ║");
+            Log.w(TAG, "║  Risk:    Keys readable by root/backup apps                    ║");
+            Log.w(TAG, "║  Action:   Migrate to AndroidKeyStore (Phase 2)                ║");
+            Log.w(TAG, "║  Reference: openspec/changes/security-hardening-phase1/        ║");
+            Log.w(TAG, "╚═══════════════════════════════════════════════════════════════╝");
+        }
+    }
+
+    /**
+     * 获取密钥迁移状态
+     *
+     * @return 迁移状态时间戳（毫秒），如果未记录则返回0
+     */
+    public long getMigrationStatusTimestamp() {
+        return prefs.getLong(KEY_MIGRATION_STATUS, 0);
+    }
+
+    /**
+     * 检查是否需要迁移密钥
+     *
+     * @return true如果密钥需要迁移到AndroidKeyStore
+     */
+    public boolean needsMigration() {
+        KeyStorageType currentType = detectKeyStorageType();
+        return currentType == KeyStorageType.LEGACY;
+    }
+
+    /**
+     * 获取当前密钥存储类型（供外部查询）
+     *
+     * @return 当前密钥存储类型
+     */
+    public KeyStorageType getCurrentKeyStorageType() {
+        return detectKeyStorageType();
+    }
+
+    /**
+     * 标记密钥已迁移（第二阶段使用）
+     * 此方法将在第二阶段迁移实现时调用
+     */
+    public void markKeysMigratedToKeyStore() {
+        prefs.edit()
+                .putString(KEY_STORAGE_TYPE, KeyStorageType.ANDROID_KEYSTORE.name())
+                .putLong(KEY_MIGRATION_STATUS, System.currentTimeMillis())
+                .apply();
+
+        Log.i(TAG, "╔═══════════════════════════════════════════════════════════════╗");
+        Log.i(TAG, "║  ✅ KEY MIGRATION COMPLETED                                   ║");
+        Log.i(TAG, "║  -------------------------------------------------------------  ║");
+        Log.i(TAG, "║  Keys successfully migrated to AndroidKeyStore                ║");
+        Log.i(TAG, "║  Private keys now protected by hardware                       ║");
+        Log.i(TAG, "║  Migration completed at: " + new java.util.Date() + "           ║");
+        Log.i(TAG, "╚═══════════════════════════════════════════════════════════════╝");
     }
 }

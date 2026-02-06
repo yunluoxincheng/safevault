@@ -2,6 +2,7 @@ package com.ttt.safevault.ui.share;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
@@ -221,7 +222,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 decryptShareData();
 
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "解析分享数据失败", e);
                 runOnUiThread(() -> {
                     Toast.makeText(this, "解析分享数据失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     finish();
@@ -321,7 +322,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
             });
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "解密分享数据失败", e);
             runOnUiThread(() -> {
                 showError("解密失败: " + e.getMessage());
             });
@@ -386,7 +387,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
             return deserializeShareDataPacket(json);
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "打开加密包失败", e);
             return null;
         }
     }
@@ -771,7 +772,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "保存分享密码失败", e);
             Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }

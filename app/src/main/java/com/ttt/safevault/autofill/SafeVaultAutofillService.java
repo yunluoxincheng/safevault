@@ -183,7 +183,7 @@ public class SafeVaultAutofillService extends AutofillService {
 
             } catch (Exception e) {
                 logDebug("处理FillRequest异常: " + e.getMessage());
-                e.printStackTrace();
+                Log.e(TAG, "处理FillRequest异常", e);
                 callback.onFailure("处理请求失败: " + e.getMessage());
             }
         });
@@ -282,7 +282,7 @@ public class SafeVaultAutofillService extends AutofillService {
 
         } catch (Exception e) {
             logDebug("处理SaveRequest异常: " + e.getMessage());
-            e.printStackTrace();
+            Log.e(TAG, "处理SaveRequest异常", e);
             callback.onFailure("处理保存请求失败");
         }
     }
@@ -434,7 +434,7 @@ public class SafeVaultAutofillService extends AutofillService {
             }
         } catch (Exception e) {
             logDebug("检查后台超时失败: " + e.getMessage());
-            e.printStackTrace();
+            Log.e(TAG, "检查后台超时失败", e);
         }
 
         logDebug("=== checkBackgroundTimeoutAndLock() 结束 ===");

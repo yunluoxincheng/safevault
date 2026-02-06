@@ -2,6 +2,7 @@ package com.ttt.safevault.ui.autofill;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -209,7 +210,7 @@ public class AutofillSaveActivity extends AppCompatActivity {
                 });
 
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "检查重复凭据失败", e);
                 runOnUiThread(() -> {
                     binding.saveButton.setEnabled(true);
                     binding.saveButton.setText(R.string.button_save);
@@ -288,7 +289,7 @@ public class AutofillSaveActivity extends AppCompatActivity {
                     }
                 });
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "保存凭据失败", e);
                 runOnUiThread(() -> {
                     Toast.makeText(this, R.string.autofill_save_failed, Toast.LENGTH_SHORT).show();
                     binding.saveButton.setEnabled(true);
@@ -360,7 +361,7 @@ public class AutofillSaveActivity extends AppCompatActivity {
                 });
 
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "更新凭据失败", e);
                 runOnUiThread(() -> {
                     Toast.makeText(this, R.string.autofill_save_failed, Toast.LENGTH_SHORT).show();
                     binding.saveButton.setEnabled(true);
