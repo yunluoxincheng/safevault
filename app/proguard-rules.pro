@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# DebugSslProvider 仅用于 Debug 构建，Release 版本应移除
+# 这些方法仅在 BuildConfig.DEBUG 为 true 时调用，Release 构建中应完全移除
+-assumenosideeffects class com.ttt.safevault.network.DebugSslProvider {
+    public static *** getSSLSocketFactory(...);
+    public static *** getTrustManager(...);
+    public static *** isDomainAllowed(...);
+}
