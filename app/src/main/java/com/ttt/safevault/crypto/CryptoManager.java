@@ -36,13 +36,48 @@ public class CryptoManager {
     private static final String PREF_SALT = "master_salt";
     private static final String PREF_VERIFY_HASH = "verify_hash";
     private static final String PREF_INITIALIZED = "initialized";
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
+     */
+    @Deprecated
     private static final String PREF_SESSION_KEY = "session_master_key";
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
+     */
+    @Deprecated
     private static final String PREF_SESSION_IV = "session_master_iv";
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
+     */
+    @Deprecated
     private static final String PREF_UNLOCK_TIME = "unlock_time";
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
+     */
+    @Deprecated
     private static final String PREF_IS_LOCKED = "is_locked";  // 明确的锁定标志
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态（5分钟超时）
+     */
+    @Deprecated
     private static final long SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30分钟会话超时
-    
+
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 SecureKeyStorageManager 的 DeviceKey
+     */
+    @Deprecated
     private static final String KEYSTORE_ALIAS = "SafeVaultSessionKey";
+    /**
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 SecureKeyStorageManager 的 DeviceKey
+     */
+    @Deprecated
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
 
     private static final String ALGORITHM = "AES/GCM/NoPadding";
@@ -126,8 +161,12 @@ public class CryptoManager {
             this.isUnlocked = true;
             this.sessionPassword = masterPassword; // 临时存储密码用于导出/导入
 
-            // 持久化会话密钥，供自动填充服务使用
-            persistSessionKey(key);
+            // @deprecated 会话恢复功能已废弃，不再持久化会话密钥
+            // 新架构使用 CryptoSession 管理会话状态
+            // persistSessionKey(key);
+
+            // 清理遗留的会话恢复数据
+            cleanupLegacySessionData();
 
             // 初始化三层安全存储架构（方案 B：一次性迁移）
             initializeThreeLayerSecurity(masterPassword, salt);
@@ -167,8 +206,12 @@ public class CryptoManager {
             // 清除锁定标志（允许会话恢复）
             prefs.edit().remove(PREF_IS_LOCKED).apply();
 
-            // 持久化会话密钥，供自动填充服务使用
-            persistSessionKey(this.masterKey);
+            // @deprecated 会话恢复功能已废弃，不再持久化会话密钥
+            // 新架构使用 CryptoSession 管理会话状态
+            // persistSessionKey(this.masterKey);
+
+            // 清理遗留的会话恢复数据
+            cleanupLegacySessionData();
 
             // 自动迁移到三层安全存储架构（方案 B：一次性迁移）
             migrateToThreeLayerSecurity(masterPassword, saltBase64);
@@ -183,6 +226,7 @@ public class CryptoManager {
     /**
      * 锁定，清除内存中的密钥
      * 设置锁定标志，阻止会话恢复
+     * @deprecated 会话恢复功能已废弃，新架构使用 CryptoSession.clear()
      */
     public void lock() {
         Log.d(TAG, "=== lock() 被调用 ===");
@@ -192,18 +236,22 @@ public class CryptoManager {
         this.isUnlocked = false;
         this.sessionPassword = null; // 清除会话密码
 
-        // 先设置锁定标志（同步），防止会话恢复
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.putBoolean(PREF_IS_LOCKED, true);
-        boolean committed = editor.commit();  // 使用 commit 确保立即生效
-        Log.d(TAG, "设置锁定标志 PREF_IS_LOCKED=true, commit=" + committed);
+        // @deprecated 会话恢复功能已废弃，不再设置锁定标志和清除会话密钥
+        // 新架构使用 CryptoSession 管理会话状态
+        //
+        // // 先设置锁定标志（同步），防止会话恢复
+        // SharedPreferences.Editor editor = prefs.edit();
+        // editor.putBoolean(PREF_IS_LOCKED, true);
+        // boolean committed = editor.commit();  // 使用 commit 确保立即生效
+        // Log.d(TAG, "设置锁定标志 PREF_IS_LOCKED=true, commit=" + committed);
+        //
+        // // 再清除持久化的会话密钥（同步）
+        // clearSessionKeySync();
+        //
+        // // 验证锁定标志已设置
+        // boolean isLockedFlag = prefs.getBoolean(PREF_IS_LOCKED, false);
+        // Log.d(TAG, "验证锁定标志: PREF_IS_LOCKED=" + isLockedFlag);
 
-        // 再清除持久化的会话密钥（同步）
-        clearSessionKeySync();
-
-        // 验证锁定标志已设置
-        boolean isLockedFlag = prefs.getBoolean(PREF_IS_LOCKED, false);
-        Log.d(TAG, "验证锁定标志: PREF_IS_LOCKED=" + isLockedFlag);
         Log.d(TAG, "锁定后状态: isUnlocked=" + this.isUnlocked + ", masterKey=" + (this.masterKey != null ? "存在" : "null"));
         Log.d(TAG, "=== lock() 完成 ===");
     }
@@ -211,38 +259,27 @@ public class CryptoManager {
     /**
      * 检查是否已解锁
      * 如果内存中没有密钥，尝试从持久化存储恢复
+     * @deprecated 会话恢复功能已废弃，新架构使用 CryptoSession.isUnlocked()
      */
     public boolean isUnlocked() {
-        // 先检查内存中的状态
+        // 新架构：只检查内存中的状态，不尝试恢复会话
         if (isUnlocked && masterKey != null) {
             Log.d(TAG, "isUnlocked: 内存中已解锁 (isUnlocked=" + isUnlocked + ", masterKey exists)");
             return true;
         }
 
-        Log.d(TAG, "isUnlocked: 内存中未锁定，尝试恢复会话...");
-        Log.d(TAG, "isUnlocked: PREF_IS_LOCKED=" + prefs.getBoolean(PREF_IS_LOCKED, false));
-
-        // 尝试从持久化存储恢复会话密钥
-        boolean restored = tryRestoreSession();
-        Log.d(TAG, "isUnlocked: 会话恢复结果=" + restored + ", 最终状态=" + (isUnlocked && masterKey != null));
-        return restored;
+        Log.d(TAG, "isUnlocked: 内存中未解锁");
+        return false;
     }
     
     /**
      * 获取主密钥（如果需要会自动恢复会话）
+     * @deprecated 会话恢复功能已废弃，新架构使用 CryptoSession.getDataKey()
      */
     @Nullable
     public SecretKey getMasterKey() {
-        if (masterKey != null) {
-            return masterKey;
-        }
-
-        // 尝试恢复会话
-        if (tryRestoreSession()) {
-            return masterKey;
-        }
-
-        return null;
+        // 新架构：只返回内存中的密钥，不再尝试恢复会话
+        return masterKey;
     }
 
     /**
@@ -408,7 +445,10 @@ public class CryptoManager {
     
     /**
      * 持久化会话密钥，使用 Android Keystore 加密保护
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
      */
+    @Deprecated
     private void persistSessionKey(SecretKey key) {
         try {
             // 获取或创建 Keystore 密钥
@@ -442,7 +482,10 @@ public class CryptoManager {
     
     /**
      * 清除持久化的会话密钥（异步版本）
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
      */
+    @Deprecated
     private void clearSessionKey() {
         SharedPreferences.Editor editor = prefs.edit();
         editor.remove(PREF_SESSION_KEY);
@@ -455,7 +498,10 @@ public class CryptoManager {
     /**
      * 清除持久化的会话密钥（同步版本）
      * 在 lock() 时使用，确保立即生效
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
      */
+    @Deprecated
     private void clearSessionKeySync() {
         SharedPreferences.Editor editor = prefs.edit();
         editor.remove(PREF_SESSION_KEY);
@@ -468,7 +514,10 @@ public class CryptoManager {
     /**
      * 尝试从持久化存储恢复会话密钥
      * 如果应用已锁定（PREF_IS_LOCKED == true），则不恢复会话
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 CryptoSession 管理会话状态
      */
+    @Deprecated
     private boolean tryRestoreSession() {
         // 首先检查是否已锁定
         if (prefs.getBoolean(PREF_IS_LOCKED, false)) {
@@ -536,7 +585,10 @@ public class CryptoManager {
     
     /**
      * 获取或创建 Android Keystore 中的密钥
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 SecureKeyStorageManager 的 DeviceKey
      */
+    @Deprecated
     private SecretKey getOrCreateKeystoreKey() {
         try {
             SecretKey key = getKeystoreKey();
@@ -566,7 +618,10 @@ public class CryptoManager {
     
     /**
      * 从 Android Keystore 获取密钥
+     * @deprecated 已弃用：会话恢复功能已废弃
+     * 新架构使用 SecureKeyStorageManager 的 DeviceKey
      */
+    @Deprecated
     @Nullable
     private SecretKey getKeystoreKey() {
         try {
@@ -700,6 +755,32 @@ public class CryptoManager {
         java.security.KeyPairGenerator keyGen = java.security.KeyPairGenerator.getInstance("RSA");
         keyGen.initialize(2048);
         return keyGen.generateKeyPair();
+    }
+
+    /**
+     * 清理遗留的会话恢复数据
+     *
+     * 清除 crypto_prefs 中的旧会话数据：
+     * - session_master_key
+     * - session_master_iv
+     * - unlock_time
+     * - is_locked
+     *
+     * @deprecated 会话恢复功能已废弃，此方法仅用于清理旧数据
+     */
+    @Deprecated
+    private void cleanupLegacySessionData() {
+        try {
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.remove(PREF_SESSION_KEY);
+            editor.remove(PREF_SESSION_IV);
+            editor.remove(PREF_UNLOCK_TIME);
+            editor.remove(PREF_IS_LOCKED);
+            boolean committed = editor.commit();
+            Log.i(TAG, "已清理遗留的会话恢复数据 (commit=" + committed + ")");
+        } catch (Exception e) {
+            Log.e(TAG, "清理遗留会话数据失败", e);
+        }
     }
 
     /**

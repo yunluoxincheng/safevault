@@ -589,6 +589,7 @@ public class SecureKeyStorageManager {
      * 解密RSA私钥（Level 3 数据层）
      *
      * 使用DataKey解密RSA私钥
+     * 私钥字节在使用后会被立即擦除（Task 6.1: 私钥内存安全管理）
      *
      * @param dataKey DataKey
      * @return RSA私钥
@@ -596,6 +597,7 @@ public class SecureKeyStorageManager {
      */
     @NonNull
     public PrivateKey decryptRsaPrivateKey(@NonNull SecretKey dataKey) {
+        byte[] privateKeyBytes = null;
         try {
             String encrypted = prefs.getString(ENCRYPTED_RSA_PRIVATE_KEY, null);
             if (encrypted == null) {
@@ -611,7 +613,7 @@ public class SecureKeyStorageManager {
             GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             cipher.init(Cipher.DECRYPT_MODE, dataKey, spec);
 
-            byte[] privateKeyBytes = cipher.doFinal(encryptedData);
+            privateKeyBytes = cipher.doFinal(encryptedData);
 
             // 重建PrivateKey
             KeyFactory keyFactory = KeyFactory.getInstance(RSA_ALGORITHM);
@@ -624,6 +626,13 @@ public class SecureKeyStorageManager {
         } catch (Exception e) {
             Log.e(TAG, "RSA私钥解密失败", e);
             throw new SecurityException("Failed to decrypt RSA private key", e);
+        } finally {
+            // Task 6.1: 私钥内存安全管理
+            // 立即擦除内存中的私钥字节，防止内存转储攻击
+            if (privateKeyBytes != null) {
+                Arrays.fill(privateKeyBytes, (byte) 0);
+                Log.d(TAG, "RSA私钥字节已从内存中擦除");
+            }
         }
     }
 
@@ -1130,6 +1139,30 @@ public class SecureKeyStorageManager {
     }
 
     /**
+     * 检查 PasswordKey 加密的 DataKey 是否存在
+     *
+     * 用于启用生物识别时检查是否有必要的数据
+     *
+     * @return 存在返回true，否则返回false
+     */
+    public boolean hasPasswordEncryptedDataKey() {
+        String passwordEncrypted = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
+        return passwordEncrypted != null;
+    }
+
+    /**
+     * 检查 DeviceKey 加密的 DataKey 是否存在
+     *
+     * 用于使用生物识别解锁时检查生物识别路径是否完整
+     *
+     * @return 存在返回true，否则返回false
+     */
+    public boolean hasDeviceEncryptedDataKey() {
+        String deviceEncrypted = prefs.getString(DEVICE_ENCRYPTED_DATA_KEY, null);
+        return deviceEncrypted != null;
+    }
+
+    /**
      * 清除生物识别相关数据
      *
      * 注意：此方法只清除DeviceKey，不影响PasswordKey和DataKey
@@ -1149,6 +1182,139 @@ public class SecureKeyStorageManager {
             }
         } catch (Exception e) {
             Log.e(TAG, "删除DeviceKey失败", e);
+        }
+    }
+
+    /**
+     * 完成生物识别注册（DeviceKey加密路径初始化）
+     *
+     * 在用户首次启用生物识别时调用。此时：
+     * - 用户已通过生物识别UI认证，DeviceKey已获得授权
+     * - PasswordKey加密的DataKey已存在
+     * - 需要使用DeviceKey重新加密DataKey并保存
+     *
+     * @param masterPassword 主密码（用于派生PasswordKey并解密DataKey）
+     * @param saltBase64 盐值
+     * @return 成功返回true，失败返回false
+     */
+    public boolean completeBiometricEnrollment(@NonNull String masterPassword,
+                                              @NonNull String saltBase64) {
+        try {
+            Log.d(TAG, "开始完成生物识别注册（DeviceKey加密路径初始化）");
+
+            // 1. 获取DeviceKey（此时已通过生物识别认证，可用）
+            SecretKey deviceKey = getOrCreateDeviceKey();
+            if (deviceKey == null) {
+                Log.e(TAG, "生物识别注册失败：无法获取DeviceKey");
+                return false;
+            }
+
+            // 2. 检查PasswordKey加密的DataKey是否存在
+            String passwordEncryptedDataKey = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
+            if (passwordEncryptedDataKey == null) {
+                Log.e(TAG, "生物识别注册失败：PasswordKey加密的DataKey不存在");
+                return false;
+            }
+
+            // 3. 派生PasswordKey
+            SecretKey passwordKey = derivePasswordKey(masterPassword, saltBase64);
+
+            // 4. 使用PasswordKey解密DataKey
+            SecretKey dataKey = decryptKeyWithAES(passwordEncryptedDataKey, passwordKey);
+
+            // 5. 使用DeviceKey重新加密DataKey
+            String deviceEncrypted = encryptKeyWithAES(dataKey, deviceKey);
+            if (deviceEncrypted == null) {
+                Log.e(TAG, "生物识别注册失败：DeviceKey加密DataKey失败");
+                return false;
+            }
+
+            // 6. 保存DeviceKey加密的DataKey
+            boolean saved = prefs.edit()
+                    .putString(DEVICE_ENCRYPTED_DATA_KEY, deviceEncrypted)
+                    .commit();
+
+            if (!saved) {
+                Log.e(TAG, "生物识别注册失败：保存DeviceKey加密DataKey失败");
+                return false;
+            }
+
+            // 7. 验证完整性
+            if (!validateDataKeyStorage(true)) {
+                Log.e(TAG, "生物识别注册失败：DataKey存储完整性验证失败");
+                return false;
+            }
+
+            Log.i(TAG, "生物识别注册成功（DeviceKey加密路径已初始化）");
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "生物识别注册异常", e);
+            return false;
+        }
+    }
+
+    /**
+     * 完成生物识别注册（使用会话中的 DataKey）
+     *
+     * 当用户已通过主密码验证（DataKey 在内存中）时调用此方法
+     * 无需重新派生 PasswordKey 和解密 DataKey，直接使用会话中的 DataKey
+     *
+     * @param dataKey 会话中的 DataKey（已解密）
+     * @param saltBase64 盐值（用于验证，不使用）
+     * @return 成功返回true，失败返回false
+     */
+    public boolean completeBiometricEnrollmentWithDataKey(@NonNull SecretKey dataKey,
+                                                         @NonNull String saltBase64) {
+        try {
+            Log.d(TAG, "开始完成生物识别注册（使用会话中的 DataKey）");
+
+            // 1. 获取DeviceKey（此时已通过生物识别认证，可用）
+            SecretKey deviceKey = getOrCreateDeviceKey();
+            if (deviceKey == null) {
+                Log.e(TAG, "生物识别注册失败：无法获取DeviceKey");
+                return false;
+            }
+
+            // 2. 检查PasswordKey加密的DataKey是否存在（验证完整性）
+            String passwordEncryptedDataKey = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
+            if (passwordEncryptedDataKey == null) {
+                Log.e(TAG, "生物识别注册失败：PasswordKey加密的DataKey不存在");
+                return false;
+            }
+
+            // 3. 直接使用提供的DataKey，无需重新解密
+            Log.d(TAG, "使用会话中的 DataKey，跳过 PasswordKey 派生和解密步骤");
+
+            // 4. 使用DeviceKey重新加密DataKey
+            String deviceEncrypted = encryptKeyWithAES(dataKey, deviceKey);
+            if (deviceEncrypted == null) {
+                Log.e(TAG, "生物识别注册失败：DeviceKey加密DataKey失败");
+                return false;
+            }
+
+            // 5. 保存DeviceKey加密的DataKey
+            boolean saved = prefs.edit()
+                    .putString(DEVICE_ENCRYPTED_DATA_KEY, deviceEncrypted)
+                    .commit();
+
+            if (!saved) {
+                Log.e(TAG, "生物识别注册失败：保存DeviceKey加密DataKey失败");
+                return false;
+            }
+
+            // 6. 验证完整性
+            if (!validateDataKeyStorage(true)) {
+                Log.e(TAG, "生物识别注册失败：DataKey存储完整性验证失败");
+                return false;
+            }
+
+            Log.i(TAG, "生物识别注册成功（使用会话中的 DataKey，跳过主密码派生）");
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "生物识别注册异常（使用会话 DataKey）", e);
+            return false;
         }
     }
 

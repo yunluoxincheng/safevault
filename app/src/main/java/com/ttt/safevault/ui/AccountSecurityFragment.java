@@ -16,6 +16,7 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentAccountSecurityBinding;
 import com.ttt.safevault.security.SecurityConfig;
+import com.ttt.safevault.security.CryptoSession;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
@@ -29,6 +30,9 @@ public class AccountSecurityFragment extends BaseFragment {
 
     private FragmentAccountSecurityBinding binding;
     private SecurityConfig securityConfig;
+
+    /** 用于在 DeviceKey 注册过程中临时保存主密码 */
+    private String masterPasswordForEnrollment;
 
     @Nullable
     @Override
@@ -566,63 +570,372 @@ public class AccountSecurityFragment extends BaseFragment {
     }
 
     /**
-     * 启用生物识别认证（使用新架构）
-     * 使用 BiometricAuthManager 进行生物识别验证
+     * 启用生物识别认证（使用会话管理优化）
+     *
+     * 流程：
+     * 1. 检查会话状态（CryptoSession.isUnlocked()）
+     * 2. 如果已解锁：直接进行生物识别认证（无需重复输入主密码）
+     * 3. 如果未解锁：先要求用户验证主密码
+     * 4. 使用会话中的 DataKey 完成生物识别注册
+     *
+     * 🧠 核心思想：
+     * - "主密码已验证"的唯一凭证 = 能否访问 DataKey
+     * - DataKey 在内存中 = 用户已通过主密码验证（哪怕是 5 分钟前）
+     * - 生物识别只是把信任从主密码迁移到设备
      */
     private void enableBiometricAuthentication(@NonNull BiometricAuthManager authManager) {
-        androidx.fragment.app.FragmentActivity activity = (androidx.fragment.app.FragmentActivity) requireActivity();
+        CryptoSession cryptoSession = CryptoSession.getInstance();
 
-        authManager.authenticate(activity, AuthScenario.ENROLLMENT, new AuthCallback() {
-            @Override
-            public void onUserVerified() {
-                // 用户通过 UI 认证，等待 Keystore 授权
+        // 🧠 检查会话状态：用户是否已通过主密码验证
+        if (cryptoSession.isUnlocked()) {
+            // 用户已通过主密码验证（哪怕是 5 分钟前）
+            // DataKey 在内存中，可以直接进行生物识别认证
+            android.util.Log.d("AccountSecurity",
+                "会话已解锁，直接进行生物识别认证（无需重复输入主密码）");
+
+            androidx.fragment.app.FragmentActivity activity =
+                (androidx.fragment.app.FragmentActivity) requireActivity();
+
+            authManager.authenticate(activity, AuthScenario.ENROLLMENT,
+                new AuthCallback() {
+                    @Override
+                    public void onUserVerified() {
+                        // 用户通过 UI 认证，等待 Keystore 授权
+                    }
+
+                    @Override
+                    public void onKeyAccessGranted() {
+                        // 生物识别认证成功，完成 DeviceKey 注册
+                        completeDeviceKeyEnrollmentWithDataKey(authManager);
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull AuthError error,
+                                       @NonNull String message,
+                                       boolean canRetry) {
+                        requireActivity().runOnUiThread(() -> {
+                            if (error == AuthError.DEBOUNCED) {
+                                Toast.makeText(requireContext(), message,
+                                    Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            android.util.Log.e("AccountSecurity",
+                                "启用生物识别失败: " + error + " - " + message);
+                            Toast.makeText(requireContext(),
+                                "启用生物识别失败: " + message,
+                                Toast.LENGTH_SHORT).show();
+                        });
+                    }
+
+                    @Override
+                    public void onCancel() {
+                        // 用户取消，不做处理
+                    }
+
+                    @Override
+                    public void onBiometricChanged() {
+                        requireActivity().runOnUiThread(() -> {
+                            new MaterialAlertDialogBuilder(requireContext())
+                                .setTitle("生物识别信息已变更")
+                                .setMessage("检测到您的生物识别信息已变更，" +
+                                    "请使用主密码登录后重新启用生物识别。")
+                                .setPositiveButton("我知道了", null)
+                                .show();
+                        });
+                    }
+                }
+            );
+
+        } else {
+            // 用户当前没有主信任（DataKey 不在内存中）
+            // 必须重新输入主密码来获取 DataKey
+            android.util.Log.d("AccountSecurity",
+                "会话未解锁，需要先验证主密码");
+
+            // 第一步：先要求用户验证主密码
+            showPasswordAuthenticationDialogForEnrollment(
+                authManager,
+                () -> {
+                    // 主密码验证成功，继续生物识别认证
+                    androidx.fragment.app.FragmentActivity activity =
+                        (androidx.fragment.app.FragmentActivity) requireActivity();
+
+                    authManager.authenticate(activity, AuthScenario.ENROLLMENT,
+                        new AuthCallback() {
+                            @Override
+                            public void onUserVerified() {
+                                // 用户通过 UI 认证，等待 Keystore 授权
+                            }
+
+                            @Override
+                            public void onKeyAccessGranted() {
+                                // 生物识别认证成功，完成 DeviceKey 注册
+                                completeDeviceKeyEnrollment(authManager);
+                            }
+
+                            @Override
+                            public void onFailure(@NonNull AuthError error,
+                                               @NonNull String message,
+                                               boolean canRetry) {
+                                requireActivity().runOnUiThread(() -> {
+                                    if (error == AuthError.DEBOUNCED) {
+                                        Toast.makeText(requireContext(), message,
+                                            Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    android.util.Log.e("AccountSecurity",
+                                        "启用生物识别失败: " + error + " - " + message);
+                                    Toast.makeText(requireContext(),
+                                        "启用生物识别失败: " + message,
+                                        Toast.LENGTH_SHORT).show();
+                                });
+                            }
+
+                            @Override
+                            public void onCancel() {
+                                // 用户取消，不做处理
+                            }
+
+                            @Override
+                            public void onBiometricChanged() {
+                                requireActivity().runOnUiThread(() -> {
+                                    new MaterialAlertDialogBuilder(requireContext())
+                                        .setTitle("生物识别信息已变更")
+                                        .setMessage("检测到您的生物识别信息已变更，" +
+                                            "请使用主密码登录后重新启用生物识别。")
+                                        .setPositiveButton("我知道了", null)
+                                        .show();
+                                });
+                            }
+                        }
+                    );
+                },
+                () -> {
+                    // 主密码验证失败
+                    Toast.makeText(requireContext(), "主密码验证失败，无法启用生物识别",
+                        Toast.LENGTH_SHORT).show();
+                }
+            );
+        }
+    }
+
+    /**
+     * 显示主密码验证对话框（用于启用生物识别）
+     */
+    private void showPasswordAuthenticationDialogForEnrollment(
+            @NonNull BiometricAuthManager authManager,
+            @NonNull Runnable onSuccess,
+            @NonNull Runnable onFailure) {
+
+        android.view.View dialogView = getLayoutInflater().inflate(
+            R.layout.dialog_password_input, null);
+        com.google.android.material.textfield.TextInputLayout passwordLayout =
+            dialogView.findViewById(R.id.passwordLayout);
+        com.google.android.material.textfield.TextInputEditText passwordInput =
+            dialogView.findViewById(R.id.passwordInput);
+
+        // 确保初始状态正确：密码隐藏，闭眼图标
+        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+            android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordLayout.setEndIconDrawable(
+            requireContext().getDrawable(R.drawable.ic_visibility));
+
+        // 设置密码可见性切换
+        passwordLayout.setEndIconOnClickListener(v -> {
+            int selection = passwordInput.getSelectionEnd();
+            int currentInputType = passwordInput.getInputType();
+            int variation = currentInputType & android.text.InputType.TYPE_MASK_VARIATION;
+
+            if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) {
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                    android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+                passwordLayout.setEndIconDrawable(
+                    requireContext().getDrawable(R.drawable.ic_visibility_off));
+            } else {
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                passwordLayout.setEndIconDrawable(
+                    requireContext().getDrawable(R.drawable.ic_visibility));
             }
+            passwordInput.setSelection(selection);
+        });
 
-            @Override
-            public void onKeyAccessGranted() {
-                // Keystore 授权成功，启用生物识别功能
-                requireActivity().runOnUiThread(() -> {
-                    // 更新 SecurityConfig
-                    securityConfig.setBiometricEnabled(true);
-                    binding.switchBiometric.setChecked(true);
-
-                    android.util.Log.d("AccountSecurity", "生物识别已启用（新架构）");
-                    Toast.makeText(requireContext(), "生物识别已启用", Toast.LENGTH_SHORT).show();
-                });
-            }
-
-            @Override
-            public void onFailure(@NonNull AuthError error, @NonNull String message, boolean canRetry) {
-                requireActivity().runOnUiThread(() -> {
-                    // 处理防抖动错误
-                    if (error == AuthError.DEBOUNCED) {
-                        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("验证主密码")
+                .setMessage("为了启用生物识别，请先验证您的主密码")
+                .setView(dialogView)
+                .setPositiveButton("验证", (dialog, which) -> {
+                    String password = passwordInput.getText().toString();
+                    if (password.isEmpty()) {
+                        Toast.makeText(requireContext(), "密码不能为空",
+                            Toast.LENGTH_SHORT).show();
+                        onFailure.run();
                         return;
                     }
 
-                    // 其他错误显示提示
-                    android.util.Log.e("AccountSecurity", "启用生物识别失败: " + error + " - " + message);
-                    Toast.makeText(requireContext(), "启用生物识别失败: " + message, Toast.LENGTH_SHORT).show();
-                });
-            }
+                    // 验证密码
+                    com.ttt.safevault.model.BackendService backendService =
+                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
-            @Override
-            public void onCancel() {
-                // 用户取消，不做处理
-            }
+                    try {
+                        boolean authenticated = backendService.unlock(password);
+                        if (authenticated) {
+                            // 保存主密码供后续 DeviceKey 注册使用
+                            this.masterPasswordForEnrollment = password;
+                            onSuccess.run();
+                        } else {
+                            Toast.makeText(requireContext(), "密码错误，验证失败",
+                                Toast.LENGTH_SHORT).show();
+                            onFailure.run();
+                        }
+                    } catch (Exception e) {
+                        Toast.makeText(requireContext(), "验证时发生错误: " + e.getMessage(),
+                            Toast.LENGTH_SHORT).show();
+                        onFailure.run();
+                    }
+                })
+                .setNegativeButton("取消", (dialog, which) -> onFailure.run())
+                .show();
+    }
 
-            @Override
-            public void onBiometricChanged() {
-                // 生物识别信息已变更
+    /**
+     * 完成 DeviceKey 注册（在生物识别认证成功后调用）
+     */
+    private void completeDeviceKeyEnrollment(@NonNull BiometricAuthManager authManager) {
+        if (masterPasswordForEnrollment == null) {
+            android.util.Log.e("AccountSecurity", "主密码未保存，无法完成 DeviceKey 注册");
+            requireActivity().runOnUiThread(() -> {
+                Toast.makeText(requireContext(), "启用生物识别失败：未找到主密码",
+                    Toast.LENGTH_SHORT).show();
+            });
+            return;
+        }
+
+        // 在后台线程执行
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
+
+                // 获取盐值（从 crypto_prefs）
+                String salt = getSaltFromPrefs();
+
+                // 完成 DeviceKey 注册
+                boolean success = secureStorage.completeBiometricEnrollment(
+                    masterPasswordForEnrollment, salt);
+
+                // 清除保存的主密码
+                masterPasswordForEnrollment = null;
+
                 requireActivity().runOnUiThread(() -> {
-                    new MaterialAlertDialogBuilder(requireContext())
-                            .setTitle("生物识别信息已变更")
-                            .setMessage("检测到您的生物识别信息已变更，请使用主密码登录后重新启用生物识别。")
-                            .setPositiveButton("我知道了", null)
-                            .show();
+                    if (success) {
+                        // 更新 SecurityConfig
+                        securityConfig.setBiometricEnabled(true);
+                        binding.switchBiometric.setChecked(true);
+
+                        android.util.Log.d("AccountSecurity",
+                            "生物识别已启用（新架构，DeviceKey 路径已初始化）");
+                        Toast.makeText(requireContext(), "生物识别已启用",
+                            Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(requireContext(),
+                            "启用生物识别失败：DeviceKey 注册失败",
+                            Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+            } catch (Exception e) {
+                masterPasswordForEnrollment = null;
+                requireActivity().runOnUiThread(() -> {
+                    android.util.Log.e("AccountSecurity",
+                        "完成 DeviceKey 注册异常", e);
+                    Toast.makeText(requireContext(),
+                        "启用生物识别失败: " + e.getMessage(),
+                        Toast.LENGTH_SHORT).show();
                 });
             }
         });
+    }
+
+    /**
+     * 完成 DeviceKey 注册（使用会话中的 DataKey）
+     *
+     * 当用户已通过主密码验证（DataKey 在内存中）时调用此方法
+     * 无需重复输入主密码，直接使用会话中的 DataKey 完成生物识别注册
+     *
+     * @param authManager 生物识别管理器
+     */
+    private void completeDeviceKeyEnrollmentWithDataKey(@NonNull BiometricAuthManager authManager) {
+        CryptoSession cryptoSession = CryptoSession.getInstance();
+        javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+
+        if (dataKey == null) {
+            android.util.Log.e("AccountSecurity", "会话中的 DataKey 不可用，无法完成 DeviceKey 注册");
+            requireActivity().runOnUiThread(() -> {
+                Toast.makeText(requireContext(), "启用生物识别失败：会话已过期",
+                    Toast.LENGTH_SHORT).show();
+            });
+            return;
+        }
+
+        // 在后台线程执行
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
+
+                // 获取盐值（从 crypto_prefs）
+                String salt = getSaltFromPrefs();
+
+                // 使用 DataKey 直接完成 DeviceKey 注册
+                boolean success = secureStorage.completeBiometricEnrollmentWithDataKey(
+                    dataKey, salt);
+
+                requireActivity().runOnUiThread(() -> {
+                    if (success) {
+                        // 更新 SecurityConfig
+                        securityConfig.setBiometricEnabled(true);
+                        binding.switchBiometric.setChecked(true);
+
+                        android.util.Log.d("AccountSecurity",
+                            "生物识别已启用（使用会话中的 DataKey，无需重复输入主密码）");
+                        Toast.makeText(requireContext(), "生物识别已启用",
+                            Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(requireContext(),
+                            "启用生物识别失败：DeviceKey 注册失败",
+                            Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+            } catch (Exception e) {
+                requireActivity().runOnUiThread(() -> {
+                    android.util.Log.e("AccountSecurity",
+                        "完成 DeviceKey 注册异常（使用会话 DataKey）", e);
+                    Toast.makeText(requireContext(),
+                        "启用生物识别失败: " + e.getMessage(),
+                        Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+    }
+
+    /**
+     * 从 SharedPreferences 获取盐值
+     */
+    private String getSaltFromPrefs() {
+        try {
+            android.content.SharedPreferences cryptoPrefs =
+                requireContext().getSharedPreferences("crypto_prefs", Context.MODE_PRIVATE);
+            String salt = cryptoPrefs.getString("master_salt", null);
+            if (salt == null) {
+                throw new IllegalStateException("盐值未找到，请确保已正确初始化应用");
+            }
+            return salt;
+        } catch (Exception e) {
+            android.util.Log.e("AccountSecurity", "获取盐值失败", e);
+            throw new RuntimeException("无法获取盐值", e);
+        }
     }
 
     /**

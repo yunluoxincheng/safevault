@@ -131,6 +131,10 @@ public class BiometricAuthManager {
     /**
      * 检查是否应该执行生物识别认证
      *
+     * 根据场景判断使用不同的前置条件检查：
+     * - ENROLLMENT: 检查是否可以启用生物识别（只需要 PasswordKey 路径）
+     * - 其他场景: 检查是否可以使用生物识别解锁（需要 DeviceKey 路径完整）
+     *
      * @param scenario 认证场景
      * @return true 表示应该认证，false 表示不需要
      */
@@ -141,14 +145,55 @@ public class BiometricAuthManager {
             return false;
         }
 
-        // 检查是否有必要的密钥数据
+        // 根据场景判断使用不同的前置条件检查
+        if (scenario == AuthScenario.ENROLLMENT) {
+            // 启用生物识别：只需要能通过主密码路径拿到 DataKey
+            return canAuthenticateForEnrollment();
+        } else {
+            // 使用生物识别解锁：需要 DeviceKey 路径完整
+            return canAuthenticateForUnlock();
+        }
+    }
+
+    /**
+     * 检查是否可以使用生物识别解锁（已启用场景）
+     *
+     * 前置条件：
+     * - DeviceKey 存在
+     * - DeviceKey 加密的 DataKey 存在（完整路径）
+     *
+     * @return true 表示可以使用，false 表示不能使用
+     */
+    private boolean canAuthenticateForUnlock() {
         if (!secureStorage.hasDeviceKey()) {
-            Log.w(TAG, "DeviceKey not found, biometric authentication not available");
+            Log.w(TAG, "DeviceKey not found, biometric unlock not available");
             return false;
         }
 
-        if (!secureStorage.hasEncryptedDataKey()) {
-            Log.w(TAG, "Encrypted DataKey not found, biometric authentication not available");
+        if (!secureStorage.hasDeviceEncryptedDataKey()) {
+            Log.w(TAG, "DeviceKey encrypted DataKey not found, biometric unlock not available");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 检查是否可以启用生物识别（ENROLLMENT 场景）
+     *
+     * 前置条件：
+     * - PasswordKey 加密的 DataKey 存在（可以通过主密码路径拿到 DataKey）
+     *
+     * 注意：启用生物识别时会重新生成 DeviceKey 并重新加密 DataKey，
+     * 所以**不应该**检查 DeviceKey 是否存在或 DeviceKey 加密的 DataKey 是否存在。
+     * 否则就是"要求启用之前必须已经启用"的逻辑错误。
+     *
+     * @return true 表示可以启用，false 表示不能启用
+     */
+    private boolean canAuthenticateForEnrollment() {
+        // 只检查主密码路径是否完整
+        if (!secureStorage.hasPasswordEncryptedDataKey()) {
+            Log.w(TAG, "PasswordKey encrypted DataKey not found, cannot enable biometric");
             return false;
         }
 
@@ -176,8 +221,16 @@ public class BiometricAuthManager {
                 state.recordSuccess();
                 callback.onUserVerified();
 
-                // 尝试使用 Keystore 解锁
-                tryUnlockWithKeystore(callback);
+                // ENROLLMENT 场景：只标记认证成功，由调用方完成 DeviceKey 注册
+                // 其他场景：尝试使用 Keystore 解锁
+                if (scenario != AuthScenario.ENROLLMENT) {
+                    tryUnlockWithKeystore(callback);
+                } else {
+                    // ENROLLMENT 场景：直接调用 onKeyAccessGranted
+                    // 调用方需要在收到此回调后完成 DeviceKey 注册
+                    state.updateLastAuthTime();
+                    callback.onKeyAccessGranted();
+                }
             }
 
             @Override
