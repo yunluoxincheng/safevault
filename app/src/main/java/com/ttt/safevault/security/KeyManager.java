@@ -78,10 +78,12 @@ public class KeyManager {
     private final SharedPreferences prefs;
     private KeyPair keyPair;
     private String deviceId;
+    private SecureKeyStorageManager secureStorage;
 
     private KeyManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.secureStorage = SecureKeyStorageManager.getInstance(context);
         loadOrGenerateKeys();
         loadOrGenerateDeviceId();
     }
@@ -217,6 +219,146 @@ public class KeyManager {
             return keyPair.getPrivate();
         }
         return null;
+    }
+
+    // ========== 三层安全存储集成（第二阶段） ==========
+
+    /**
+     * 检查是否已迁移到三层安全存储
+     *
+     * @return 已迁移返回true，否则返回false
+     */
+    public boolean isMigratedToSecureStorage() {
+        return secureStorage != null && secureStorage.isMigrated();
+    }
+
+    /**
+     * 获取当前密钥存储类型
+     *
+     * @return 密钥存储类型
+     */
+    @NonNull
+    public KeyStorageType getCurrentKeyStorageType() {
+        if (isMigratedToSecureStorage()) {
+            return KeyStorageType.ANDROID_KEYSTORE;
+        }
+        return detectKeyStorageType();
+    }
+
+    /**
+     * 从三层安全存储获取私钥（使用DeviceKey）
+     *
+     * 注意：此方法需要生物识别认证，调用方需要处理UI交互
+     *
+     * @param deviceKey DeviceKey（从生物识别认证获取）
+     * @return RSA私钥
+     * @throws SecurityException 解密失败时抛出
+     */
+    @NonNull
+    public PrivateKey getPrivateKeyFromSecureStorage(@NonNull javax.crypto.SecretKey deviceKey) {
+        if (!isMigratedToSecureStorage()) {
+            throw new IllegalStateException("未迁移到三层安全存储");
+        }
+
+        try {
+            // DeviceKey解密DataKey
+            javax.crypto.SecretKey dataKey = secureStorage.decryptDataKeyWithDevice(deviceKey);
+            // DataKey解密RSA私钥
+            return secureStorage.decryptRsaPrivateKey(dataKey);
+        } catch (Exception e) {
+            Log.e(TAG, "从安全存储获取私钥失败", e);
+            throw new SecurityException("Failed to get private key from secure storage", e);
+        }
+    }
+
+    /**
+     * 从三层安全存储获取私钥（使用主密码）
+     *
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码）
+     * @return RSA私钥
+     * @throws SecurityException 解密失败时抛出
+     */
+    @NonNull
+    public PrivateKey getPrivateKeyFromSecureStorage(@NonNull String masterPassword,
+                                                     @NonNull String saltBase64) {
+        if (!isMigratedToSecureStorage()) {
+            throw new IllegalStateException("未迁移到三层安全存储");
+        }
+
+        try {
+            // PasswordKey解密DataKey
+            javax.crypto.SecretKey dataKey = secureStorage.decryptDataKeyWithPassword(masterPassword, saltBase64);
+            // DataKey解密RSA私钥
+            return secureStorage.decryptRsaPrivateKey(dataKey);
+        } catch (Exception e) {
+            Log.e(TAG, "从安全存储获取私钥失败", e);
+            throw new SecurityException("Failed to get private key from secure storage", e);
+        }
+    }
+
+    /**
+     * 从三层安全存储获取公钥
+     *
+     * @return RSA公钥（Base64编码），未找到返回null
+     */
+    @Nullable
+    public String getPublicKeyFromSecureStorage() {
+        if (!isMigratedToSecureStorage()) {
+            return null;
+        }
+
+        try {
+            java.security.PublicKey publicKey = secureStorage.getRsaPublicKey();
+            if (publicKey != null) {
+                return Base64.getEncoder().encodeToString(publicKey.getEncoded());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "从安全存储获取公钥失败", e);
+        }
+        return null;
+    }
+
+    /**
+     * 检查并执行迁移到三层安全存储
+     *
+     * 此方法应在应用启动时调用，如果检测到旧存储则会自动迁移
+     *
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码）
+     * @return 迁移结果
+     */
+    @NonNull
+    public SecureKeyStorageManager.MigrationResult checkAndMigrate(@NonNull String masterPassword,
+                                                                    @NonNull String saltBase64) {
+        // 如果已迁移，直接返回成功
+        if (isMigratedToSecureStorage()) {
+            Log.d(TAG, "已迁移到三层安全存储，跳过迁移");
+            SecureKeyStorageManager.MigrationResult result = new SecureKeyStorageManager.MigrationResult();
+            // 创建一个成功结果（没有备份）
+            return SecureKeyStorageManager.MigrationResult.success(null);
+        }
+
+        // 如果没有旧密钥，不需要迁移
+        if (keyPair == null || keyPair.getPrivate() == null) {
+            Log.d(TAG, "没有旧密钥，跳过迁移");
+            SecureKeyStorageManager.MigrationResult result = new SecureKeyStorageManager.MigrationResult();
+            return SecureKeyStorageManager.MigrationResult.success(null);
+        }
+
+        // 执行迁移
+        Log.i(TAG, "开始迁移密钥到三层安全存储...");
+        return secureStorage.migrateFromLegacy(this, masterPassword, saltBase64);
+    }
+
+    /**
+     * 获取SecureKeyStorageManager实例
+     *
+     * @return SecureKeyStorageManager实例
+     */
+    @NonNull
+    public SecureKeyStorageManager getSecureStorage() {
+        return secureStorage;
     }
 
     /**
