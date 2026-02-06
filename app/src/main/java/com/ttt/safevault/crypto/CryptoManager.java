@@ -75,6 +75,17 @@ public class CryptoManager {
         sessionPasswordProvider = provider;
     }
 
+    /**
+     * 获取会话密码提供者
+     * 用于 KeyManager 等需要访问主密码的组件
+     *
+     * @return 会话密码提供者，未设置返回 null
+     */
+    @Nullable
+    public static SessionPasswordProvider getSessionPasswordProvider() {
+        return sessionPasswordProvider;
+    }
+
     public CryptoManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -118,6 +129,9 @@ public class CryptoManager {
             // 持久化会话密钥，供自动填充服务使用
             persistSessionKey(key);
 
+            // 初始化三层安全存储架构（方案 B：一次性迁移）
+            initializeThreeLayerSecurity(masterPassword, salt);
+
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to initialize", e);
@@ -155,6 +169,9 @@ public class CryptoManager {
 
             // 持久化会话密钥，供自动填充服务使用
             persistSessionKey(this.masterKey);
+
+            // 自动迁移到三层安全存储架构（方案 B：一次性迁移）
+            migrateToThreeLayerSecurity(masterPassword, saltBase64);
 
             return true;
         } catch (Exception e) {
@@ -555,7 +572,7 @@ public class CryptoManager {
         try {
             KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
             keyStore.load(null);
-            
+
             if (keyStore.containsAlias(KEYSTORE_ALIAS)) {
                 return (SecretKey) keyStore.getKey(KEYSTORE_ALIAS, null);
             }
@@ -564,6 +581,125 @@ public class CryptoManager {
             Log.e(TAG, "Failed to get keystore key", e);
             return null;
         }
+    }
+
+    // ========== 三层安全存储架构集成（方案 B：一次性迁移）==========
+
+    /**
+     * 初始化三层安全存储架构（新用户）
+     *
+     * 在用户首次设置主密码时调用，直接创建三层架构的密钥
+     *
+     * @param masterPassword 主密码
+     * @param salt 盐值（字节数组）
+     */
+    private void initializeThreeLayerSecurity(@NonNull String masterPassword, @NonNull byte[] salt) {
+        try {
+            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(context);
+
+            // 如果已经迁移过，跳过
+            if (secureStorage.isMigrated()) {
+                Log.d(TAG, "三层安全存储架构已存在，跳过初始化");
+                return;
+            }
+
+            Log.i(TAG, "=== 开始初始化三层安全存储架构 ===");
+
+            // 1. 生成新的 RSA 密钥对
+            java.security.KeyPair keyPair = generateRSAKeyPair();
+            Log.d(TAG, "RSA 密钥对生成成功");
+
+            // 2. 生成 DataKey
+            javax.crypto.SecretKey dataKey = secureStorage.generateDataKey();
+            Log.d(TAG, "DataKey 生成成功");
+
+            // 3. 派生 PasswordKey（使用 Argon2id）
+            String saltBase64 = Base64.encodeToString(salt, Base64.NO_WRAP);
+            javax.crypto.SecretKey passwordKey = secureStorage.derivePasswordKey(masterPassword, saltBase64);
+            Log.d(TAG, "PasswordKey 派生成功（Argon2id）");
+
+            // 4. 获取或创建 DeviceKey
+            javax.crypto.SecretKey deviceKey = secureStorage.getOrCreateDeviceKey();
+            if (deviceKey == null) {
+                Log.w(TAG, "DeviceKey 创建失败，生物识别功能将不可用");
+                // 使用 PasswordKey 作为备用（仍然可以用主密码解锁）
+                deviceKey = passwordKey;
+            } else {
+                Log.d(TAG, "DeviceKey 创建成功");
+            }
+
+            // 5. 双重加密 DataKey
+            if (!secureStorage.encryptAndSaveDataKey(dataKey, passwordKey, deviceKey)) {
+                throw new RuntimeException("DataKey 加密存储失败");
+            }
+            Log.d(TAG, "DataKey 双重加密保存成功");
+
+            // 6. 加密并保存 RSA 私钥
+            if (!secureStorage.encryptAndSaveRsaPrivateKey(keyPair.getPrivate(), dataKey, keyPair.getPublic())) {
+                throw new RuntimeException("RSA 私钥加密存储失败");
+            }
+            Log.d(TAG, "RSA 私钥加密保存成功");
+
+            Log.i(TAG, "=== 三层安全存储架构初始化完成 ===");
+
+        } catch (Exception e) {
+            Log.e(TAG, "三层安全存储架构初始化失败", e);
+            // 不影响主流程的继续，只是生物识别功能不可用
+        }
+    }
+
+    /**
+     * 迁移到三层安全存储架构（旧用户）
+     *
+     * 在用户使用主密码解锁时自动调用，将旧架构的密钥迁移到新架构
+     *
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64 编码）
+     */
+    private void migrateToThreeLayerSecurity(@NonNull String masterPassword, @NonNull String saltBase64) {
+        try {
+            com.ttt.safevault.security.KeyManager keyManager =
+                    com.ttt.safevault.security.KeyManager.getInstance(context);
+            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(context);
+
+            // 如果已经迁移过，跳过
+            if (secureStorage.isMigrated()) {
+                Log.d(TAG, "已迁移到三层安全存储架构，跳过迁移");
+                return;
+            }
+
+            Log.i(TAG, "=== 开始自动迁移到三层安全存储架构 ===");
+
+            // 执行迁移
+            com.ttt.safevault.security.SecureKeyStorageManager.MigrationResult result =
+                    keyManager.checkAndMigrate(masterPassword, saltBase64);
+
+            if (result.isSuccess()) {
+                Log.i(TAG, "=== 迁移成功 ===");
+                // 标记旧密钥已迁移（可选：保留旧密钥作为备份）
+                keyManager.markKeysMigratedToKeyStore();
+            } else {
+                Log.e(TAG, "迁移失败: " + result.getErrorMessage());
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "迁移到三层安全存储架构时出错", e);
+            // 不影响主流程的继续
+        }
+    }
+
+    /**
+     * 生成新的 RSA 密钥对
+     *
+     * @return RSA 密钥对
+     * @throws Exception 生成失败时抛出
+     */
+    private java.security.KeyPair generateRSAKeyPair() throws Exception {
+        java.security.KeyPairGenerator keyGen = java.security.KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        return keyGen.generateKeyPair();
     }
 
     /**

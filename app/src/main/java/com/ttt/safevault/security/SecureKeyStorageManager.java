@@ -21,6 +21,8 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 
+import com.ttt.safevault.crypto.Argon2KeyDerivationManager;
+
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -30,7 +32,7 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 三层安全密钥存储管理器（第二阶段安全加固）
+ * 三层安全密钥存储管理器（安全加固第二阶段 - Argon2id升级）
  *
  * 架构概述：
  * ┌────────────────────────┐
@@ -45,7 +47,7 @@ import javax.crypto.spec.SecretKeySpec;
  * │      Level 2 (可备份)   │
  * │ DataKey 被两把锁包裹：  │
  * │                        │
- * │ ① PasswordKey 加密     │ ← 可跨设备恢复
+ * │ ① PasswordKey 加密     │ ← 可跨设备恢复（Argon2id派生）
  * │ ② DeviceKey 加密       │ ← 本机快速解锁
  * └──────────▲─────────────┘
  *                     │
@@ -60,8 +62,15 @@ import javax.crypto.spec.SecretKeySpec;
  * - 支持本地快速解锁（DeviceKey加密的DataKey）
  * - 使用AES-GCM加密（带完整性验证）
  * - 使用commit()保证原子性写入
+ * - PasswordKey 使用 Argon2id 派生（与后端一致）
  *
- * @since SafeVault 3.1.0 (安全加固第二阶段)
+ * Argon2id 参数（与后端 Argon2PasswordHasher 一致）：
+ * - 时间成本: 3 次迭代
+ * - 内存成本: 64MB (65536 KB)
+ * - 并行度: 4 线程
+ * - 输出长度: 32 字节 (256 位)
+ *
+ * @since SafeVault 3.2.0 (安全加固第二阶段 - Argon2id 升级)
  */
 public class SecureKeyStorageManager {
     private static final String TAG = "SecureKeyStorageManager";
@@ -122,10 +131,14 @@ public class SecureKeyStorageManager {
     private static volatile SecureKeyStorageManager INSTANCE;
     private final Context context;
     private final SharedPreferences prefs;
+    private final Argon2KeyDerivationManager argon2Manager;
 
     private SecureKeyStorageManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.argon2Manager = Argon2KeyDerivationManager.getInstance(context);
+        Log.i(TAG, "SecureKeyStorageManager 初始化成功（使用 Argon2id）");
+        Log.i(TAG, argon2Manager.getParametersInfo());
     }
 
     /**
@@ -147,7 +160,8 @@ public class SecureKeyStorageManager {
     /**
      * 从主密码派生PasswordKey（Level 1 根层）
      *
-     * 使用PBKDF2WithHmacSHA256算法，600,000次迭代
+     * 使用 Argon2id 算法（与后端一致）
+     * 参数：timeCost=3, memoryCost=64MB, parallelism=4
      * 用于加密DataKey以便云端备份
      *
      * @param masterPassword 主密码
@@ -156,6 +170,26 @@ public class SecureKeyStorageManager {
      * @throws SecurityException 派生失败时抛出
      */
     public SecretKey derivePasswordKey(@NonNull String masterPassword, @NonNull String saltBase64) {
+        // 使用 Argon2id 派生密钥（与后端一致）
+        SecretKey passwordKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, saltBase64);
+        Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=64MB, p=4）");
+        return passwordKey;
+    }
+
+    /**
+     * 从主密码派生PasswordKey（使用 PBKDF2 - 向后兼容）
+     *
+     * 使用PBKDF2WithHmacSHA256算法，600,000次迭代
+     * 仅用于旧数据迁移，新用户应使用 derivePasswordKey()
+     *
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码）
+     * @return PasswordKey（256位AES密钥）
+     * @throws SecurityException 派生失败时抛出
+     * @deprecated 使用 Argon2id 替代，仅保留用于迁移
+     */
+    @Deprecated
+    public SecretKey derivePasswordKeyWithPBKDF2(@NonNull String masterPassword, @NonNull String saltBase64) {
         try {
             byte[] salt = android.util.Base64.decode(saltBase64, android.util.Base64.NO_WRAP);
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
@@ -170,12 +204,12 @@ public class SecureKeyStorageManager {
             byte[] keyBytes = factory.generateSecret(spec).getEncoded();
             SecretKey passwordKey = new SecretKeySpec(keyBytes, "AES");
 
-            Log.d(TAG, "PasswordKey派生成功（600,000次迭代）");
+            Log.w(TAG, "PasswordKey 派生成功（PBKDF2 600,000次迭代 - 已废弃）");
             return passwordKey;
 
         } catch (Exception e) {
-            Log.e(TAG, "PasswordKey派生失败", e);
-            throw new SecurityException("Failed to derive PasswordKey", e);
+            Log.e(TAG, "PasswordKey 派生失败（PBKDF2）", e);
+            throw new SecurityException("Failed to derive PasswordKey (PBKDF2)", e);
         }
     }
 
@@ -275,38 +309,55 @@ public class SecureKeyStorageManager {
                                           @NonNull SecretKey passwordKey,
                                           @NonNull SecretKey deviceKey) {
         try {
-            // 1. 用PasswordKey加密DataKey（用于云端备份）
+            // 1. 用PasswordKey加密DataKey（用于云端备份）- 这是必须的
             String passwordEncrypted = encryptKeyWithAES(dataKey, passwordKey);
             if (passwordEncrypted == null) {
                 Log.e(TAG, "PasswordKey加密DataKey失败");
                 return false;
             }
 
-            // 2. 用DeviceKey加密DataKey（用于本地快速解锁）
-            String deviceEncrypted = encryptKeyWithAES(dataKey, deviceKey);
-            if (deviceEncrypted == null) {
-                Log.e(TAG, "DeviceKey加密DataKey失败");
-                return false;
+            // 2. 用DeviceKey加密DataKey（用于本地快速解锁）- 这是可选的
+            // 如果用户还没有通过生物识别认证，DeviceKey加密会失败，但不影响整体流程
+            String deviceEncrypted = null;
+            try {
+                deviceEncrypted = encryptKeyWithAES(dataKey, deviceKey);
+                if (deviceEncrypted != null) {
+                    Log.d(TAG, "DeviceKey加密DataKey成功");
+                } else {
+                    Log.w(TAG, "DeviceKey加密DataKey返回null（可能需要生物识别认证）");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "DeviceKey加密DataKey失败（可能需要生物识别认证）: " + e.getMessage());
+                // 不返回false，继续流程
             }
 
             // 3. 使用commit()同步保存（原子性）
-            boolean saved = prefs.edit()
-                    .putString(PASSWORD_ENCRYPTED_DATA_KEY, passwordEncrypted)
-                    .putString(DEVICE_ENCRYPTED_DATA_KEY, deviceEncrypted)
-                    .commit();
+            SharedPreferences.Editor editor = prefs.edit()
+                    .putString(PASSWORD_ENCRYPTED_DATA_KEY, passwordEncrypted);
+
+            // 只有当DeviceKey加密成功时才保存
+            if (deviceEncrypted != null) {
+                editor.putString(DEVICE_ENCRYPTED_DATA_KEY, deviceEncrypted);
+            }
+
+            boolean saved = editor.commit();
 
             if (!saved) {
                 Log.e(TAG, "DataKey保存失败（commit返回false）");
                 return false;
             }
 
-            // 4. 验证完整性
-            if (!validateDataKeyStorage()) {
+            // 4. 验证完整性（只验证PasswordKey版本，DeviceKey版本是可选的）
+            if (!validateDataKeyStorage(false)) {
                 Log.e(TAG, "DataKey存储完整性验证失败");
                 return false;
             }
 
-            Log.i(TAG, "DataKey双重加密保存成功");
+            if (deviceEncrypted != null) {
+                Log.i(TAG, "DataKey双重加密保存成功");
+            } else {
+                Log.i(TAG, "DataKey保存成功（仅PasswordKey加密，DeviceKey加密将在启用生物识别后完成）");
+            }
             return true;
 
         } catch (Exception e) {
@@ -321,6 +372,7 @@ public class SecureKeyStorageManager {
      * @param keyToEncrypt 待加密的密钥
      * @param encryptionKey 加密密钥
      * @return Base64格式的加密数据（格式：base64(IV).base64(encryptedData)）
+     *         对于 AndroidKeyStore 密钥，IV 由系统自动生成并附加在密文前
      */
     @Nullable
     private String encryptKeyWithAES(@NonNull SecretKey keyToEncrypt,
@@ -328,14 +380,32 @@ public class SecureKeyStorageManager {
         try {
             Cipher cipher = Cipher.getInstance(DATA_KEY_ENCRYPTION_ALGORITHM);
 
-            // 生成随机IV（12字节）
-            byte[] iv = new byte[GCM_IV_LENGTH];
-            new SecureRandom().nextBytes(iv);
+            // 检查是否为 AndroidKeyStore 密钥（更可靠的检测方法）
+            // AndroidKeyStore 密钥的 getEncoded() 返回 null
+            // 类名包含 "AndroidKeyStore" 或来自 keymaster 包
+            boolean isKeystoreKey = isAndroidKeyStoreKey(encryptionKey);
 
-            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
-            cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, spec);
+            byte[] iv;
+            byte[] encrypted;
 
-            byte[] encrypted = cipher.doFinal(keyToEncrypt.getEncoded());
+            if (isKeystoreKey) {
+                // AndroidKeyStore 密钥：不允许提供自定义 IV，系统会自动生成
+                Log.d(TAG, "使用 AndroidKeyStore 密钥加密，IV 由系统自动生成");
+                cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
+                encrypted = cipher.doFinal(keyToEncrypt.getEncoded());
+                // 从 cipher 获取系统生成的 IV
+                iv = cipher.getIV();
+            } else {
+                // 普通密钥：可以使用自定义 IV
+                Log.d(TAG, "使用普通密钥加密，生成自定义 IV");
+                iv = new byte[GCM_IV_LENGTH];
+                new SecureRandom().nextBytes(iv);
+
+                GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+                cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, spec);
+
+                encrypted = cipher.doFinal(keyToEncrypt.getEncoded());
+            }
 
             // 格式：base64(IV).base64(encryptedData)
             return android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP) + "." +
@@ -345,6 +415,37 @@ public class SecureKeyStorageManager {
             Log.e(TAG, "AES-GCM加密失败", e);
             return null;
         }
+    }
+
+    /**
+     * 检查密钥是否来自 AndroidKeyStore
+     *
+     * @param key 待检查的密钥
+     * @return 如果是 AndroidKeyStore 密钥返回 true
+     */
+    private boolean isAndroidKeyStoreKey(@NonNull SecretKey key) {
+        // 方法1：检查密钥编码是否为 null（AndroidKeyStore 密钥无法导出）
+        if (key.getEncoded() == null) {
+            Log.d(TAG, "检测到 AndroidKeyStore 密钥（getEncoded() == null）");
+            return true;
+        }
+
+        // 方法2：检查类名
+        String className = key.getClass().getName();
+        if (className.contains("AndroidKeyStore") || className.contains("keymaster")) {
+            Log.d(TAG, "检测到 AndroidKeyStore 密钥（类名: " + className + "）");
+            return true;
+        }
+
+        // 方法3：检查密钥格式
+        String format = key.getFormat();
+        if (format == null) {
+            Log.d(TAG, "检测到 AndroidKeyStore 密钥（format == null）");
+            return true;
+        }
+
+        Log.d(TAG, "检测到普通密钥（类名: " + className + ", 格式: " + format + "）");
+        return false;
     }
 
     /**
@@ -698,24 +799,51 @@ public class SecureKeyStorageManager {
     /**
      * 验证DataKey存储完整性
      *
+     * @param requireDeviceKey 是否要求DeviceKey加密版本存在
+     *                         true: 完整验证（双重加密）
+     *                         false: 基础验证（仅PasswordKey加密）
      * @return 完整返回true，否则返回false
      */
-    public boolean validateDataKeyStorage() {
+    public boolean validateDataKeyStorage(boolean requireDeviceKey) {
         String passwordEncrypted = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
         String deviceEncrypted = prefs.getString(DEVICE_ENCRYPTED_DATA_KEY, null);
 
-        if (passwordEncrypted == null || deviceEncrypted == null) {
-            Log.w(TAG, "DataKey存储不完整（缺少加密数据）");
+        // PasswordKey加密版本是必须的
+        if (passwordEncrypted == null) {
+            Log.w(TAG, "DataKey存储不完整（缺少PasswordKey加密数据）");
             return false;
         }
 
-        // 验证格式
-        if (!passwordEncrypted.contains(".") || !deviceEncrypted.contains(".")) {
-            Log.w(TAG, "DataKey加密数据格式无效");
+        // 验证PasswordKey格式
+        if (!passwordEncrypted.contains(".")) {
+            Log.w(TAG, "PasswordKey加密数据格式无效");
             return false;
+        }
+
+        // 如果要求DeviceKey加密版本，则验证
+        if (requireDeviceKey) {
+            if (deviceEncrypted == null) {
+                Log.w(TAG, "DataKey存储不完整（缺少DeviceKey加密数据）");
+                return false;
+            }
+
+            // 验证DeviceKey格式
+            if (!deviceEncrypted.contains(".")) {
+                Log.w(TAG, "DeviceKey加密数据格式无效");
+                return false;
+            }
         }
 
         return true;
+    }
+
+    /**
+     * 验证DataKey存储完整性（默认要求完整验证）
+     *
+     * @return 完整返回true，否则返回false
+     */
+    public boolean validateDataKeyStorage() {
+        return validateDataKeyStorage(true);
     }
 
     /**
@@ -744,10 +872,14 @@ public class SecureKeyStorageManager {
     /**
      * 检查是否已迁移到三层架构
      *
+     * 迁移条件：
+     * 1. RSA密钥对已创建
+     * 2. DataKey已用PasswordKey加密（DeviceKey加密是可选的，需要生物识别认证）
+     *
      * @return 已迁移返回true，否则返回false
      */
     public boolean isMigrated() {
-        return validateKeyPair() && validateDataKeyStorage();
+        return validateKeyPair() && validateDataKeyStorage(false);
     }
 
     // ========== 迁移状态管理 ==========
@@ -924,6 +1056,125 @@ public class SecureKeyStorageManager {
 
         public void setVersion(@NonNull String version) {
             this.version = version;
+        }
+    }
+
+    // ========== 生物识别解锁（统一使用三层架构） ==========
+
+    /**
+     * 使用生物识别解锁（直接使用三层架构）
+     *
+     * 解锁流程：
+     * 1. 获取DeviceKey（会触发生物识别认证，30秒有效期）
+     * 2. 使用DeviceKey解密DataKey
+     * 3. 使用DataKey解密RSA私钥
+     * 4. 返回PrivateKey供CryptoManager初始化
+     *
+     * 注意：此方法不再需要存储/解密主密码，完全基于三层架构
+     *
+     * @return RSA私钥，解锁失败返回null
+     */
+    @Nullable
+    public PrivateKey unlockWithBiometric() {
+        try {
+            // 1. 获取DeviceKey（需要生物识别认证）
+            SecretKey deviceKey = getOrCreateDeviceKey();
+            if (deviceKey == null) {
+                Log.e(TAG, "生物识别解锁失败：无法获取DeviceKey");
+                return null;
+            }
+
+            // 2. 使用DeviceKey解密DataKey
+            SecretKey dataKey = decryptDataKeyWithDevice(deviceKey);
+
+            // 3. 使用DataKey解密RSA私钥
+            PrivateKey privateKey = decryptRsaPrivateKey(dataKey);
+
+            Log.i(TAG, "生物识别解锁成功（三层架构）");
+            return privateKey;
+
+        } catch (SecurityException e) {
+            Log.e(TAG, "生物识别解锁失败：" + e.getMessage(), e);
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "生物识别解锁异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 检查DeviceKey是否存在
+     *
+     * @return 存在返回true，否则返回false
+     */
+    public boolean hasDeviceKey() {
+        try {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            return keyStore.containsAlias(DEVICE_KEY_ALIAS);
+        } catch (Exception e) {
+            Log.e(TAG, "检查DeviceKey失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 检查加密的DataKey是否存在
+     *
+     * @return 存在返回true，否则返回false
+     */
+    public boolean hasEncryptedDataKey() {
+        String passwordEncrypted = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
+        String deviceEncrypted = prefs.getString(DEVICE_ENCRYPTED_DATA_KEY, null);
+        return passwordEncrypted != null && deviceEncrypted != null;
+    }
+
+    /**
+     * 清除生物识别相关数据
+     *
+     * 注意：此方法只清除DeviceKey，不影响PasswordKey和DataKey
+     * 用户仍可使用主密码解锁
+     */
+    public void clearBiometricData() {
+        // 清除DeviceKey加密的DataKey（保留PasswordKey加密的版本用于云端备份）
+        prefs.edit().remove(DEVICE_ENCRYPTED_DATA_KEY).commit();
+
+        // 删除AndroidKeyStore中的DeviceKey
+        try {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            if (keyStore.containsAlias(DEVICE_KEY_ALIAS)) {
+                keyStore.deleteEntry(DEVICE_KEY_ALIAS);
+                Log.i(TAG, "DeviceKey已删除，生物识别解锁已禁用");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "删除DeviceKey失败", e);
+        }
+    }
+
+    /**
+     * 重新生成DeviceKey（用于生物识别重置）
+     *
+     * 注意：调用后需要重新调用encryptAndSaveDataKey()来保存新的DeviceKey加密版本
+     *
+     * @return 新的DeviceKey，失败返回null
+     */
+    @Nullable
+    public SecretKey regenerateDeviceKey() {
+        try {
+            // 先删除旧的DeviceKey
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            if (keyStore.containsAlias(DEVICE_KEY_ALIAS)) {
+                keyStore.deleteEntry(DEVICE_KEY_ALIAS);
+                Log.i(TAG, "旧DeviceKey已删除");
+            }
+
+            // 生成新的DeviceKey
+            return getOrCreateDeviceKey();
+        } catch (Exception e) {
+            Log.e(TAG, "重新生成DeviceKey失败", e);
+            return null;
         }
     }
 

@@ -6,6 +6,7 @@ import android.provider.Settings;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -33,6 +34,8 @@ import javax.crypto.spec.SecretKeySpec;
  *
  * ⚠️ 安全警告：当前RSA私钥以Base64明文形式存储在SharedPreferences中
  * TODO: 第二阶段需要迁移到AndroidKeyStore（见proposal.md）
+ *
+ * 注意：此类的 PBKDF2 密钥派生方法已废弃，请使用 Argon2KeyDerivationManager
  */
 public class KeyManager {
     private static final String TAG = "KeyManager";
@@ -203,22 +206,97 @@ public class KeyManager {
 
     /**
      * 获取公钥（Base64编码）
+     * 方案 B：统一使用三层安全存储架构
      */
     public String getPublicKey() {
+        // 优先从三层安全存储获取
+        if (isMigratedToSecureStorage()) {
+            try {
+                java.security.PublicKey publicKey = secureStorage.getRsaPublicKey();
+                if (publicKey != null) {
+                    return Base64.getEncoder().encodeToString(publicKey.getEncoded());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "从三层安全存储获取公钥失败", e);
+            }
+        }
+
+        // 回退到内存中的旧密钥（向后兼容）
         if (keyPair != null && keyPair.getPublic() != null) {
             return Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded());
         }
+
         return null;
     }
 
     /**
      * 获取私钥
+     * 方案 B：统一使用三层安全存储架构
+     *
+     * 注意：此方法会自动尝试从三层安全存储解密私钥
+     * 如果需要密码，会从 CryptoManager 的会话密码提供者获取
      */
     public PrivateKey getPrivateKey() {
+        // 优先从三层安全存储获取
+        if (isMigratedToSecureStorage()) {
+            try {
+                // 获取主密码（从会话密码提供者）
+                String masterPassword = getMasterPasswordFromProvider();
+                String saltBase64 = getSaltFromCryptoManager();
+
+                if (masterPassword != null && saltBase64 != null) {
+                    // 使用主密码从三层安全存储获取私钥
+                    return getPrivateKeyFromSecureStorage(masterPassword, saltBase64);
+                } else {
+                    Log.w(TAG, "无法获取主密码或盐值，无法从三层安全存储解密私钥");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "从三层安全存储获取私钥失败", e);
+            }
+        }
+
+        // 回退到内存中的旧密钥（向后兼容）
         if (keyPair != null) {
             return keyPair.getPrivate();
         }
+
         return null;
+    }
+
+    /**
+     * 从会话密码提供者获取主密码
+     *
+     * @return 主密码，未设置返回 null
+     */
+    @Nullable
+    private String getMasterPasswordFromProvider() {
+        try {
+            com.ttt.safevault.crypto.CryptoManager.SessionPasswordProvider provider =
+                    com.ttt.safevault.crypto.CryptoManager.getSessionPasswordProvider();
+            if (provider != null) {
+                return provider.getMasterPassword();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "获取会话密码提供者失败", e);
+        }
+        return null;
+    }
+
+    /**
+     * 从 CryptoManager 获取盐值
+     *
+     * @return 盐值（Base64编码），未找到返回 null
+     */
+    @Nullable
+    private String getSaltFromCryptoManager() {
+        try {
+            android.content.SharedPreferences cryptoPrefs =
+                    context.getSharedPreferences("crypto_prefs", Context.MODE_PRIVATE);
+            return cryptoPrefs.getString("master_salt", null);
+        } catch (Exception e) {
+            Log.e(TAG, "获取盐值失败", e);
+            return null;
+        }
     }
 
     // ========== 三层安全存储集成（第二阶段） ==========
@@ -389,7 +467,9 @@ public class KeyManager {
      * @param masterPassword 主密码
      * @param salt           盐值（Base64编码）
      * @return 派生密钥（用于AES加密）
+     * @deprecated 请使用 Argon2KeyDerivationManager 替代，Argon2id 安全性更强
      */
+    @Deprecated
     public SecretKey deriveKeyFromMasterPassword(String masterPassword, String salt) {
         try {
             byte[] saltBytes = Base64.getDecoder().decode(salt);
@@ -763,15 +843,6 @@ public class KeyManager {
     public boolean needsMigration() {
         KeyStorageType currentType = detectKeyStorageType();
         return currentType == KeyStorageType.LEGACY;
-    }
-
-    /**
-     * 获取当前密钥存储类型（供外部查询）
-     *
-     * @return 当前密钥存储类型
-     */
-    public KeyStorageType getCurrentKeyStorageType() {
-        return detectKeyStorageType();
     }
 
     /**

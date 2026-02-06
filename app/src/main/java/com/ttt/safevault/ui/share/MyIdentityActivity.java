@@ -18,6 +18,7 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.ttt.safevault.R;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.manager.AccountManager;
 import com.ttt.safevault.service.manager.ContactManager;
 
@@ -42,6 +43,7 @@ public class MyIdentityActivity extends AppCompatActivity {
 
     private ContactManager contactManager;
     private AccountManager accountManager;
+    private BiometricAuthManager biometricAuthManager;
     private String currentQRContent;
 
     @Override
@@ -66,6 +68,9 @@ public class MyIdentityActivity extends AppCompatActivity {
                 new com.ttt.safevault.security.SecurityConfig(this),
                 com.ttt.safevault.network.RetrofitClient.getInstance(this)
         );
+
+        // 初始化 BiometricAuthManager
+        biometricAuthManager = BiometricAuthManager.getInstance(this);
 
         initViews();
         loadUserInfo();
@@ -150,7 +155,7 @@ public class MyIdentityActivity extends AppCompatActivity {
         }
 
         // 未解锁，检查是否可以使用生物识别
-        if (accountManager.canUseBiometricAuthentication()) {
+        if (biometricAuthManager.canUseBiometric()) {
             Log.d(TAG, "CryptoManager未解锁，启用生物识别验证");
             showBiometricPrompt();
         } else {
@@ -321,8 +326,15 @@ public class MyIdentityActivity extends AppCompatActivity {
             @Override
             public void onSuccess() {
                 Log.d(TAG, "生物识别验证成功");
-                // 使用生物识别解锁
-                boolean success = accountManager.unlockWithBiometric();
+                // 使用会话中保存的主密码解锁
+                String sessionPassword = accountManager.getCurrentMasterPassword();
+                boolean success = false;
+                if (sessionPassword != null && !sessionPassword.isEmpty()) {
+                    com.ttt.safevault.crypto.CryptoManager cryptoManager =
+                        com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+                    success = cryptoManager.unlock(sessionPassword);
+                }
+
                 if (success) {
                     runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);

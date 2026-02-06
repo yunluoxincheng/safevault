@@ -16,6 +16,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -26,6 +27,10 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
+import com.ttt.safevault.security.biometric.AuthCallback;
+import com.ttt.safevault.security.biometric.AuthError;
+import com.ttt.safevault.security.biometric.AuthScenario;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.LoginViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
@@ -62,8 +67,10 @@ public class LoginActivity extends AppCompatActivity {
     private boolean fromAutofillSave = false;  // 是否从自动填充保存跳转过来
     private boolean biometricAutoTriggered = false;  // 是否已自动触发生物识别
 
-    // 生物识别认证助手
+    // 生物识别认证助手（保留用于基础检查）
     private BiometricAuthHelper biometricAuthHelper;
+    // 生物识别认证管理器（新架构）
+    private BiometricAuthManager biometricAuthManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -429,36 +436,6 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     /**
-     * 如果用户启用了生物识别，保存主密码用于生物识别解锁
-     */
-    private void saveMasterPasswordForBiometricIfNeeded(String password) {
-        try {
-            com.ttt.safevault.security.SecurityConfig securityConfig =
-                    new com.ttt.safevault.security.SecurityConfig(this);
-
-            if (securityConfig.isBiometricEnabled()) {
-                android.util.Log.d(TAG, "生物识别已启用，保存主密码用于生物识别解锁");
-                com.ttt.safevault.service.manager.AccountManager accountManager =
-                        new com.ttt.safevault.service.manager.AccountManager(
-                                this,
-                                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                new com.ttt.safevault.service.manager.PasswordManager(
-                                        com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                        com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao()
-                                ),
-                                securityConfig,
-                                com.ttt.safevault.network.RetrofitClient.getInstance(this)
-                        );
-                accountManager.saveMasterPasswordForBiometric(password);
-                android.util.Log.d(TAG, "主密码已保存用于生物识别解锁");
-            }
-        } catch (Exception e) {
-            android.util.Log.e(TAG, "保存主密码用于生物识别失败", e);
-            // 不阻止登录，只记录错误
-        }
-    }
-
-    /**
      * 处理新设备数据恢复
      */
     private void handleNewDeviceRecovery(String email, String password) {
@@ -497,8 +474,6 @@ public class LoginActivity extends AppCompatActivity {
             protected void onPostExecute(com.ttt.safevault.dto.DeviceRecoveryResult result) {
                 if (result.isSuccess()) {
                     android.util.Log.d(TAG, "设备数据恢复成功");
-                    // 保存主密码用于生物识别解锁（如果已启用）
-                    saveMasterPasswordForBiometricIfNeeded(masterPassword);
                     // 保存会话密码到内存
                     com.ttt.safevault.service.manager.AccountManager sessionAccountManager =
                             new com.ttt.safevault.service.manager.AccountManager(
@@ -592,44 +567,94 @@ public class LoginActivity extends AppCompatActivity {
         passwordInput.setSelection(passwordInput.getText().length());
     }
 
+    /**
+     * 执行生物识别认证（使用 BiometricAuthManager）
+     * 采用两阶段回调设计：onUserVerified() → onKeyAccessGranted()
+     */
     private void performBiometricAuthentication() {
-        if (biometricAuthHelper == null) {
+        if (biometricAuthManager == null) {
             showError("生物识别认证未初始化");
             return;
         }
 
-        biometricAuthHelper.authenticate(new BiometricAuthHelper.BiometricAuthCallback() {
+        biometricAuthManager.authenticate(this, AuthScenario.LOGIN, new AuthCallback() {
             @Override
-            public void onSuccess() {
+            public void onUserVerified() {
+                // 用户通过 UI 认证，但此时密钥可能仍不可用
+                // BiometricAuthManager 会自动尝试 Keystore 解锁
+                // 等待 onKeyAccessGranted() 或 onFailure() 回调
+            }
+
+            @Override
+            public void onKeyAccessGranted() {
+                // Keystore 授权成功，可以安全访问数据
                 runOnUiThread(() -> {
-                    BackendService backendService = com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
-                    try {
-                        boolean unlocked = backendService.unlockWithBiometric();
-                        if (unlocked) {
-                            navigateToMain();
-                        } else {
-                            showError("生物识别解锁失败，请使用主密码解锁");
-                        }
-                    } catch (Exception e) {
-                        showError("解锁时发生错误: " + e.getMessage());
-                    }
+                    hideError();
+                    navigateToMain();
                 });
             }
 
             @Override
-            public void onFailure(String error) {
-                showError(error);
+            public void onFailure(@NonNull AuthError error, @NonNull String message, boolean canRetry) {
+                runOnUiThread(() -> {
+                    // 处理防抖动错误 - 使用轻量级 Toast
+                    if (error == AuthError.DEBOUNCED) {
+                        Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    // 处理生物识别变更
+                    if (error == AuthError.BIOMETRIC_CHANGED || error == AuthError.KEYSTORE_INVALIDATED) {
+                        showBiometricChangedDialog();
+                        return;
+                    }
+
+                    // 其他错误显示错误提示
+                    showError(message);
+                });
             }
 
             @Override
             public void onCancel() {
-                // 用户取消认证
+                // 用户取消认证，不做处理
+            }
+
+            @Override
+            public void onBiometricChanged() {
+                // 生物识别信息已变更
+                runOnUiThread(() -> showBiometricChangedDialog());
+            }
+
+            @Override
+            public void onFallbackToPassword() {
+                // 降级到主密码，提示用户
+                runOnUiThread(() -> {
+                    Toast.makeText(LoginActivity.this, "请使用主密码解锁", Toast.LENGTH_SHORT).show();
+                });
             }
         });
     }
 
+    /**
+     * 显示生物识别变更对话框
+     * 当用户添加新指纹、面部或清除生物识别数据时调用
+     */
+    private void showBiometricChangedDialog() {
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("生物识别信息已变更")
+                .setMessage("检测到您的生物识别信息已变更（添加了新指纹/面部或清除了数据）。\n\n" +
+                           "为了安全起见，请使用主密码解锁后重新启用生物识别功能。")
+                .setPositiveButton("我知道了", (dialog, which) -> {
+                    // 关闭对话框，用户需要使用主密码解锁
+                    // 生物识别功能将在下次成功登录后保持禁用状态
+                })
+                .setCancelable(false)
+                .show();
+    }
+
     private void initBiometricAuth() {
         biometricAuthHelper = new BiometricAuthHelper(this);
+        biometricAuthManager = BiometricAuthManager.getInstance(this);
         checkAndRequestBiometricPermission();
     }
 
@@ -677,6 +702,7 @@ public class LoginActivity extends AppCompatActivity {
      * 1. 设备支持生物识别
      * 2. 用户已启用生物识别功能
      * 3. CryptoManager 已初始化（表示已设置过主密码）
+     * 4. 三层密钥存储已迁移（DeviceKey 和 DataKey 已创建）
      */
     private void updateBiometricButtonVisibility() {
         if (biometricButton == null) {
@@ -688,17 +714,21 @@ public class LoginActivity extends AppCompatActivity {
                 new com.ttt.safevault.security.SecurityConfig(this);
         com.ttt.safevault.crypto.CryptoManager cryptoManager =
                 com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
 
         boolean userEnabled = securityConfig.isBiometricEnabled();
         boolean hasCredentials = cryptoManager.isInitialized();
+        boolean isMigrated = secureStorage.isMigrated();
 
-        boolean shouldShow = biometricSupported && userEnabled && hasCredentials;
+        boolean shouldShow = biometricSupported && userEnabled && hasCredentials && isMigrated;
         biometricButton.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
 
         android.util.Log.d(TAG, "updateBiometricButtonVisibility: " + shouldShow +
                 " (deviceSupported=" + biometricSupported +
                 ", userEnabled=" + userEnabled +
-                ", hasCredentials=" + hasCredentials + ")");
+                ", hasCredentials=" + hasCredentials +
+                ", isMigrated=" + isMigrated + ")");
     }
 
     @Override

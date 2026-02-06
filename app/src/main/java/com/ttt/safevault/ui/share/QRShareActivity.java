@@ -24,6 +24,7 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.manager.ShareRecordManager;
 import com.ttt.safevault.utils.ShareQRGenerator;
 import com.ttt.safevault.viewmodel.ShareViewModel;
@@ -140,7 +141,7 @@ public class QRShareActivity extends AppCompatActivity {
 
         // 检查是否可以使用生物识别
         boolean canUseBiometric = BiometricAuthHelper.isBiometricSupported(this)
-                && backendService.canUseBiometricAuthentication();
+                && BiometricAuthManager.getInstance(this).canUseBiometric();
 
         if (canUseBiometric) {
             showBiometricAuthAndShare();

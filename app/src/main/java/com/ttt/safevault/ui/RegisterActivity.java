@@ -555,11 +555,11 @@ public class RegisterActivity extends AppCompatActivity {
                     com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
                             .getTokenManager().clearEmailVerificationStatus();
 
-                    showMessage("注册成功！正在进入应用...");
+                    showMessage("注册成功！正在前往登录界面...");
 
-                    // 延迟跳转到主界面
+                    // 延迟跳转到登录界面
                     new android.os.Handler().postDelayed(() -> {
-                        navigateToMain();
+                        navigateToLogin();
                     }, 1000);
                 });
 
@@ -675,6 +675,15 @@ public class RegisterActivity extends AppCompatActivity {
     private void navigateToMain() {
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
+    }
+
+    /**
+     * 导航到登录界面
+     */
+    private void navigateToLogin() {
+        Intent intent = new Intent(this, LoginActivity.class);
         startActivity(intent);
         finish();
     }

@@ -10,23 +10,31 @@ import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.dto.DeviceRecoveryResult;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.security.BiometricKeyManager;
 import com.ttt.safevault.security.KeyManager;
+import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import javax.crypto.Cipher;
-
 /**
  * 账户管理器
- * 负责账户操作，包括删除账户、登出、生物识别等
+ * 负责账户操作，包括删除账户、登出、设备数据恢复等
+ *
+ * 安全加固第二阶段更新：
+ * - 移除BiometricKeyManager，完全使用SecureKeyStorageManager的三层架构
+ * - 生物识别功能已迁移到BiometricAuthManager
+ *
+ * 第三阶段更新：
+ * - 移除AccountManager中的生物识别相关方法（unlockWithBiometric、canUseBiometricAuthentication等）
+ * - 所有生物识别认证统一通过BiometricAuthManager处理
+ *
+ * 方案 B 更新：
+ * - 实现 CryptoManager.SessionPasswordProvider 接口
+ * - 统一使用三层安全存储架构
  */
-public class AccountManager {
+public class AccountManager implements CryptoManager.SessionPasswordProvider {
     private static final String TAG = "AccountManager";
-    private static final String PREF_BIOMETRIC_ENCRYPTED_PASSWORD = "biometric_encrypted_password";
-    private static final String PREF_BIOMETRIC_IV = "biometric_iv";
     private static final String KEY_USER_EMAIL = "user_email";
 
     private final Context context;
@@ -34,46 +42,12 @@ public class AccountManager {
     private final PasswordManager passwordManager;
     private final SecurityConfig securityConfig;
     private final android.content.SharedPreferences prefs;
-    private final BiometricKeyManager biometricKeyManager;
+    private final SecureKeyStorageManager secureStorage;
     private final RetrofitClient retrofitClient;
     private final TokenManager tokenManager;
 
     // 会话期间临时存储的主密码（用于当前会话）
     private String sessionMasterPassword;
-
-    // 用于从 CryptoManager 访问 AccountManager 的弱引用
-    private static volatile Context applicationContext;
-    private static volatile android.content.SharedPreferences appPrefs;
-
-    // 静态初始化：设置会话密码提供者
-    static {
-        com.ttt.safevault.crypto.CryptoManager.setSessionPasswordProvider(() -> {
-            if (applicationContext != null && appPrefs != null) {
-                try {
-                    String encryptedPassword = appPrefs.getString(PREF_BIOMETRIC_ENCRYPTED_PASSWORD, null);
-                    String ivString = appPrefs.getString(PREF_BIOMETRIC_IV, null);
-
-                    if (encryptedPassword != null && ivString != null) {
-                        BiometricKeyManager keyManager = BiometricKeyManager.getInstance();
-                        if (keyManager != null) {
-                            byte[] encrypted = android.util.Base64.decode(encryptedPassword, android.util.Base64.NO_WRAP);
-                            byte[] iv = android.util.Base64.decode(ivString, android.util.Base64.NO_WRAP);
-
-                            Cipher cipher = keyManager.getDecryptCipher(iv);
-                            byte[] decrypted = cipher.doFinal(encrypted);
-                            Log.d(TAG, "Master password restored from biometric storage");
-                            return new String(decrypted, StandardCharsets.UTF_8);
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to get master password from provider", e);
-                }
-            }
-            Log.w(TAG, "Master password provider: no credentials available");
-            return null;
-        });
-        Log.d(TAG, "Session password provider registered in CryptoManager");
-    }
 
     public AccountManager(@NonNull Context context,
                          @NonNull CryptoManager cryptoManager,
@@ -87,20 +61,12 @@ public class AccountManager {
         this.retrofitClient = retrofitClient;
         this.tokenManager = retrofitClient.getTokenManager();
         this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
+        this.secureStorage = SecureKeyStorageManager.getInstance(context);
 
-        // 保存引用供静态提供者使用
-        applicationContext = this.context;
-        appPrefs = this.prefs;
+        // 设置自己为会话密码提供者（方案 B：三层架构统一）
+        CryptoManager.setSessionPasswordProvider(this);
 
-        // 初始化生物识别密钥管理器
-        BiometricKeyManager keyManager = null;
-        try {
-            keyManager = BiometricKeyManager.getInstance();
-            keyManager.initializeKey();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to initialize biometric key manager", e);
-        }
-        this.biometricKeyManager = keyManager;
+        Log.d(TAG, "AccountManager initialized with SecureKeyStorageManager");
     }
 
     /**
@@ -169,147 +135,15 @@ public class AccountManager {
     }
 
     /**
-     * 使用生物识别解锁
-     */
-    public boolean unlockWithBiometric() {
-        // 检查生物识别是否启用
-        if (!securityConfig.isBiometricEnabled()) {
-            Log.e(TAG, "Biometric not enabled");
-            return false;
-        }
-
-        // 检查是否已初始化
-        if (!cryptoManager.isInitialized()) {
-            Log.e(TAG, "Crypto manager not initialized");
-            return false;
-        }
-
-        // 获取保存的加密主密码
-        String masterPassword = getMasterPasswordForBiometric();
-        if (masterPassword == null) {
-            Log.e(TAG, "No master password stored for biometric unlock");
-            return false;
-        }
-
-        // 使用主密码解锁
-        boolean success = cryptoManager.unlock(masterPassword);
-
-        // 解锁成功后，保存会话密码用于后续操作（如自动填充）
-        if (success) {
-            setSessionMasterPassword(masterPassword);
-            // 保存密码供自动填充服务使用
-            savePasswordForAutofill(masterPassword);
-            Log.d(TAG, "Biometric unlock successful, session password set");
-        }
-
-        return success;
-    }
-
-    /**
-     * 保存密码供自动填充服务使用
-     */
-    private void savePasswordForAutofill(String password) {
-        try {
-            context.getSharedPreferences("autofill_prefs", Context.MODE_PRIVATE)
-                .edit()
-                .putString("master_password", password)
-                .apply();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to save password for autofill", e);
-        }
-    }
-
-    /**
-     * 检查是否可以使用生物识别认证
-     */
-    public boolean canUseBiometricAuthentication() {
-        return securityConfig.isBiometricEnabled() && hasMasterPasswordForBiometric();
-    }
-
-    /**
-     * 保存主密码用于生物识别解锁
-     */
-    public void saveMasterPasswordForBiometric(String masterPassword) {
-        if (biometricKeyManager == null) {
-            Log.e(TAG, "BiometricKeyManager not initialized");
-            return;
-        }
-
-        try {
-            // 获取加密Cipher
-            Cipher cipher = biometricKeyManager.getEncryptCipher();
-
-            // 加密主密码
-            byte[] encrypted = cipher.doFinal(masterPassword.getBytes(StandardCharsets.UTF_8));
-            byte[] iv = cipher.getIV();
-
-            // 保存加密数据
-            prefs.edit()
-                .putString(PREF_BIOMETRIC_ENCRYPTED_PASSWORD,
-                    android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP))
-                .putString(PREF_BIOMETRIC_IV,
-                    android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
-                .apply();
-
-            Log.d(TAG, "Master password saved for biometric unlock");
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to save master password for biometric", e);
-        }
-    }
-
-    /**
-     * 获取用于生物识别解锁的主密码
-     */
-    private String getMasterPasswordForBiometric() {
-        if (biometricKeyManager == null) {
-            Log.e(TAG, "BiometricKeyManager not initialized");
-            return null;
-        }
-
-        try {
-            String encryptedPassword = prefs.getString(PREF_BIOMETRIC_ENCRYPTED_PASSWORD, null);
-            String ivString = prefs.getString(PREF_BIOMETRIC_IV, null);
-
-            if (encryptedPassword == null || ivString == null) {
-                Log.e(TAG, "No encrypted password or IV found");
-                return null;
-            }
-
-            byte[] encrypted = android.util.Base64.decode(encryptedPassword, android.util.Base64.NO_WRAP);
-            byte[] iv = android.util.Base64.decode(ivString, android.util.Base64.NO_WRAP);
-
-            // 获取解密Cipher
-            Cipher cipher = biometricKeyManager.getDecryptCipher(iv);
-
-            // 解密主密码
-            byte[] decrypted = cipher.doFinal(encrypted);
-
-            return new String(decrypted, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to decrypt master password for biometric", e);
-            // 解密失败，可能是密钥已重建，清除旧数据
-            clearBiometricData();
-            return null;
-        }
-    }
-
-    /**
-     * 清除生物识别加密数据
+     * 清除生物识别数据（账户删除时调用）
+     *
+     * 注意：此方法仅用于删除账户时的清理操作
+     * 生物识别功能已迁移到 BiometricAuthManager
      */
     private void clearBiometricData() {
-        prefs.edit()
-            .remove(PREF_BIOMETRIC_ENCRYPTED_PASSWORD)
-            .remove(PREF_BIOMETRIC_IV)
-            .apply();
-        Log.d(TAG, "Biometric data cleared");
-    }
-
-    /**
-     * 检查是否有保存的生物识别密码
-     */
-    private boolean hasMasterPasswordForBiometric() {
-        return prefs.contains(PREF_BIOMETRIC_ENCRYPTED_PASSWORD) &&
-               prefs.contains(PREF_BIOMETRIC_IV);
+        // 生物识别数据不再由AccountManager管理
+        // BiometricAuthManager负责处理所有生物识别相关状态
+        Log.d(TAG, "Biometric data cleared (delegated to BiometricAuthManager)");
     }
 
     // ========== 新设备数据恢复 ==========
@@ -419,51 +253,6 @@ public class AccountManager {
         }
     }
 
-    /**
-     * 启用生物识别认证
-     *
-     * @param masterPassword 主密码
-     * @return 是否成功启用
-     */
-    public boolean enableBiometricAuth(String masterPassword) {
-        Log.d(TAG, "Enabling biometric authentication");
-
-        try {
-            // 1. 检查设备是否支持生物识别
-            if (!com.ttt.safevault.security.BiometricAuthHelper.isBiometricSupported(context)) {
-                Log.w(TAG, "Device does not support biometric authentication");
-                return false;
-            }
-
-            // 2. 保存主密码
-            saveMasterPasswordForBiometric(masterPassword);
-
-            // 3. 更新设置
-            securityConfig.setBiometricEnabled(true);
-
-            Log.d(TAG, "Biometric authentication enabled successfully");
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to enable biometric authentication", e);
-            return false;
-        }
-    }
-
-    /**
-     * 禁用生物识别认证
-     */
-    public void disableBiometricAuth() {
-        Log.d(TAG, "Disabling biometric authentication");
-
-        // 1. 清除保存的主密码
-        clearBiometricData();
-
-        // 2. 更新设置
-        securityConfig.setBiometricEnabled(false);
-
-        Log.d(TAG, "Biometric authentication disabled");
-    }
-
     // ========== 账户信息获取 ==========
 
     /**
@@ -499,16 +288,27 @@ public class AccountManager {
 
     /**
      * 设置当前会话的主密码
-     * 注意：主密码会被保存到内存和生物识别存储（用于会话恢复）
+     * 注意：主密码只保存在内存中，不再保存到生物识别存储
      *
      * @param masterPassword 主密码
      */
     public void setSessionMasterPassword(@NonNull String masterPassword) {
         this.sessionMasterPassword = masterPassword;
-        // 同时保存到生物识别存储，供会话恢复时使用
-        // 即使用户未启用生物识别，也保存密码以便云端同步功能正常工作
-        saveMasterPasswordForBiometric(masterPassword);
-        Log.d(TAG, "Session master password set and saved for recovery");
+        Log.d(TAG, "Session master password set (memory only)");
+    }
+
+    // ========== CryptoManager.SessionPasswordProvider 接口实现 ==========
+
+    /**
+     * SessionPasswordProvider 接口实现
+     * 返回当前会话的主密码
+     *
+     * @return 当前会话的主密码，未设置返回null
+     */
+    @Override
+    @Nullable
+    public String getMasterPassword() {
+        return sessionMasterPassword;
     }
 
     /**

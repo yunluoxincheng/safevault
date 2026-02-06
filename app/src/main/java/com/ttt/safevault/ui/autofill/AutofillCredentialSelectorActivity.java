@@ -22,6 +22,9 @@ import com.ttt.safevault.autofill.matcher.AutofillMatcher;
 import com.ttt.safevault.autofill.model.AutofillRequest;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
+import com.ttt.safevault.security.biometric.AuthCallback;
+import com.ttt.safevault.security.biometric.AuthScenario;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -419,46 +422,33 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
      * 显示生物识别验证
      */
     private void showBiometricAuthentication() {
-        com.ttt.safevault.security.BiometricAuthHelper biometricHelper =
-                new com.ttt.safevault.security.BiometricAuthHelper(this);
+        BiometricAuthManager biometricAuthManager = BiometricAuthManager.getInstance(this);
 
-        biometricHelper.authenticate(new com.ttt.safevault.security.BiometricAuthHelper.BiometricAuthCallback() {
+        biometricAuthManager.authenticate(this, AuthScenario.LOGIN, new AuthCallback() {
             @Override
-            public void onSuccess() {
-                android.util.Log.d(TAG, "生物识别验证成功");
+            public void onUserVerified() {
+                // 用户通过 UI 认证，等待 Keystore 授权
+                android.util.Log.d(TAG, "生物识别 UI 验证成功");
+            }
+
+            @Override
+            public void onKeyAccessGranted() {
+                // Keystore 授权成功，可以安全访问数据
+                android.util.Log.d(TAG, "生物识别 Keystore 授权成功");
                 runOnUiThread(() -> {
-                    // 生物识别验证成功，解锁并加载凭据
-                    executor.execute(() -> {
-                        try {
-                            boolean unlocked = backendService.unlockWithBiometric();
-                            runOnUiThread(() -> {
-                                if (unlocked) {
-                                    isAuthenticated = true;
-                                    loadCredentials();
-                                } else {
-                                    android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
-                                            "生物识别解锁失败，请使用主密码", android.widget.Toast.LENGTH_SHORT).show();
-                                    showPasswordAuthenticationDialog();
-                                }
-                            });
-                        } catch (Exception e) {
-                            runOnUiThread(() -> {
-                                android.util.Log.e(TAG, "生物识别解锁错误: " + e.getMessage(), e);
-                                android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
-                                        "生物识别失败: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
-                                showPasswordAuthenticationDialog();
-                            });
-                        }
-                    });
+                    isAuthenticated = true;
+                    loadCredentials();
                 });
             }
 
             @Override
-            public void onFailure(String error) {
-                android.util.Log.d(TAG, "生物识别验证失败: " + error);
+            public void onFailure(com.ttt.safevault.security.biometric.AuthError error, String message, boolean canRetry) {
+                android.util.Log.d(TAG, "生物识别验证失败: " + error.name() + ", message: " + message);
                 runOnUiThread(() -> {
+                    // 使用错误消息或默认消息
+                    String displayMessage = (message != null && !message.isEmpty()) ? message : "生物识别失败";
                     android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
-                            "生物识别失败: " + error, android.widget.Toast.LENGTH_SHORT).show();
+                            displayMessage, android.widget.Toast.LENGTH_SHORT).show();
                     // 失败后显示密码验证对话框
                     showPasswordAuthenticationDialog();
                 });
@@ -469,6 +459,16 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
                 android.util.Log.d(TAG, "生物识别验证取消");
                 runOnUiThread(() -> {
                     // 用户取消，显示密码验证对话框
+                    showPasswordAuthenticationDialog();
+                });
+            }
+
+            @Override
+            public void onBiometricChanged() {
+                android.util.Log.d(TAG, "生物识别信息已变更");
+                runOnUiThread(() -> {
+                    android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
+                            "生物识别信息已变更，请使用主密码", android.widget.Toast.LENGTH_SHORT).show();
                     showPasswordAuthenticationDialog();
                 });
             }

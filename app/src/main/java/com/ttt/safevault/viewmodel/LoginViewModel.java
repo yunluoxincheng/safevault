@@ -11,6 +11,7 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,10 +19,14 @@ import java.util.concurrent.Executors;
 /**
  * 登录/解锁页面的ViewModel
  * 负责处理用户认证相关的业务逻辑
+ *
+ * 注意：生物识别认证已迁移到 BiometricAuthManager
+ * ViewModel 不再直接处理生物识别认证，只提供检查能力
  */
 public class LoginViewModel extends AndroidViewModel {
 
     private final BackendService backendService;
+    private final BiometricAuthManager biometricAuthManager;
     private final ExecutorService executor;
 
     // LiveData用于UI状态管理
@@ -40,6 +45,7 @@ public class LoginViewModel extends AndroidViewModel {
     public LoginViewModel(@NonNull Application application, BackendService backendService) {
         super(application);
         this.backendService = backendService;
+        this.biometricAuthManager = BiometricAuthManager.getInstance(application);
         this.executor = Executors.newSingleThreadExecutor();
         checkInitializationStatus();
     }
@@ -55,11 +61,8 @@ public class LoginViewModel extends AndroidViewModel {
                 _isInitialized.postValue(initialized);
 
                 // 检查是否可以使用生物识别
-                // 条件：设备支持 + 后端服务确认可用（有保存的生物识别凭证）
-                // 注意：移除了对 initialized 的依赖，因为在云端登录模式下，
-                // 本地可能未初始化，但仍可能使用生物识别（凭证独立存储）
-                boolean biometricSupported = checkBiometricSupport();
-                boolean canUseBiometric = biometricSupported && backendService.canUseBiometricAuthentication();
+                // 使用 BiometricAuthManager 替代 BackendService
+                boolean canUseBiometric = biometricAuthManager.canUseBiometric();
                 _canUseBiometric.postValue(canUseBiometric);
             } catch (Exception e) {
                 _errorMessage.postValue("检查初始化状态失败: " + e.getMessage());
@@ -126,41 +129,6 @@ public class LoginViewModel extends AndroidViewModel {
                 }
             } catch (Exception e) {
                 _errorMessage.postValue("初始化失败: " + e.getMessage());
-            } finally {
-                _isLoading.postValue(false);
-            }
-        });
-    }
-
-    /**
-     * 使用生物识别解锁
-     */
-    public void loginWithBiometric() {
-        _isLoading.setValue(true);
-        _errorMessage.setValue(null);
-
-        executor.execute(() -> {
-            try {
-                // 通过BackendService验证是否可以使用生物识别
-                boolean canUseBiometric = backendService.canUseBiometricAuthentication();
-
-                if (!canUseBiometric) {
-                    _errorMessage.postValue("生物识别认证未启用或不可用");
-                    _isLoading.postValue(false);
-                    return;
-                }
-
-                // 生物识别验证成功，调用后端解锁
-                boolean unlocked = backendService.unlockWithBiometric();
-                if (unlocked) {
-                    // 生物识别解锁成功后清除后台时间记录
-                    backendService.clearBackgroundTime();
-                    _isAuthenticated.postValue(true);
-                } else {
-                    _errorMessage.postValue("生物识别解锁失败，请用主密码重试");
-                }
-            } catch (Exception e) {
-                _errorMessage.postValue("生物识别认证出错: " + e.getMessage());
             } finally {
                 _isLoading.postValue(false);
             }

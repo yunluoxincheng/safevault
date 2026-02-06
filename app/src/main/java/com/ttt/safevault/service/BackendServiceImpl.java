@@ -72,9 +72,8 @@ public class BackendServiceImpl implements BackendService {
     public boolean unlock(String masterPassword) {
         boolean success = cryptoManager.unlock(masterPassword);
 
-        // 解锁成功后保存密码
+        // 解锁成功后保存密码到内存（不再加密存储到磁盘）
         if (success) {
-            accountManager.saveMasterPasswordForBiometric(masterPassword);
             accountManager.setSessionMasterPassword(masterPassword);
             // 保存一份用于自动填充服务
             savePasswordForAutofill(masterPassword);
@@ -121,9 +120,8 @@ public class BackendServiceImpl implements BackendService {
     public boolean initialize(String masterPassword) {
         boolean success = cryptoManager.initialize(masterPassword);
 
-        // 初始化成功后保存主密码
+        // 初始化成功后保存主密码到内存（不再加密存储到磁盘）
         if (success) {
-            accountManager.saveMasterPasswordForBiometric(masterPassword);
             accountManager.setSessionMasterPassword(masterPassword);
             // 保存一份用于自动填充服务
             savePasswordForAutofill(masterPassword);
@@ -263,16 +261,6 @@ public class BackendServiceImpl implements BackendService {
     @Override
     public boolean deleteAccount() {
         return accountManager.deleteAccount();
-    }
-
-    @Override
-    public boolean unlockWithBiometric() {
-        return accountManager.unlockWithBiometric();
-    }
-
-    @Override
-    public boolean canUseBiometricAuthentication() {
-        return accountManager.canUseBiometricAuthentication();
     }
 
     // ==================== 云端认证相关 ====================

@@ -31,6 +31,7 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.manager.ShareRecordManager;
 import com.ttt.safevault.utils.BluetoothTransferManager;
 import com.ttt.safevault.viewmodel.ShareViewModel;
@@ -227,7 +228,7 @@ public class BluetoothShareActivity extends AppCompatActivity {
         }
 
         boolean canUseBiometric = BiometricAuthHelper.isBiometricSupported(this)
-                && backendService.canUseBiometricAuthentication();
+                && BiometricAuthManager.getInstance(this).canUseBiometric();
 
         if (canUseBiometric) {
             showBiometricAuthAndSend();

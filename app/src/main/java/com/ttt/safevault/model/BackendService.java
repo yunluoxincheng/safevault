@@ -210,19 +210,6 @@ public interface BackendService {
      * @return true表示删除成功
      */
     boolean deleteAccount();
-    
-    /**
-     * 使用生物识别解锁应用
-     * 用于生物识别认证成功后的解锁操作
-     * @return true表示解锁成功，false表示失败
-     */
-    boolean unlockWithBiometric();
-    
-    /**
-     * 检查是否可以使用生物识别认证
-     * @return true表示生物识别认证已启用且可用
-     */
-    boolean canUseBiometricAuthentication();
 
     // ========== 新增：分享管理接口 ==========
     // 旧的本地分享方法已移除，现在使用云端分享接口

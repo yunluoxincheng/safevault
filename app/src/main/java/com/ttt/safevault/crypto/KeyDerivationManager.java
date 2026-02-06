@@ -19,8 +19,11 @@ import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * 密钥派生管理器
- * 从主密码确定性派生 RSA 密钥对，确保所有设备共享同一对密钥
+ * 密钥派生管理器（已废弃 - 请使用 Argon2KeyDerivationManager）
+ *
+ * @deprecated 此类使用 PBKDF2 进行密钥派生，已被 Argon2KeyDerivationManager 替代
+ * Argon2id 提供更强的安全性，抗 GPU/ASIC 攻击能力更强
+ * 请使用 {@link Argon2KeyDerivationManager} 替代
  */
 public class KeyDerivationManager {
     private static final String TAG = "KeyDerivationManager";

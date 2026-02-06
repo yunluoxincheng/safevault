@@ -79,9 +79,18 @@ public class BiometricAuthHelper {
     }
 
     /**
-     * 启动生物识别认证
+     * 启动生物识别认证（不使用 CryptoObject）
      */
     public void authenticate(BiometricAuthCallback callback) {
+        authenticate(null, callback);
+    }
+
+    /**
+     * 启动生物识别认证（支持 CryptoObject）
+     * @param cryptoObject 可选的加密对象，用于授权密钥使用
+     * @param callback 认证回调
+     */
+    public void authenticate(BiometricPrompt.CryptoObject cryptoObject, BiometricAuthCallback callback) {
         BiometricPrompt biometricPrompt = new BiometricPrompt(activity, executor,
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override
@@ -97,6 +106,7 @@ public class BiometricAuthHelper {
                     @Override
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
+                        // 传递 CryptoObject 给回调，以便使用已授权的 Cipher
                         callback.onSuccess();
                     }
 
@@ -107,6 +117,11 @@ public class BiometricAuthHelper {
                     }
                 });
 
-        biometricPrompt.authenticate(promptInfo);
+        // 如果提供了 CryptoObject，使用它来认证（这样会授权密钥）
+        if (cryptoObject != null) {
+            biometricPrompt.authenticate(promptInfo, cryptoObject);
+        } else {
+            biometricPrompt.authenticate(promptInfo);
+        }
     }
 }

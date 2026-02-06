@@ -10,8 +10,8 @@ android {
         applicationId "com.ttt.safevault"
         minSdk 29
         targetSdk 36
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "3.2.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -103,6 +103,10 @@ dependencies {
     // Lombok for reducing boilerplate code
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    // Argon2 password hashing (Android 端使用 argon2kt，后端使用 argon2-jvm)
+    // argon2kt 是专为 Android 设计的 Argon2 JNI 绑定，解决了 argon2-jvm 在 Android 上的兼容性问题
+    implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
 
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
