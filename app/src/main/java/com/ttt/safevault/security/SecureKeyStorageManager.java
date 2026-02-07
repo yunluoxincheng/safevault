@@ -66,7 +66,7 @@ import javax.crypto.spec.SecretKeySpec;
  *
  * Argon2id 参数（与后端 Argon2PasswordHasher 一致）：
  * - 时间成本: 3 次迭代
- * - 内存成本: 64MB (65536 KB)
+ * - 内存成本: 128MB (131072 KB)
  * - 并行度: 4 线程
  * - 输出长度: 32 字节 (256 位)
  *
@@ -161,7 +161,7 @@ public class SecureKeyStorageManager {
      * 从主密码派生PasswordKey（Level 1 根层）
      *
      * 使用 Argon2id 算法（与后端一致）
-     * 参数：timeCost=3, memoryCost=64MB, parallelism=4
+     * 参数：timeCost=3, memoryCost=128MB, parallelism=4
      * 用于加密DataKey以便云端备份
      *
      * @param masterPassword 主密码
@@ -172,7 +172,7 @@ public class SecureKeyStorageManager {
     public SecretKey derivePasswordKey(@NonNull String masterPassword, @NonNull String saltBase64) {
         // 使用 Argon2id 派生密钥（与后端一致）
         SecretKey passwordKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, saltBase64);
-        Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=64MB, p=4）");
+        Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=128MB, p=4）");
         return passwordKey;
     }
 
