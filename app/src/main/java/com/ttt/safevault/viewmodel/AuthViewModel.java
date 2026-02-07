@@ -13,6 +13,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.ttt.safevault.dto.response.AuthResponse;
 import com.ttt.safevault.dto.response.EmailLoginResponse;
 import com.ttt.safevault.dto.response.EmailRegistrationResponse;
+import com.ttt.safevault.dto.response.LoginPrecheckResponse;
 import com.ttt.safevault.dto.response.VerifyEmailResponse;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.network.RetrofitClient;
@@ -48,6 +49,7 @@ public class AuthViewModel extends AndroidViewModel {
     private final MutableLiveData<EmailRegistrationResponse> emailRegistrationLiveData = new MutableLiveData<>();
     private final MutableLiveData<VerifyEmailResponse> emailVerificationLiveData = new MutableLiveData<>();
     private final MutableLiveData<EmailLoginResponse> emailLoginLiveData = new MutableLiveData<>();
+    private final MutableLiveData<LoginPrecheckResponse> loginPrecheckLiveData = new MutableLiveData<>();
     private final MutableLiveData<com.ttt.safevault.dto.response.VerificationStatusResponse> verificationStatusLiveData = new MutableLiveData<>();
 
     public AuthViewModel(@NonNull Application application) {
@@ -368,7 +370,7 @@ public class AuthViewModel extends AndroidViewModel {
     }
 
     /**
-     * 邮箱登录（支持设备管理）
+     * 邮箱登录（支持设备管理，使用 Challenge-Response 机制防止重放攻击）
      *
      * @param email       邮箱
      * @param masterPassword 主密码（用于生成签名）
@@ -384,24 +386,49 @@ public class AuthViewModel extends AndroidViewModel {
             return;
         }
 
+        // 第一步：调用登录预检查获取 nonce
+        Disposable precheckDisposable = retrofitClient.getAuthServiceApi()
+            .loginPrecheck(new com.ttt.safevault.dto.request.LoginPrecheckRequest(email))
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                precheckResponse -> {
+                    loginPrecheckLiveData.setValue(precheckResponse);
+                    // 第二步：使用 nonce 进行登录
+                    performLoginWithEmail(email, masterPassword, deviceId, precheckResponse.getNonce());
+                },
+                error -> {
+                    loadingLiveData.setValue(false);
+                    String message = "登录预检查失败: " + error.getMessage();
+                    errorLiveData.setValue(message);
+                    Log.e(TAG, "Login precheck failed", error);
+                }
+            );
+
+        disposables.add(precheckDisposable);
+    }
+
+    /**
+     * 执行邮箱登录（使用 nonce 进行签名）
+     */
+    private void performLoginWithEmail(String email, String masterPassword, String deviceId, String nonce) {
         // 获取设备信息
         String deviceName = getDeviceName();
         String deviceType = "android";
         String osVersion = "Android " + Build.VERSION.RELEASE;
 
-        // 生成时间戳和派生密钥签名
-        long timestamp = System.currentTimeMillis();
-        String signature = generateDerivedKeySignature(email, deviceId, masterPassword, timestamp);
+        // 使用 nonce 生成派生密钥签名
+        String signature = generateDerivedKeySignatureWithNonce(email, deviceId, masterPassword, nonce);
 
         Disposable disposable = retrofitClient.getAuthServiceApi()
             .loginByEmail(new com.ttt.safevault.dto.request.LoginByEmailRequest(
-                email, deviceId, deviceName, signature, timestamp, deviceType, osVersion))
+                email, deviceId, deviceName, signature, nonce, deviceType, osVersion))
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
                 response -> {
                     loadingLiveData.setValue(false);
-                    // 保存Token信息（转换EmailLoginResponse到AuthResponse格式）
+                    // 保存Token信息
                     tokenManager.saveTokens(
                         response.getUserId(),
                         response.getAccessToken(),
@@ -423,10 +450,10 @@ public class AuthViewModel extends AndroidViewModel {
     }
 
     /**
-     * 生成派生密钥签名（使用 PBKDF2）
-     * 从主密码派生密钥，然后生成签名证明密钥派生正确
+     * 生成派生密钥签名（使用 PBKDF2 和 nonce）
+     * Challenge-Response 机制：使用服务器生成的 nonce 进行签名
      */
-    private String generateDerivedKeySignature(String email, String deviceId, String masterPassword, long timestamp) {
+    private String generateDerivedKeySignatureWithNonce(String email, String deviceId, String masterPassword, String nonce) {
         try {
             // 1. 获取或生成用户盐值
             String salt = keyManager.getUserSalt(email);
@@ -439,26 +466,23 @@ public class AuthViewModel extends AndroidViewModel {
             // 2. 从主密码派生密钥
             javax.crypto.SecretKey derivedKey = keyManager.deriveKeyFromMasterPassword(masterPassword, salt);
 
-            // 3. 使用派生密钥生成签名（证明密钥派生正确）
-            // 签名内容：邮箱 + 设备ID + 时间戳的哈希
-            String data = email + deviceId + timestamp;
+            // 3. 使用派生密钥对 nonce 进行 HMAC 签名
+            String data = email + deviceId + nonce;
             byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
 
-            // 使用派生密钥对数据进行HMAC签名
             javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
             mac.init(derivedKey);
             byte[] signatureBytes = mac.doFinal(dataBytes);
 
-            // 返回 Base64 编码的签名
             String signature = Base64.getEncoder().encodeToString(signatureBytes);
 
-            Log.d(TAG, "Derived key signature generated successfully");
+            Log.d(TAG, "Derived key signature generated successfully with nonce");
             return signature;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to generate derived key signature", e);
-            // 降级到简化版本（用于向后兼容）
+            Log.e(TAG, "Failed to generate derived key signature with nonce", e);
+            // 降级处理（向后兼容）
             try {
-                String data = email + deviceId + masterPassword + timestamp;
+                String data = email + deviceId + nonce;
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
                 byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
                 return Base64.getEncoder().encodeToString(hash);
@@ -514,6 +538,10 @@ public class AuthViewModel extends AndroidViewModel {
 
     public LiveData<EmailLoginResponse> getEmailLoginResponse() {
         return emailLoginLiveData;
+    }
+
+    public LiveData<LoginPrecheckResponse> getLoginPrecheckResponse() {
+        return loginPrecheckLiveData;
     }
 
     public LiveData<com.ttt.safevault.dto.response.VerificationStatusResponse> getVerificationStatusResponse() {

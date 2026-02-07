@@ -7,6 +7,7 @@ import com.ttt.safevault.dto.response.DeleteAccountResponse;
 import com.ttt.safevault.dto.response.DeviceListResponse;
 import com.ttt.safevault.dto.response.EmailLoginResponse;
 import com.ttt.safevault.dto.response.EmailRegistrationResponse;
+import com.ttt.safevault.dto.response.LoginPrecheckResponse;
 import com.ttt.safevault.dto.response.LogoutResponse;
 import com.ttt.safevault.dto.response.RemoveDeviceResponse;
 import com.ttt.safevault.dto.response.VerifyEmailResponse;
@@ -57,6 +58,9 @@ public interface AuthServiceApi {
 
     @POST("v1/auth/login-by-email")
     Observable<EmailLoginResponse> loginByEmail(@Body LoginByEmailRequest request);
+
+    @POST("v1/auth/login-precheck")
+    Observable<LoginPrecheckResponse> loginPrecheck(@Body LoginPrecheckRequest request);
 
     @POST("v1/auth/logout")
     Observable<LogoutResponse> logout(@Header("X-User-Id") String userId, @Body LogoutRequest request);

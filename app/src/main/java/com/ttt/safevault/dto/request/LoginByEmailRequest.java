@@ -3,7 +3,7 @@ package com.ttt.safevault.dto.request;
 import com.google.gson.annotations.SerializedName;
 
 /**
- * 邮箱登录请求
+ * 邮箱登录请求（Challenge-Response 机制）
  */
 public class LoginByEmailRequest {
 
@@ -19,8 +19,8 @@ public class LoginByEmailRequest {
     @SerializedName("derivedKeySignature")
     private String derivedKeySignature;
 
-    @SerializedName("timestamp")
-    private Long timestamp;
+    @SerializedName("nonce")
+    private String nonce;
 
     @SerializedName("deviceType")
     private String deviceType;
@@ -32,13 +32,13 @@ public class LoginByEmailRequest {
     }
 
     public LoginByEmailRequest(String email, String deviceId, String deviceName,
-                               String derivedKeySignature, Long timestamp,
+                               String derivedKeySignature, String nonce,
                                String deviceType, String osVersion) {
         this.email = email;
         this.deviceId = deviceId;
         this.deviceName = deviceName;
         this.derivedKeySignature = derivedKeySignature;
-        this.timestamp = timestamp;
+        this.nonce = nonce;
         this.deviceType = deviceType;
         this.osVersion = osVersion;
     }
@@ -76,12 +76,12 @@ public class LoginByEmailRequest {
         this.derivedKeySignature = derivedKeySignature;
     }
 
-    public Long getTimestamp() {
-        return timestamp;
+    public String getNonce() {
+        return nonce;
     }
 
-    public void setTimestamp(Long timestamp) {
-        this.timestamp = timestamp;
+    public void setNonce(String nonce) {
+        this.nonce = nonce;
     }
 
     public String getDeviceType() {
