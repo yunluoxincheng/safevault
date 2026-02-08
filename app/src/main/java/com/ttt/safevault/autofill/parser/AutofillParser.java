@@ -14,12 +14,7 @@ import android.view.autofill.AutofillValue;
 import com.ttt.safevault.autofill.model.AutofillField;
 import com.ttt.safevault.autofill.model.AutofillParsedData;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -889,41 +884,9 @@ public class AutofillParser {
     }
 
     /**
-     * 调试日志输出到文件
+     * 调试日志输出（仅系统日志）
      */
     private static void logDebug(String message) {
         Log.d(TAG, message);
-
-        // 同时输出到文件（用于手机端调试）
-        // 使用静态变量缓存FileWriter，减少频繁创建销毁的开销
-        FileWriter writer = null;
-        try {
-            String logDir = "/storage/emulated/0/Android/data/com.ttt.safevault/files/autofill_logs/";
-            File dir = new File(logDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-
-            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-                    .format(new Date());
-            String logMessage = timestamp + " [" + TAG + "] " + message + "\n";
-
-            File logFile = new File(dir, "autofill_parser.log");
-            writer = new FileWriter(logFile, true);
-            writer.write(logMessage);
-        } catch (IOException e) {
-            // 日志写入失败，使用系统日志记录
-            android.util.Log.e(TAG, "Failed to write to log file", e);
-        } finally {
-            // 确保FileWriter正确关闭，防止资源泄漏
-            if (writer != null) {
-                try {
-                    writer.close();
-                } catch (IOException e) {
-                    // 关闭失败时记录日志
-                    android.util.Log.e(TAG, "Failed to close log file writer", e);
-                }
-            }
-        }
     }
 }

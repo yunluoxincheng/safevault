@@ -58,7 +58,7 @@ public class BackendServiceImpl implements BackendService {
                 com.ttt.safevault.network.RetrofitClient.getInstance(context);
 
         // 初始化各功能模块的Manager
-        this.passwordManager = new PasswordManager(cryptoManager, passwordDao);
+        this.passwordManager = new PasswordManager(cryptoManager, passwordDao, context);
         this.passwordGenerator = new PasswordGenerator();
         this.dataImportExportManager = new DataImportExportManager(context, cryptoManager, passwordManager);
         this.pinCodeManager = new PinCodeManager(context, securityConfig);

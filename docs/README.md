@@ -9,6 +9,7 @@
 docs/
 ├── README.md                    # 本文件
 ├── USER-DOCS-INDEX.md          # 用户文档索引（从这开始！）
+├── security-architecture.md    # 安全存储架构文档
 │
 ├── user-guide/                 # 用户指南
 │   └── password-sharing.md     # 密码分享功能用户指南
@@ -22,11 +23,15 @@ docs/
 ├── api/                        # API 文档
 │   ├── authentication.md       # 认证 API
 │   ├── data-sync.md            # 数据同步 API
-│   └── device-management.md    # 设备管理 API
+│   ├── device-management.md    # 设备管理 API
+│   ├── contact-sharing.md      # 联系人分享 API
+│   ├── database-schema.md      # 数据库 Schema
+│   └── migration-guide-v2.2.md # v2.2 迁移指南
 │
 └── plans/                      # 设计文档
     ├── 2026-01-19-e2e-password-sharing-design.md
-    └── 2026-01-19-e2e-implementation-summary.md
+    ├── 2026-01-19-e2e-implementation-summary.md
+    └── ...
 ```
 
 ---
@@ -73,6 +78,7 @@ docs/
 ### 设计文档
 面向开发者的架构设计和实现文档。
 
+- **[安全存储架构](security-architecture.md)** - 五层安全架构详解
 - **[端到端分享设计](plans/2026-01-19-e2e-password-sharing-design.md)** - E2E 分享架构设计
 - **[实现总结](plans/2026-01-19-e2e-implementation-summary.md)** - 实现细节总结
 
@@ -87,6 +93,7 @@ docs/
 - 设计文档: [plans/2026-01-19-e2e-password-sharing-design.md](plans/2026-01-19-e2e-password-sharing-design.md)
 
 ### 安全与加密
+- **安全架构总览**: [security-architecture.md](security-architecture.md) - 完整的五层安全架构
 - 端到端加密原理: [user-guide/password-sharing.md#技术细节](user-guide/password-sharing.md#技术细节)
 - 加密算法详解: [faq/sharing-faq.md#技术问题](faq/sharing-faq.md#技术问题)
 - 密钥管理: [plans/2026-01-19-e2e-password-sharing-design.md#密钥管理](plans/2026-01-19-e2e-password-sharing-design.md#密钥管理)
@@ -122,9 +129,10 @@ docs/
 | 分类 | 文档数 | 总字数 |
 |------|--------|--------|
 | 用户文档 | 3 | ~10,500 |
-| API 文档 | 3 | ~6,000 |
-| 设计文档 | 2 | ~8,000 |
-| **总计** | **8** | **~24,500** |
+| API 文档 | 6 | ~12,000 |
+| 设计文档 | 10+ | ~30,000 |
+| 安全架构 | 1 | ~4,000 |
+| **总计** | **20+** | **~56,500+** |
 
 ---
 
@@ -184,6 +192,10 @@ docs/
 
 ## 📅 更新记录
 
+### 2026-02-08
+- 新增安全存储架构文档
+- 更新文档目录结构和统计信息
+
 ### 2026-01-19
 - 创建用户文档结构
 - 添加密码分享功能用户指南
@@ -208,14 +220,15 @@ docs/
 
 ---
 
-**文档版本**: 1.0
-**最后更新**: 2026-01-19
+**文档版本**: 1.1
+**最后更新**: 2026-02-08
 **维护者**: SafeVault 文档团队
 
 ---
 
 ## 快速链接
 
+- [安全存储架构](security-architecture.md) - 五层安全架构详解
 - [用户文档索引](USER-DOCS-INDEX.md) - 用户从这里开始
 - [密码分享用户指南](user-guide/password-sharing.md) - 功能使用指南
 - [分享功能 FAQ](faq/sharing-faq.md) - 常见问题
