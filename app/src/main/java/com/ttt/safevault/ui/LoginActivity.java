@@ -355,30 +355,12 @@ public class LoginActivity extends AppCompatActivity {
                     .getTokenManager().saveEmailLoginInfo(email, responseUsername, responseDisplayName);
             android.util.Log.d(TAG, "用户信息已保存 - email: " + email + ", username: " + responseUsername + ", displayName: " + responseDisplayName);
 
-            // 保存当前用户邮箱到 AccountManager
-            com.ttt.safevault.service.manager.AccountManager accountManager =
-                    new com.ttt.safevault.service.manager.AccountManager(
-                            this,
-                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                            new com.ttt.safevault.service.manager.PasswordManager(
-                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                    com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao()
-                            ),
-                            new com.ttt.safevault.security.SecurityConfig(this),
-                            com.ttt.safevault.network.RetrofitClient.getInstance(this)
-                    );
-            accountManager.setCurrentUserEmail(email);
-
-            // 初始化加密环境（通过 BackendService，确保密码正确保存）
+            // 保存当前用户邮箱到 AccountManager（通过 BackendService）
             com.ttt.safevault.model.BackendService backendService =
                     com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
             // 检查用户是否已初始化（老用户使用 unlock，新用户使用 initialize）
-            // initialize() 会生成新的盐值，改变后会无法解密旧数据！
-            com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
-
-            boolean isInitialized = cryptoManager.isInitialized();
+            boolean isInitialized = backendService.isInitialized();
             android.util.Log.d(TAG, "用户已初始化状态: " + isInitialized);
 
             boolean unlockSuccess;
@@ -405,21 +387,11 @@ public class LoginActivity extends AppCompatActivity {
                 return;
             }
 
-            // 保存会话密码到 AccountManager（这会同时保存到生物识别存储）
-            // 注意：即使用户未启用生物识别，也保存密码以便云端同步功能正常工作
-            com.ttt.safevault.service.manager.AccountManager sessionAccountManager =
-                    new com.ttt.safevault.service.manager.AccountManager(
-                            LoginActivity.this,
-                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                            new com.ttt.safevault.service.manager.PasswordManager(
-                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                    com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
-                            ),
-                            new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
-                            com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
-                    );
-            sessionAccountManager.setSessionMasterPassword(password);
-            android.util.Log.d(TAG, "会话密码已保存到 AccountManager 和生物识别存储");
+            // 保存会话密码到 AccountManager（通过 BackendServiceImpl）
+            // 注意：SafeVault 3.4.0 不再保存密码到生物识别存储
+            com.ttt.safevault.ServiceLocator.getInstance().getBackendService()
+                    .setSessionMasterPassword(password);
+            android.util.Log.d(TAG, "会话密码已保存到 AccountManager（仅内存）");
 
             // 老设备登录，执行云端数据同步
             android.util.Log.d(TAG, "老设备登录，执行云端数据同步");
@@ -451,19 +423,20 @@ public class LoginActivity extends AppCompatActivity {
                 try {
                     com.ttt.safevault.model.BackendService backendService =
                             com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
-                    com.ttt.safevault.service.manager.AccountManager accountManager =
-                            new com.ttt.safevault.service.manager.AccountManager(
-                                    LoginActivity.this,
-                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                    new com.ttt.safevault.service.manager.PasswordManager(
-                                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                            com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
-                                    ),
-                                    new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
-                                    com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
-                            );
 
-                    return accountManager.recoverDeviceData(email, masterPassword);
+                    // SafeVault 3.4.0：通过反射获取 BackendServiceImpl 的 AccountManager
+                    try {
+                        java.lang.reflect.Field accountManagerField =
+                            backendService.getClass().getDeclaredField("accountManager");
+                        accountManagerField.setAccessible(true);
+                        com.ttt.safevault.service.manager.AccountManager accountManager =
+                            (com.ttt.safevault.service.manager.AccountManager) accountManagerField.get(backendService);
+
+                        return accountManager.recoverDeviceData(email, masterPassword);
+                    } catch (Exception reflectEx) {
+                        android.util.Log.e(TAG, "反射获取 AccountManager 失败", reflectEx);
+                        return com.ttt.safevault.dto.DeviceRecoveryResult.failure("内部错误", null);
+                    }
                 } catch (Exception e) {
                     android.util.Log.e(TAG, "设备数据恢复失败", e);
                     return com.ttt.safevault.dto.DeviceRecoveryResult.failure(e.getMessage(), null);
@@ -474,19 +447,9 @@ public class LoginActivity extends AppCompatActivity {
             protected void onPostExecute(com.ttt.safevault.dto.DeviceRecoveryResult result) {
                 if (result.isSuccess()) {
                     android.util.Log.d(TAG, "设备数据恢复成功");
-                    // 保存会话密码到内存
-                    com.ttt.safevault.service.manager.AccountManager sessionAccountManager =
-                            new com.ttt.safevault.service.manager.AccountManager(
-                                    LoginActivity.this,
-                                    com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                    new com.ttt.safevault.service.manager.PasswordManager(
-                                            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager(),
-                                            com.ttt.safevault.data.AppDatabase.getInstance(LoginActivity.this).passwordDao()
-                                    ),
-                                    new com.ttt.safevault.security.SecurityConfig(LoginActivity.this),
-                                    com.ttt.safevault.network.RetrofitClient.getInstance(LoginActivity.this)
-                            );
-                    sessionAccountManager.setSessionMasterPassword(masterPassword);
+                    // 保存会话密码到内存（通过 BackendService）
+                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService()
+                            .setSessionMasterPassword(masterPassword);
                     // 恢复成功后，继续执行数据同步
                     handleCloudDataSync();
                     // 导航到主页
@@ -587,10 +550,34 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void onKeyAccessGranted() {
-                // Keystore 授权成功，可以安全访问数据
+                // Keystore 授权成功，需要恢复 DataKey 到 CryptoSession
                 runOnUiThread(() -> {
-                    hideError();
-                    navigateToMain();
+                    try {
+                        // 1. 使用生物识别恢复 DataKey
+                        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(
+                                        getApplicationContext());
+                        javax.crypto.SecretKey dataKey = secureStorage.unlockDataKeyWithBiometric();
+
+                        if (dataKey == null) {
+                            showError("生物识别解锁失败：无法恢复加密密钥");
+                            android.util.Log.e(TAG, "unlockDataKeyWithBiometric() 返回 null");
+                            return;
+                        }
+
+                        // 2. 缓存 DataKey 到 CryptoSession（解锁会话）
+                        com.ttt.safevault.security.CryptoSession.getInstance()
+                                .unlockWithDataKey(dataKey);
+                        android.util.Log.i(TAG, "CryptoSession 已通过生物识别解锁");
+
+                        // 3. 导航到主界面
+                        hideError();
+                        navigateToMain();
+
+                    } catch (Exception e) {
+                        showError("生物识别解锁失败: " + e.getMessage());
+                        android.util.Log.e(TAG, "生物识别解锁异常", e);
+                    }
                 });
             }
 
@@ -712,13 +699,13 @@ public class LoginActivity extends AppCompatActivity {
         boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(this);
         com.ttt.safevault.security.SecurityConfig securityConfig =
                 new com.ttt.safevault.security.SecurityConfig(this);
-        com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+        com.ttt.safevault.model.BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
         com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
                 com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
 
         boolean userEnabled = securityConfig.isBiometricEnabled();
-        boolean hasCredentials = cryptoManager.isInitialized();
+        boolean hasCredentials = backendService.isInitialized();
         boolean isMigrated = secureStorage.isMigrated();
 
         boolean shouldShow = biometricSupported && userEnabled && hasCredentials && isMigrated;

@@ -1,6 +1,7 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
@@ -10,6 +11,7 @@ import androidx.lifecycle.MutableLiveData;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordStrength;
+import com.ttt.safevault.security.SessionLockedException;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -144,6 +146,10 @@ public class EditPasswordViewModel extends AndroidViewModel {
                 } else {
                     _errorMessage.postValue("保存失败");
                 }
+            } catch (SessionLockedException e) {
+                // 会话已锁定，需要重新认证
+                _errorMessage.postValue("会话已锁定，请重新验证主密码");
+                Log.w("EditPasswordViewModel", "保存失败：会话已锁定", e);
             } catch (Exception e) {
                 _errorMessage.postValue("保存失败: " + e.getMessage());
             } finally {

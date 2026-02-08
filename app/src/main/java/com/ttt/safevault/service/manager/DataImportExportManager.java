@@ -3,11 +3,10 @@ package com.ttt.safevault.service.manager;
 import android.content.Context;
 import android.util.Log;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
-import com.ttt.safevault.security.KeyManager;
-import com.ttt.safevault.utils.BackupCryptoUtil;
+import com.ttt.safevault.security.BackupEncryptionManager;
+import com.ttt.safevault.security.CryptoSession;
 import com.ttt.safevault.utils.BackupJsonUtil;
 import com.ttt.safevault.utils.BackupValidationUtil;
 
@@ -19,26 +18,31 @@ import java.util.List;
 /**
  * 数据导入导出管理器
  * 负责数据的备份和恢复
+ *
+ * 三层安全架构：使用 BackupEncryptionManager 替代 BackupCryptoUtil
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  */
 public class DataImportExportManager {
     private static final String TAG = "DataImportExportManager";
     private static final String PREF_LAST_BACKUP = "last_backup";
 
     private final Context context;
-    private final CryptoManager cryptoManager;
+    private final BackupEncryptionManager backupEncryptionManager;
     private final PasswordManager passwordManager;
     private final android.content.SharedPreferences prefs;
 
-    public DataImportExportManager(Context context, CryptoManager cryptoManager,
-                                   PasswordManager passwordManager) {
+    public DataImportExportManager(Context context, PasswordManager passwordManager) {
         this.context = context.getApplicationContext();
-        this.cryptoManager = cryptoManager;
+        this.backupEncryptionManager = BackupEncryptionManager.getInstance(context);
         this.passwordManager = passwordManager;
         this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
     }
 
     /**
-     * 导出数据到指定路径
+     * 导出数据到指定路径（本地备份模式）
+     *
+     * 使用 CryptoSession.DataKey 进行加密，无需密码
      */
     public boolean exportData(String exportPath) {
         try {
@@ -53,20 +57,19 @@ public class DataImportExportManager {
             // 2. 序列化为 JSON
             String jsonData = BackupJsonUtil.serializePasswordList(items);
 
-            // 3. 使用主密码加密数据
-            String masterPassword = cryptoManager.getMasterPassword();
-            BackupCryptoUtil.EncryptionResult encryptionResult =
-                    BackupCryptoUtil.encrypt(jsonData, masterPassword);
+            // 3. 使用 DataKey 加密数据（本地备份模式）
+            BackupEncryptionManager.LocalBackupResult encryptionResult =
+                    backupEncryptionManager.encryptForLocalBackup(jsonData);
 
             // 4. 构建导出数据结构
-            String deviceId = KeyManager.getInstance(context).getDeviceId();
+            String deviceId = getDeviceId();
             String appVersion = getAppVersion();
 
             com.ttt.safevault.dto.ExportData exportData =
                     BackupJsonUtil.buildExportData(
                             encryptionResult.getEncryptedData(),
                             encryptionResult.getIv(),
-                            encryptionResult.getSalt(),
+                            null,  // 本地备份模式不需要 salt
                             items.size(),
                             deviceId,
                             appVersion
@@ -93,7 +96,9 @@ public class DataImportExportManager {
     }
 
     /**
-     * 从指定路径导入数据
+     * 从指定路径导入数据（本地备份模式）
+     *
+     * 使用 CryptoSession.DataKey 进行解密
      */
     public boolean importData(String importPath) {
         try {
@@ -126,16 +131,13 @@ public class DataImportExportManager {
                 return false;
             }
 
-            // 4. 解密数据
-            String masterPassword = cryptoManager.getMasterPassword();
+            // 4. 解密数据（本地备份模式）
             com.ttt.safevault.dto.ExportData.DataContainer dataContainer = exportData.getData();
 
-            String decryptedJson = BackupCryptoUtil.decrypt(
+            String decryptedJson = backupEncryptionManager.decryptLocalBackup(
                     dataContainer.getEncryptedData(),
-                    masterPassword,
-                    dataContainer.getSalt(),
                     dataContainer.getIv(),
-                    dataContainer.getAuthTag()  // 添加 authTag 参数
+                    dataContainer.getAuthTag()
             );
 
             // 5. 反序列化密码列表
@@ -155,6 +157,20 @@ public class DataImportExportManager {
             Log.e(TAG, "Failed to import data", e);
             return false;
         }
+    }
+
+    /**
+     * 获取设备 ID
+     */
+    private String getDeviceId() {
+        android.provider.Settings.Secure.getString(
+                context.getContentResolver(),
+                android.provider.Settings.Secure.ANDROID_ID
+        );
+        return android.provider.Settings.Secure.getString(
+                context.getContentResolver(),
+                android.provider.Settings.Secure.ANDROID_ID
+        );
     }
 
     /**

@@ -54,16 +54,15 @@ public class MyIdentityActivity extends AppCompatActivity {
         contactManager = new ContactManager(this);
 
         // 使用正确的构造函数创建 AccountManager
-        com.ttt.safevault.crypto.CryptoManager cryptoManager =
-            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+        com.ttt.safevault.model.BackendService backendService =
+            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
         com.ttt.safevault.data.PasswordDao passwordDao =
             com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao();
         com.ttt.safevault.service.manager.PasswordManager passwordManager =
-            new com.ttt.safevault.service.manager.PasswordManager(cryptoManager, passwordDao);
+            new com.ttt.safevault.service.manager.PasswordManager(backendService, passwordDao);
 
         accountManager = new AccountManager(
                 this,
-                cryptoManager,
                 passwordManager,
                 new com.ttt.safevault.security.SecurityConfig(this),
                 com.ttt.safevault.network.RetrofitClient.getInstance(this)
@@ -144,10 +143,10 @@ public class MyIdentityActivity extends AppCompatActivity {
      */
     private void checkAndVerifyIdentity() {
         // 检查CryptoManager是否已解锁（即是否有主密码）
-        com.ttt.safevault.crypto.CryptoManager cryptoManager =
-            com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+        com.ttt.safevault.model.BackendService backendService =
+            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
-        if (cryptoManager.isUnlocked()) {
+        if (backendService.isUnlocked()) {
             // 已解锁，直接生成QR码
             Log.d(TAG, "CryptoManager已解锁，直接生成QR码");
             generateQRCode();
@@ -180,13 +179,14 @@ public class MyIdentityActivity extends AppCompatActivity {
                         MyIdentityActivity.this)
                         .getTokenManager().getLastLoginEmail();
 
-                // 从共享的CryptoManager获取主密码（而不是AccountManager的sessionMasterPassword）
+                // 从 BackendService 获取主密码（SafeVault 3.4.0）
                 String masterPassword = null;
                 try {
                     masterPassword = com.ttt.safevault.ServiceLocator.getInstance()
-                            .getCryptoManager().getMasterPassword();
+                            .getBackendService()
+                            .getMasterPassword();
                 } catch (Exception e) {
-                    Log.e(TAG, "Failed to get master password from CryptoManager", e);
+                    Log.e(TAG, "Failed to get master password from BackendService", e);
                 }
 
                 // 检查邮箱
@@ -330,9 +330,9 @@ public class MyIdentityActivity extends AppCompatActivity {
                 String sessionPassword = accountManager.getCurrentMasterPassword();
                 boolean success = false;
                 if (sessionPassword != null && !sessionPassword.isEmpty()) {
-                    com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                        com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
-                    success = cryptoManager.unlock(sessionPassword);
+                    com.ttt.safevault.model.BackendService backendService =
+                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                    success = backendService.unlock(sessionPassword);
                 }
 
                 if (success) {
@@ -430,9 +430,9 @@ public class MyIdentityActivity extends AppCompatActivity {
     private boolean verifyMasterPassword(String password) {
         try {
             // 尝试使用密码解锁 CryptoManager
-            com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
-            return cryptoManager.unlock(password);
+            com.ttt.safevault.model.BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            return backendService.unlock(password);
         } catch (Exception e) {
             Log.e(TAG, "验证主密码时发生异常", e);
             return false;

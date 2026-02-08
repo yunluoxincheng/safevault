@@ -4,16 +4,22 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.model.BackendService;
+import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.security.SecurityManager;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.BackendServiceImpl;
 
 /**
  * 服务定位器
  * 提供全局单例服务的访问点
+ *
+ * 三层安全架构：提供新架构组件的访问点
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  */
 public class ServiceLocator {
 
@@ -23,7 +29,6 @@ public class ServiceLocator {
     private BackendService backendService;
     private SecurityManager securityManager;
     private SecurityConfig securityConfig;
-    private CryptoManager cryptoManager;
 
     private ServiceLocator(@NonNull Context context) {
         this.applicationContext = context.getApplicationContext();
@@ -88,18 +93,33 @@ public class ServiceLocator {
         return securityConfig;
     }
 
+    // ========== 三层安全架构组件 ==========
+
     /**
-     * 获取加密管理器
+     * 获取加密会话（CryptoSession）
+     *
+     * @return CryptoSession 单例
      */
-    public CryptoManager getCryptoManager() {
-        if (cryptoManager == null) {
-            synchronized (this) {
-                if (cryptoManager == null) {
-                    cryptoManager = new CryptoManager(applicationContext);
-                }
-            }
-        }
-        return cryptoManager;
+    public CryptoSession getCryptoSession() {
+        return CryptoSession.getInstance();
+    }
+
+    /**
+     * 获取安全密钥存储管理器（SecureKeyStorageManager）
+     *
+     * @return SecureKeyStorageManager 单例
+     */
+    public SecureKeyStorageManager getSecureKeyStorageManager() {
+        return SecureKeyStorageManager.getInstance(applicationContext);
+    }
+
+    /**
+     * 获取生物识别认证管理器（BiometricAuthManager）
+     *
+     * @return BiometricAuthManager 单例
+     */
+    public BiometricAuthManager getBiometricAuthManager() {
+        return BiometricAuthManager.getInstance(applicationContext);
     }
 
     /**

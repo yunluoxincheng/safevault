@@ -86,17 +86,30 @@ public class CryptoSession {
      * @return true 表示已解锁（DataKey 在内存中），false 表示未解锁
      */
     public boolean isUnlocked() {
-        if (!unlocked || dataKey == null) {
+        // 添加详细的调试日志
+        Log.d(TAG, "isUnlocked() 被调用 - unlocked=" + unlocked + ", dataKey=" + (dataKey != null ? "非null" : "null") + ", sessionStartTime=" + sessionStartTime);
+
+        if (!unlocked) {
+            Log.w(TAG, "会话未解锁：unlocked=false");
+            return false;
+        }
+
+        if (dataKey == null) {
+            Log.w(TAG, "会话未解锁：dataKey=null（unlocked=true 但 dataKey 为 null，这是不一致状态）");
+            // 修复不一致状态
+            unlocked = false;
             return false;
         }
 
         // 检查会话是否超时
         if (isSessionExpired()) {
-            Log.d(TAG, "会话已超时，自动锁定");
+            long elapsed = System.currentTimeMillis() - sessionStartTime;
+            Log.w(TAG, "会话已超时，自动锁定 - 已过去: " + (elapsed / 1000) + " 秒，超时阈值: " + (SESSION_TIMEOUT_MS / 1000) + " 秒");
             clear();
             return false;
         }
 
+        Log.d(TAG, "会话已解锁，剩余时间: " + getRemainingTimeSeconds() + " 秒");
         return true;
     }
 
@@ -122,8 +135,11 @@ public class CryptoSession {
      * @param dataKey 解密后的 DataKey
      */
     public void unlockWithDataKey(@NonNull SecretKey dataKey) {
+        Log.d(TAG, "unlockWithDataKey() 被调用 - dataKey=" + (dataKey != null ? "非null" : "null"));
+
         // 先清除旧的 DataKey（如果存在）
         if (this.dataKey != null) {
+            Log.d(TAG, "清除旧的 DataKey");
             zeroize(this.dataKey);
         }
 
@@ -131,7 +147,7 @@ public class CryptoSession {
         this.unlocked = true;
         this.sessionStartTime = System.currentTimeMillis();
 
-        Log.i(TAG, "会话已解锁（DataKey 已缓存）");
+        Log.i(TAG, "会话已解锁（DataKey 已缓存） - sessionStartTime=" + sessionStartTime);
     }
 
     /**
@@ -149,6 +165,15 @@ public class CryptoSession {
         sessionStartTime = 0;
 
         Log.i(TAG, "会话已清除（DataKey 已从内存移除）");
+    }
+
+    /**
+     * 锁定会话（别名方法，与 clear() 相同）
+     *
+     * 安全清除 DataKey，将内存清零
+     */
+    public void lock() {
+        clear();
     }
 
     /**
@@ -214,6 +239,27 @@ public class CryptoSession {
             sessionStartTime = System.currentTimeMillis();
             Log.d(TAG, "会话已刷新");
         }
+    }
+
+    /**
+     * 获取 DataKey（Guarded Execution 模式）
+     *
+     * 与 getDataKey() 的区别：
+     * - getDataKey(): 返回 null（静默失败）
+     * - requireDataKey(): 抛出 SessionLockedException（显式失败）
+     *
+     * 此方法用于 Guarded Execution 模式，确保调用方必须处理会话锁定的情况。
+     *
+     * @return DataKey（保证非 null）
+     * @throws SessionLockedException 如果会话未解锁
+     */
+    @NonNull
+    public SecretKey requireDataKey() {
+        if (!isUnlocked()) {
+            Log.w(TAG, "requireDataKey: 会话未解锁，抛出 SessionLockedException");
+            throw new SessionLockedException("会话未解锁，无法获取 DataKey");
+        }
+        return dataKey;
     }
 
     /**

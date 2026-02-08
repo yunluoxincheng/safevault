@@ -7,14 +7,14 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.data.EncryptedPasswordEntity;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SessionGuard;
+import com.ttt.safevault.security.SessionLockedException;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -29,7 +29,11 @@ import javax.crypto.spec.GCMParameterSpec;
  * 密码管理器
  * 负责密码的加密、解密、保存、删除和搜索
  *
- * 架构升级：使用 CryptoSession 的 DataKey 进行加密操作（三层架构）
+ * 三层安全架构：使用 CryptoSession 的 DataKey 进行所有加密操作
+ * Guarded Execution 模式：所有敏感操作通过 SessionGuard 门控
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
+ * @since SafeVault 3.4.1 (引入 Guarded Execution 模式)
  */
 public class PasswordManager {
     private static final String TAG = "PasswordManager";
@@ -37,23 +41,34 @@ public class PasswordManager {
     private static final int IV_SIZE = 12; // GCM推荐IV大小
     private static final int TAG_SIZE = 128; // GCM认证标签大小
 
-    private final CryptoManager cryptoManager; // 保留用于向后兼容
     private final PasswordDao passwordDao;
-    private final Context context;
+    private final CryptoSession cryptoSession;
+    private final SessionGuard sessionGuard;
 
-    public PasswordManager(@NonNull CryptoManager cryptoManager, @NonNull PasswordDao passwordDao) {
-        this.cryptoManager = cryptoManager;
+    /**
+     * 构造函数（三层架构 + Guarded Execution）
+     *
+     * @param passwordDao 密码数据访问对象
+     * @param context 上下文（用于获取 CryptoSession）
+     */
+    public PasswordManager(@NonNull PasswordDao passwordDao, @NonNull Context context) {
         this.passwordDao = passwordDao;
-        this.context = null; // 旧构造函数，不设置 context
+        this.cryptoSession = CryptoSession.getInstance();
+        this.sessionGuard = SessionGuard.getInstance();
+        Log.i(TAG, "PasswordManager 初始化（三层架构 + Guarded Execution）");
     }
 
     /**
-     * 新构造函数：支持三层架构
+     * 构造函数（兼容旧接口）
+     *
+     * @deprecated 使用 {@link #PasswordManager(PasswordDao, Context)} 代替
      */
-    public PasswordManager(@NonNull CryptoManager cryptoManager, @NonNull PasswordDao passwordDao, @NonNull Context context) {
-        this.cryptoManager = cryptoManager;
+    @Deprecated
+    public PasswordManager(@NonNull Object deprecatedCryptoManager, @NonNull PasswordDao passwordDao) {
         this.passwordDao = passwordDao;
-        this.context = context.getApplicationContext();
+        this.cryptoSession = CryptoSession.getInstance();
+        this.sessionGuard = SessionGuard.getInstance();
+        Log.w(TAG, "PasswordManager 使用旧构造函数（第一个参数已忽略）");
     }
 
     /**
@@ -90,26 +105,41 @@ public class PasswordManager {
     }
 
     /**
-     * 保存密码项
+     * 保存密码项（Guarded Execution 模式）
+     *
+     * 安全保证：
+     * - 通过 SessionGuard 确保会话已解锁
+     * - 如果会话未解锁，抛出 SessionLockedException
+     * - UI 层应捕获此异常并触发重新认证
+     *
+     * @param item 要保存的密码项
+     * @return 保存成功返回 ID，失败返回 -1
+     * @throws SessionLockedException 如果会话未解锁
      */
     public int saveItem(PasswordItem item) {
-        try {
-            EncryptedPasswordEntity entity = encryptItem(item);
+        // 使用 Guarded Execution 模式
+        return sessionGuard.runWithUnlockedSession(() -> {
+            try {
+                EncryptedPasswordEntity entity = encryptItem(item);
 
-            if (item.getId() > 0) {
-                // 更新现有记录
-                entity.setId(item.getId());
-                passwordDao.update(entity);
-                return item.getId();
-            } else {
-                // 插入新记录
-                long newId = passwordDao.insert(entity);
-                return (int) newId;
+                if (item.getId() > 0) {
+                    // 更新现有记录
+                    entity.setId(item.getId());
+                    passwordDao.update(entity);
+                    return item.getId();
+                } else {
+                    // 插入新记录
+                    long newId = passwordDao.insert(entity);
+                    return (int) newId;
+                }
+            } catch (SessionLockedException e) {
+                // 重新抛出会话锁定异常
+                throw e;
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to save item", e);
+                return -1;
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to save item", e);
-            return -1;
-        }
+        });
     }
 
     /**
@@ -171,93 +201,25 @@ public class PasswordManager {
     }
 
     /**
-     * 获取当前用于加密的密钥
-     * 优先使用 CryptoSession 的 DataKey（三层架构），降级使用 CryptoManager（向后兼容）
+     * 获取当前用于加密的密钥（Guarded Execution 模式）
+     *
+     * 使用 requireDataKey() 而不是 getDataKey()：
+     * - 如果会话未解锁，抛出 SessionLockedException
+     * - 保证返回值非 null
+     *
+     * @return DataKey（保证非 null）
+     * @throws SessionLockedException 如果会话未解锁
      */
-    @Nullable
+    @NonNull
     private SecretKey getEncryptionKey() {
-        // 优先使用新三层架构的 CryptoSession
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        SecretKey dataKey = cryptoSession.getDataKey();
-        if (dataKey != null) {
-            return dataKey;
-        }
-
-        // 降级使用旧 CryptoManager（向后兼容）
-        return cryptoManager.getMasterKey();
-    }
-
-    /**
-     * 尝试使用多个密钥解密（向后兼容）
-     * 优先使用 CryptoSession.DataKey，失败则尝试 CryptoManager.masterKey
-     */
-    @Nullable
-    private String decryptFieldWithMultipleKeys(@Nullable String encrypted) {
-        if (encrypted == null || encrypted.isEmpty()) {
-            return null;
-        }
-
-        String[] parts = encrypted.split(":", 2);
-        if (parts.length != 2) {
-            return null;
-        }
-
-        byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
-        byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
-
-        // 1. 优先尝试使用 CryptoSession.DataKey（新架构）
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        SecretKey dataKey = cryptoSession.getDataKey();
-        if (dataKey != null) {
-            String result = tryDecryptWithKey(ciphertext, iv, dataKey);
-            if (result != null) {
-                Log.d(TAG, "decryptField: 使用 CryptoSession.DataKey 解密成功");
-                return result;
-            }
-            Log.d(TAG, "decryptField: CryptoSession.DataKey 解密失败，尝试其他密钥");
-        }
-
-        // 2. 降级尝试使用 CryptoManager.masterKey（旧架构）
-        SecretKey masterKey = cryptoManager.getMasterKey();
-        if (masterKey != null) {
-            String result = tryDecryptWithKey(ciphertext, iv, masterKey);
-            if (result != null) {
-                Log.d(TAG, "decryptField: 使用 CryptoManager.masterKey 解密成功（旧数据）");
-                return result;
-            }
-            Log.d(TAG, "decryptField: CryptoManager.masterKey 解密失败");
-        }
-
-        Log.e(TAG, "decryptField: 所有密钥都尝试失败");
-        return null;
-    }
-
-    /**
-     * 尝试使用指定密钥解密
-     */
-    @Nullable
-    private String tryDecryptWithKey(byte[] ciphertext, byte[] iv, @NonNull SecretKey key) {
-        try {
-            Cipher cipher = Cipher.getInstance(ALGORITHM);
-            GCMParameterSpec spec = new GCMParameterSpec(TAG_SIZE, iv);
-            cipher.init(Cipher.DECRYPT_MODE, key, spec);
-
-            byte[] decrypted = cipher.doFinal(ciphertext);
-            return new String(decrypted, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            // 静默失败，返回 null 让调用者尝试下一个密钥
-            return null;
-        }
+        return cryptoSession.requireDataKey();
     }
 
     /**
      * 检查是否已解锁（三层架构）
      */
     private boolean isUnlocked() {
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        boolean sessionUnlocked = cryptoSession.isUnlocked();
-        Log.d(TAG, "isUnlocked: CryptoSession状态=" + sessionUnlocked);
-        return sessionUnlocked;
+        return cryptoSession.isUnlocked();
     }
 
     /**
@@ -326,11 +288,35 @@ public class PasswordManager {
 
     /**
      * 解密单个字段，输入格式: iv:ciphertext
-     * 使用多重密钥解密（向后兼容：先尝试 DataKey，失败则尝试 masterKey）
+     * 使用 CryptoSession.DataKey 解密（三层架构）
      */
     @Nullable
     private String decryptField(@Nullable String encrypted) {
-        return decryptFieldWithMultipleKeys(encrypted);
+        if (encrypted == null || encrypted.isEmpty()) {
+            return null;
+        }
+
+        String[] parts = encrypted.split(":", 2);
+        if (parts.length != 2) {
+            return null;
+        }
+
+        try {
+            byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
+            byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+
+            SecretKey dataKey = getEncryptionKey();
+
+            Cipher cipher = Cipher.getInstance(ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(TAG_SIZE, iv);
+            cipher.init(Cipher.DECRYPT_MODE, dataKey, spec);
+
+            byte[] decrypted = cipher.doFinal(ciphertext);
+            return new String(decrypted, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            Log.e(TAG, "decryptField: 解密失败", e);
+            return null;
+        }
     }
 
     /**

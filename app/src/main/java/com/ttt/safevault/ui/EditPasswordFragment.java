@@ -1,5 +1,6 @@
 package com.ttt.safevault.ui;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -93,6 +94,19 @@ public class EditPasswordFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // 检查会话状态（Guarded Execution 模式）
+        if (backendService != null && !backendService.isUnlocked()) {
+            android.util.Log.w("EditPasswordFragment", "会话未解锁，跳转到登录页面");
+            showError("会话已锁定，请重新登录");
+
+            // 跳转到登录页面
+            Intent intent = new Intent(requireContext(), LoginActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            requireActivity().finish();
+            return;
+        }
 
         initViews(view);
         initViewModel();

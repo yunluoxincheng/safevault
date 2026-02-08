@@ -90,6 +90,13 @@ public interface BackendService {
     String getMasterPassword();
 
     /**
+     * 设置当前会话的主密码
+     * 注意：主密码只保存在内存中，不再保存到生物识别存储
+     * @param masterPassword 主密码
+     */
+    void setSessionMasterPassword(String masterPassword);
+
+    /**
      * 检查应用是否已初始化（是否已设置主密码）
      * @return true表示已初始化，false表示需要设置主密码
      */
@@ -406,7 +413,7 @@ public interface BackendService {
      * 用于登录时获取私钥数据
      * @return 加密的私钥数据（包含 encryptedData, iv, salt），失败返回 null
      */
-    com.ttt.safevault.security.KeyManager.EncryptedPrivateKey downloadEncryptedPrivateKey();
+    com.ttt.safevault.service.manager.EncryptionSyncManager.EncryptedPrivateKey downloadEncryptedPrivateKey();
 
     /**
      * 上传加密的密码库数据到云端

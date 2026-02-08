@@ -35,6 +35,48 @@ public class SafeVaultApplication extends Application implements Application.Act
 
         // 加载并应用主题设置
         applyThemeSettings();
+
+        // 清理旧安全架构的遗留数据
+        cleanupLegacyData();
+    }
+
+    /**
+     * 清理旧安全架构的遗留数据
+     * - 清空密码数据库表（旧架构加密的数据无法解密）
+     * - 清理 SharedPreferences 中的旧数据
+     */
+    private void cleanupLegacyData() {
+        try {
+            // 1. 清理 crypto_prefs 中的会话数据
+            android.content.SharedPreferences cryptoPrefs =
+                    getSharedPreferences("crypto_prefs", MODE_PRIVATE);
+            cryptoPrefs.edit()
+                    .remove("session_master_key")
+                    .remove("session_master_iv")
+                    .remove("unlock_time")
+                    .remove("is_locked")
+                    .apply();
+            Log.i(TAG, "已清理 crypto_prefs 中的旧会话数据");
+
+            // 2. 删除 key_prefs 整个文件
+            android.content.SharedPreferences keyPrefs =
+                    getSharedPreferences("key_prefs", MODE_PRIVATE);
+            keyPrefs.edit().clear().commit();
+            Log.i(TAG, "已删除 key_prefs 整个文件");
+
+            // 3. 清理 autofill_prefs 中的 master_password
+            android.content.SharedPreferences autofillPrefs =
+                    getSharedPreferences("autofill_prefs", MODE_PRIVATE);
+            autofillPrefs.edit()
+                    .remove("master_password")
+                    .apply();
+            Log.i(TAG, "已清理 autofill_prefs 中的明文主密码");
+
+            Log.i(TAG, "旧安全架构遗留数据清理完成");
+
+        } catch (Exception e) {
+            Log.e(TAG, "清理旧安全架构遗留数据失败", e);
+        }
     }
 
     @Override

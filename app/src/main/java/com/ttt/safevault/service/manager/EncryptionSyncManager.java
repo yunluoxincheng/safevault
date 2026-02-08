@@ -9,18 +9,20 @@ import androidx.annotation.Nullable;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.security.KeyManager;
 
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
  * 加密数据同步管理器
  * 负责加密私钥和密码库数据的上传下载
+ *
+ * 三层安全架构：移除 KeyManager 依赖，使用 EncryptedPrivateKey 内部类
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  */
 public class EncryptionSyncManager {
     private static final String TAG = "EncryptionSyncManager";
@@ -70,6 +72,33 @@ public class EncryptionSyncManager {
 
         public static SyncResult conflict(long cloudVersion, long localVersion) {
             return new SyncResult(false, "数据冲突：云端版本 " + cloudVersion + "，本地版本 " + localVersion, 0);
+        }
+    }
+
+    /**
+     * 加密的私钥（用于云端同步）
+     */
+    public static class EncryptedPrivateKey {
+        private final String encryptedKey;
+        private final String iv;
+        private final String salt;
+
+        public EncryptedPrivateKey(String encryptedKey, String iv, String salt) {
+            this.encryptedKey = encryptedKey;
+            this.iv = iv;
+            this.salt = salt;
+        }
+
+        public String getEncryptedKey() {
+            return encryptedKey;
+        }
+
+        public String getIv() {
+            return iv;
+        }
+
+        public String getSalt() {
+            return salt;
         }
     }
 
@@ -132,7 +161,7 @@ public class EncryptionSyncManager {
      * 下载加密私钥
      */
     @Nullable
-    public KeyManager.EncryptedPrivateKey downloadEncryptedPrivateKey() {
+    public EncryptedPrivateKey downloadEncryptedPrivateKey() {
         try {
             String userId = tokenManager.getUserId();
             String accessToken = tokenManager.getAccessToken();
@@ -163,7 +192,7 @@ public class EncryptionSyncManager {
                     .apply();
 
                 Log.d(TAG, "Private key downloaded successfully, version: " + response.getVersion());
-                return new KeyManager.EncryptedPrivateKey(
+                return new EncryptedPrivateKey(
                     response.getEncryptedPrivateKey(),
                     response.getIv(),
                     response.getSalt()
@@ -463,26 +492,29 @@ public class EncryptionSyncManager {
         Log.d(TAG, "Uploading local data to overwrite cloud. Local version: " + localVersion);
 
         try {
-            // 1. 获取 CryptoManager 实例
-            com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
+            // 1. 获取 BackupEncryptionManager 实例
+            com.ttt.safevault.security.BackupEncryptionManager backupEncryptionManager =
+                com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
 
             // 2. 检查应用是否已解锁
-            if (!cryptoManager.isUnlocked()) {
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+            if (!cryptoSession.isUnlocked()) {
                 Log.e(TAG, "Cannot upload vault: app is locked");
                 return SyncResult.failure("应用已锁定，请先解锁");
             }
 
             // 3. 获取主密码（用于加密备份数据）
-            String masterPassword = cryptoManager.getMasterPassword();
+            // 从 BackendService 获取内存中的主密码
+            com.ttt.safevault.model.BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
                 Log.e(TAG, "Cannot upload vault: master password not available");
                 return SyncResult.failure("无法获取主密码，请重新解锁应用");
             }
 
-            // 4. 获取 BackendService 来读取所有密码条目
-            com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            // 4. 获取所有密码条目
 
             // 5. 获取所有密码数据（在后台线程执行）
             java.util.List<com.ttt.safevault.model.PasswordItem> items;
@@ -534,14 +566,14 @@ public class EncryptionSyncManager {
                 return SyncResult.failure("无法获取用户邮箱");
             }
 
-            String fixedSalt = generateVaultSaltForUser(email);
+            String fixedSalt = backupEncryptionManager.getOrGenerateUserSalt(email);
             Log.d(TAG, "Using fixed salt for encryption based on email: " + email);
 
-            // 8. 使用主密码和固定 salt 加密数据
-            com.ttt.safevault.utils.BackupCryptoUtil.EncryptionResult encryptionResult =
-                com.ttt.safevault.utils.BackupCryptoUtil.encryptWithSalt(jsonData, masterPassword, fixedSalt);
+            // 8. 使用主密码和固定 salt 加密数据（云端同步模式）
+            com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptionResult =
+                backupEncryptionManager.encryptForCloudSync(jsonData, masterPassword, fixedSalt);
 
-            Log.d(TAG, "Data encrypted successfully with fixed salt");
+            Log.d(TAG, "Data encrypted successfully with fixed salt (Argon2id)");
 
             // 9. 上传加密数据到服务器
             boolean uploadSuccess = uploadEncryptedVaultData(
@@ -583,21 +615,25 @@ public class EncryptionSyncManager {
         Log.d(TAG, "IV length: " + (cloudVault.iv != null ? cloudVault.iv.length() : "null"));
 
         try {
-            // 1. 获取 CryptoManager 实例
-            com.ttt.safevault.crypto.CryptoManager cryptoManager =
-                com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
-            Log.d(TAG, "CryptoManager obtained, isUnlocked: " + cryptoManager.isUnlocked());
+            // 1. 获取 BackupEncryptionManager 实例
+            com.ttt.safevault.security.BackupEncryptionManager backupEncryptionManager =
+                com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
 
             // 2. 检查应用是否已解锁
-            if (!cryptoManager.isUnlocked()) {
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+            if (!cryptoSession.isUnlocked()) {
                 Log.e(TAG, "Cannot import vault: app is locked");
                 return SyncResult.failure("应用已锁定，请先解锁");
             }
 
             // 3. 获取主密码
-            String masterPassword = cryptoManager.getMasterPassword();
+            // 从 BackendService 获取内存中的主密码
+            com.ttt.safevault.model.BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
-                Log.e(TAG, "Cannot import vault: master password not available (session password was lost after app restart)");
+                Log.e(TAG, "Cannot import vault: master password not available");
                 Log.e(TAG, "Please log out and log in again to restore full functionality");
                 return SyncResult.failure("无法获取主密码，请退出后重新登录");
             }
@@ -618,14 +654,14 @@ public class EncryptionSyncManager {
                 return SyncResult.failure("无法获取用户邮箱");
             }
 
-            String fixedSalt = generateVaultSaltForUser(email);
+            String fixedSalt = backupEncryptionManager.getOrGenerateUserSalt(email);
             Log.d(TAG, "Using fixed salt for decryption based on email: " + email);
             Log.d(TAG, "Generated salt (Base64): " + fixedSalt);
             Log.d(TAG, "Salt length: " + fixedSalt.length());
             Log.d(TAG, "IV (Base64): " + cloudVault.iv);
             Log.d(TAG, "AuthTag (Base64): " + (cloudVault.authTag != null ? cloudVault.authTag : "null"));
 
-            // 5. 解密数据（使用与加密时相同的固定 salt）
+            // 5. 解密数据（使用与加密时相同的固定 salt，Argon2id）
             String decryptedJson;
             try {
                 Log.d(TAG, "Starting decryption...");
@@ -638,15 +674,15 @@ public class EncryptionSyncManager {
                     return SyncResult.failure("云端数据缺少认证标签，无法解密");
                 }
 
-                decryptedJson = com.ttt.safevault.utils.BackupCryptoUtil.decrypt(
+                decryptedJson = backupEncryptionManager.decryptCloudSync(
                     cloudVault.encryptedData,
                     masterPassword,
                     fixedSalt,  // 使用基于邮箱生成的固定 salt
                     cloudVault.iv,
-                    cloudVault.authTag  // 添加 authTag 参数
+                    cloudVault.authTag
                 );
 
-                Log.d(TAG, "Vault data decrypted successfully");
+                Log.d(TAG, "Vault data decrypted successfully (Argon2id)");
                 Log.d(TAG, "Decrypted JSON length: " + decryptedJson.length());
                 Log.d(TAG, "Decrypted JSON (first 200 chars): " +
                     (decryptedJson.length() > 200 ? decryptedJson.substring(0, 200) + "..." : decryptedJson));
@@ -682,8 +718,6 @@ public class EncryptionSyncManager {
 
             // 7. 保存到本地数据库（在后台线程执行）
             try {
-                com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
                 Log.d(TAG, "BackendService obtained");
 
                 // 使用 CountDownLatch 等待后台任务完成

@@ -22,7 +22,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.ttt.safevault.R;
 import com.ttt.safevault.ServiceLocator;
-import com.ttt.safevault.crypto.KeyDerivationManager;
 import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.dto.request.CreateShareRequest;
@@ -411,22 +410,44 @@ public class ShareActivity extends AppCompatActivity {
         // 在后台线程执行加密和云端分享
         new Thread(() -> {
             try {
-                KeyDerivationManager keyManager = new KeyDerivationManager(this);
+                // SafeVault 3.4.0：使用 SecureKeyStorageManager 替代 KeyDerivationManager
+                com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
+                com.ttt.safevault.security.CryptoSession cryptoSession =
+                    com.ttt.safevault.security.CryptoSession.getInstance();
+
+                if (!cryptoSession.isUnlocked()) {
+                    runOnUiThread(() -> {
+                        hideLoading();
+                        Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
 
                 // 1. 获取接收方公钥
                 String receiverPublicKeyBase64 = selectedContact.publicKey;
                 PublicKey receiverPublicKey = parsePublicKey(receiverPublicKeyBase64);
 
-                // 2. 获取发送方密钥对
-                KeyPair senderKeyPair = keyManager.deriveKeyPairFromMasterPassword(
-                    masterPassword,
-                    userEmail
-                );
+                // 2. 获取发送方密钥对（从 SecureKeyStorageManager）
+                javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+                java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
+                java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
+
+                if (privateKey == null || publicKey == null) {
+                    runOnUiThread(() -> {
+                        hideLoading();
+                        Toast.makeText(this, "无法获取密钥对", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+
+                // 创建临时 KeyPair 对象
+                java.security.KeyPair senderKeyPair = new java.security.KeyPair(publicKey, privateKey);
 
                 // 3. 创建分享数据包
                 ShareDataPacket dataPacket = new ShareDataPacket();
                 dataPacket.version = "1.0";
-                dataPacket.senderId = keyManager.generateUserId(userEmail);
+                dataPacket.senderId = generateUserId(userEmail); // 使用本地方法
                 dataPacket.senderPublicKey = Base64.encodeToString(
                     senderKeyPair.getPublic().getEncoded(),
                     Base64.NO_WRAP
@@ -529,6 +550,21 @@ public class ShareActivity extends AppCompatActivity {
             new java.security.spec.X509EncodedKeySpec(keyBytes);
         java.security.KeyFactory factory = java.security.KeyFactory.getInstance("RSA");
         return factory.generatePublic(spec);
+    }
+
+    /**
+     * 从邮箱生成用户ID（SafeVault 3.4.0：本地方法，替代 KeyDerivationManager）
+     */
+    private String generateUserId(String email) {
+        if (email == null || email.isEmpty()) {
+            return "user_unknown";
+        }
+        String encoded = android.util.Base64.encodeToString(
+            email.getBytes(),
+            android.util.Base64.NO_WRAP | android.util.Base64.URL_SAFE
+        );
+        // 取前16个字符作为用户ID
+        return "user_" + encoded.substring(0, Math.min(16, encoded.length()));
     }
 
     private String getMasterPassword() {

@@ -6,7 +6,6 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.BackendService;
@@ -14,25 +13,40 @@ import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.service.manager.*;
 
+import java.security.SecureRandom;
 import java.util.List;
+
+import javax.crypto.SecretKey;
 
 /**
  * BackendService接口的具体实现
  * 采用组合模式，将各个功能模块委托给专门的Manager处理
+ *
+ * 三层安全架构：完全移除旧的安全架构，使用新的三层架构
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  */
 public class BackendServiceImpl implements BackendService {
 
     private static final String TAG = "BackendServiceImpl";
     private static final String PREFS_NAME = "backend_prefs";
     private static final String PREF_BACKGROUND_TIME = "background_time";
+    private static final String CRYPTO_PREFS_NAME = "crypto_prefs";
+    private static final String KEY_MASTER_SALT = "master_salt";
+    private static final String KEY_INITIALIZED = "initialized";
 
     private final Context context;
-    private final CryptoManager cryptoManager;
     private final SecurityConfig securityConfig;
     private final SharedPreferences prefs;
+    private final SharedPreferences cryptoPrefs;
+
+    // 三层安全架构组件
+    private final CryptoSession cryptoSession;
+    private final SecureKeyStorageManager secureKeyStorage;
 
     // 各功能模块的Manager
     private final PasswordManager passwordManager;
@@ -45,10 +59,13 @@ public class BackendServiceImpl implements BackendService {
 
     public BackendServiceImpl(@NonNull Context context) {
         this.context = context.getApplicationContext();
-        // 使用 ServiceLocator 的共享 CryptoManager，确保解锁状态同步
-        this.cryptoManager = com.ttt.safevault.ServiceLocator.getInstance().getCryptoManager();
         this.securityConfig = new SecurityConfig(context);
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.cryptoPrefs = context.getSharedPreferences(CRYPTO_PREFS_NAME, Context.MODE_PRIVATE);
+
+        // 初始化三层安全架构组件
+        this.cryptoSession = CryptoSession.getInstance();
+        this.secureKeyStorage = SecureKeyStorageManager.getInstance(context);
 
         // 初始化数据库访问层
         PasswordDao passwordDao = AppDatabase.getInstance(context).passwordDao();
@@ -58,187 +75,223 @@ public class BackendServiceImpl implements BackendService {
                 com.ttt.safevault.network.RetrofitClient.getInstance(context);
 
         // 初始化各功能模块的Manager
-        this.passwordManager = new PasswordManager(cryptoManager, passwordDao, context);
+        this.passwordManager = new PasswordManager(passwordDao, context);
         this.passwordGenerator = new PasswordGenerator();
-        this.dataImportExportManager = new DataImportExportManager(context, cryptoManager, passwordManager);
+        this.dataImportExportManager = new DataImportExportManager(context, passwordManager);
         this.pinCodeManager = new PinCodeManager(context, securityConfig);
-        this.accountManager = new AccountManager(context, cryptoManager, passwordManager, securityConfig, retrofitClient);
-        this.cloudAuthManager = new CloudAuthManager(context, cryptoManager, retrofitClient);
+        this.accountManager = new AccountManager(context, passwordManager, securityConfig, retrofitClient);
+        this.cloudAuthManager = new CloudAuthManager(context, retrofitClient);
         this.encryptionSyncManager = new EncryptionSyncManager(context, retrofitClient);
+
+        Log.i(TAG, "BackendServiceImpl 初始化（三层安全架构）");
     }
 
     // ==================== 加密/解密相关 ====================
 
     @Override
     public boolean unlock(String masterPassword) {
-        boolean success = cryptoManager.unlock(masterPassword);
-
-        // 解锁成功后保存密码到内存（不再加密存储到磁盘）
-        if (success) {
-            accountManager.setSessionMasterPassword(masterPassword);
-            // ❌ 已删除：不再保存明文密码到 autofill_prefs
-            // 改用三层架构：生物识别 → DeviceKey → DataKey → RSA私钥
-
-            // 🔥 解密 DataKey 并缓存到 CryptoSession（会话解锁态）
-            cacheDataKeyToSession(masterPassword);
-
-            // 🔥 清理旧版明文主密码存储（如果存在）
-            cleanupLegacyPasswordStorage();
-        }
-
-        return success;
-    }
-
-    /**
-     * 解密 DataKey 并缓存到 CryptoSession
-     *
-     * 流程：
-     * 1. 派生 PasswordKey（使用 Argon2id）
-     * 2. 解密 DataKey（从 PasswordKey 加密版本）
-     * 3. 缓存到 CryptoSession（会话解锁态）
-     *
-     * @param masterPassword 主密码
-     */
-    private void cacheDataKeyToSession(String masterPassword) {
         try {
-            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(context);
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                    com.ttt.safevault.security.CryptoSession.getInstance();
+            Log.d(TAG, "unlock() 被调用");
 
             // 获取盐值
-            android.content.SharedPreferences cryptoPrefs =
-                    context.getSharedPreferences("crypto_prefs", Context.MODE_PRIVATE);
-            String saltBase64 = cryptoPrefs.getString("master_salt", null);
-
+            String saltBase64 = cryptoPrefs.getString(KEY_MASTER_SALT, null);
             if (saltBase64 == null) {
-                Log.w(TAG, "盐值未找到，无法缓存 DataKey 到会话");
-                return;
+                Log.e(TAG, "盐值未找到，请先初始化");
+                return false;
             }
+            Log.d(TAG, "盐值已找到");
 
-            // 派生 PasswordKey 并解密 DataKey
-            javax.crypto.SecretKey passwordKey = secureStorage.derivePasswordKey(masterPassword, saltBase64);
-            javax.crypto.SecretKey dataKey = secureStorage.decryptDataKeyWithPassword(masterPassword, saltBase64);
+            // 派生 PasswordKey（使用 Argon2id）
+            Log.d(TAG, "开始派生 PasswordKey（Argon2id）");
+            SecretKey passwordKey = secureKeyStorage.derivePasswordKey(masterPassword, saltBase64);
+            Log.d(TAG, "PasswordKey 派生成功");
 
-            // 缓存到 CryptoSession
+            // 解密 DataKey（从 PasswordKey 加密版本）
+            Log.d(TAG, "开始解密 DataKey");
+            SecretKey dataKey = secureKeyStorage.decryptDataKeyWithPassword(masterPassword, saltBase64);
+            if (dataKey == null) {
+                Log.e(TAG, "DataKey 解密失败（返回 null）");
+                return false;
+            }
+            Log.d(TAG, "DataKey 解密成功");
+
+            // 缓存到 CryptoSession（会话解锁态）
+            Log.d(TAG, "调用 cryptoSession.unlockWithDataKey()");
             cryptoSession.unlockWithDataKey(dataKey);
+            Log.d(TAG, "cryptoSession.unlockWithDataKey() 完成");
 
-            Log.i(TAG, "DataKey 已缓存到会话（会话解锁态）");
+            // 保存主密码到内存（用于云端认证等）
+            accountManager.setSessionMasterPassword(masterPassword);
+
+            Log.i(TAG, "解锁成功（三层架构）");
+            return true;
 
         } catch (Exception e) {
-            Log.e(TAG, "缓存 DataKey 到会话失败", e);
-            // 不影响解锁流程，只是会话功能不可用
-        }
-    }
-
-    /**
-     * 保存密码供自动填充服务使用
-     * ❌ 已删除：此方法已废弃，不再保存明文密码到磁盘
-     * 改用三层架构：生物识别 → DeviceKey → DataKey → RSA私钥
-     */
-    private void savePasswordForAutofill(String password) {
-        // 此方法已废弃，不再使用
-        Log.w(TAG, "savePasswordForAutofill 已废弃，不再保存明文密码");
-    }
-
-    /**
-     * 清理旧版明文主密码存储
-     *
-     * 在应用解锁/初始化时自动清理 autofill_prefs 中的 master_password
-     * 仅在已迁移到三层架构后执行清理
-     */
-    private void cleanupLegacyPasswordStorage() {
-        try {
-            android.content.SharedPreferences autofillPrefs =
-                    context.getSharedPreferences("autofill_prefs", Context.MODE_PRIVATE);
-            String oldPassword = autofillPrefs.getString("master_password", null);
-
-            if (oldPassword != null) {
-                // 检查是否已迁移到三层架构
-                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                        com.ttt.safevault.security.SecureKeyStorageManager.getInstance(context);
-
-                if (secureStorage.isMigrated()) {
-                    Log.i(TAG, "检测到旧版明文主密码，开始清理");
-                    autofillPrefs.edit()
-                            .remove("master_password")
-                            .commit();
-                    Log.i(TAG, "旧版明文主密码已清理（已迁移到三层架构）");
-                } else {
-                    Log.w(TAG, "发现旧版明文主密码，但尚未迁移到三层架构");
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "清理旧版明文主密码失败", e);
+            Log.e(TAG, "解锁失败", e);
+            return false;
         }
     }
 
     @Override
     public void lock() {
-        cryptoManager.lock();
-
-        // 🔥 清除 CryptoSession 中的 DataKey（会话锁定态）
-        com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
+        // 清除 CryptoSession 中的 DataKey（会话锁定态）
         cryptoSession.clear();
-        Log.d(TAG, "CryptoSession 已清除（会话锁定态）");
+        Log.d(TAG, "已锁定（CryptoSession 已清除）");
     }
 
     @Override
     public boolean isUnlocked() {
-        // 新架构：使用 CryptoSession 检查会话状态
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        boolean sessionUnlocked = cryptoSession.isUnlocked();
-        Log.d(TAG, "isUnlocked: CryptoSession状态=" + sessionUnlocked);
-        return sessionUnlocked;
+        // 使用 CryptoSession 检查会话状态
+        return cryptoSession.isUnlocked();
     }
 
     @Override
     public String getMasterPassword() {
-        return cryptoManager.getMasterPassword();
+        // 从 AccountManager 获取内存中的主密码
+        return accountManager.getSessionMasterPassword();
+    }
+
+    @Override
+    public void setSessionMasterPassword(String masterPassword) {
+        // 设置会话主密码到 AccountManager（仅内存存储）
+        accountManager.setSessionMasterPassword(masterPassword);
     }
 
     @Override
     public boolean isInitialized() {
-        return cryptoManager.isInitialized();
+        // 检查是否已初始化（盐值存在）
+        return cryptoPrefs.contains(KEY_MASTER_SALT) &&
+               cryptoPrefs.getBoolean(KEY_INITIALIZED, false);
     }
 
     @Override
     public boolean initialize(String masterPassword) {
-        boolean success = cryptoManager.initialize(masterPassword);
+        try {
+            // 生成盐值
+            String saltBase64 = generateSalt();
 
-        // 初始化成功后保存主密码到内存（不再加密存储到磁盘）
-        if (success) {
+            // 派生 PasswordKey（使用 Argon2id）
+            SecretKey passwordKey = secureKeyStorage.derivePasswordKey(masterPassword, saltBase64);
+
+            // 生成随机 DataKey
+            SecretKey dataKey = secureKeyStorage.generateDataKey();
+
+            // 生成 RSA 密钥对
+            java.security.KeyPair keyPair = generateRSAKeyPair();
+            if (keyPair == null) {
+                Log.e(TAG, "RSA 密钥对生成失败");
+                return false;
+            }
+
+            // 双重加密 DataKey 并保存（使用 SecureKeyStorageManager）
+            // 注意：首次初始化时，用户可能还没有启用生物识别，DeviceKey 加密可能失败（这是允许的）
+            SecretKey deviceKey = secureKeyStorage.getOrCreateDeviceKey();
+            boolean dataKeySaved = secureKeyStorage.encryptAndSaveDataKey(dataKey, passwordKey, deviceKey);
+            if (!dataKeySaved) {
+                Log.e(TAG, "DataKey 保存失败");
+                return false;
+            }
+
+            // 加密并保存 RSA 私钥
+            boolean saved = secureKeyStorage.encryptAndSaveRsaPrivateKey(
+                    keyPair.getPrivate(), dataKey, keyPair.getPublic());
+
+            if (!saved) {
+                Log.e(TAG, "RSA 私钥保存失败");
+                return false;
+            }
+
+            // 保存盐值和初始化标志（到 cryptoPrefs）
+            cryptoPrefs.edit()
+                    .putString(KEY_MASTER_SALT, saltBase64)
+                    .putBoolean(KEY_INITIALIZED, true)
+                    .commit();
+
+            // 缓存到 CryptoSession（会话解锁态）
+            cryptoSession.unlockWithDataKey(dataKey);
+
+            // 保存主密码到内存
             accountManager.setSessionMasterPassword(masterPassword);
-            // ❌ 已删除：不再保存明文密码到 autofill_prefs
 
-            // 🔥 解密 DataKey 并缓存到 CryptoSession（会话解锁态）
-            cacheDataKeyToSession(masterPassword);
+            Log.i(TAG, "初始化成功（三层架构）");
+            return true;
 
-            // 🔥 清理旧版明文主密码存储（如果存在）
-            cleanupLegacyPasswordStorage();
+        } catch (Exception e) {
+            Log.e(TAG, "初始化失败", e);
+            return false;
         }
-
-        return success;
     }
 
     @Override
     public boolean changeMasterPassword(String oldPassword, String newPassword) {
-        if (!cryptoManager.changeMasterPassword(oldPassword, newPassword)) {
-            return false;
-        }
-
-        // 需要重新加密所有数据
         try {
-            List<PasswordItem> items = passwordManager.getAllItems();
-            for (PasswordItem item : items) {
-                passwordManager.saveItem(item);
+            // 1. 验证旧密码
+            String saltBase64 = cryptoPrefs.getString(KEY_MASTER_SALT, null);
+            if (saltBase64 == null) {
+                Log.e(TAG, "盐值未找到");
+                return false;
             }
+
+            // 2. 使用旧密码解密 DataKey
+            SecretKey dataKey = secureKeyStorage.decryptDataKeyWithPassword(oldPassword, saltBase64);
+
+            // 3. 生成新盐值
+            String newSaltBase64 = generateSalt();
+
+            // 4. 使用新密码派生新 PasswordKey
+            SecretKey newPasswordKey = secureKeyStorage.derivePasswordKey(newPassword, newSaltBase64);
+
+            // 5. 获取 DeviceKey（如果存在）
+            SecretKey deviceKey = null;
+            if (secureKeyStorage.hasDeviceEncryptedDataKey()) {
+                deviceKey = secureKeyStorage.getOrCreateDeviceKey();
+            }
+
+            // 6. 使用新 PasswordKey 重新加密 DataKey（使用 SecureKeyStorageManager）
+            boolean dataKeySaved = secureKeyStorage.encryptAndSaveDataKey(dataKey, newPasswordKey, deviceKey);
+            if (!dataKeySaved) {
+                Log.e(TAG, "使用新密码重新加密 DataKey 失败");
+                return false;
+            }
+
+            // 7. 保存新的盐值（到 cryptoPrefs）
+            cryptoPrefs.edit()
+                    .putString(KEY_MASTER_SALT, newSaltBase64)
+                    .commit();
+
+            // 8. 更新内存中的主密码
+            accountManager.setSessionMasterPassword(newPassword);
+
+            Log.i(TAG, "主密码修改成功");
             return true;
+
         } catch (Exception e) {
-            Log.e(TAG, "Failed to re-encrypt data", e);
+            Log.e(TAG, "主密码修改失败", e);
             return false;
         }
+    }
+
+    /**
+     * 生成 RSA 密钥对
+     */
+    private java.security.KeyPair generateRSAKeyPair() {
+        try {
+            java.security.KeyPairGenerator keyPairGenerator = java.security.KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(2048);
+            return keyPairGenerator.generateKeyPair();
+        } catch (Exception e) {
+            Log.e(TAG, "RSA 密钥对生成失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 生成随机盐值
+     */
+    private String generateSalt() {
+        byte[] salt = new byte[16];
+        new SecureRandom().nextBytes(salt);
+        return android.util.Base64.encodeToString(salt, android.util.Base64.NO_WRAP);
     }
 
     // ==================== 密码管理相关 ====================
@@ -396,7 +449,7 @@ public class BackendServiceImpl implements BackendService {
     }
 
     @Override
-    public com.ttt.safevault.security.KeyManager.EncryptedPrivateKey downloadEncryptedPrivateKey() {
+    public com.ttt.safevault.service.manager.EncryptionSyncManager.EncryptedPrivateKey downloadEncryptedPrivateKey() {
         return encryptionSyncManager.downloadEncryptedPrivateKey();
     }
 

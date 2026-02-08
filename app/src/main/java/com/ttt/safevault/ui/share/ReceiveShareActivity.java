@@ -16,7 +16,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.gson.Gson;
 import com.ttt.safevault.R;
 import com.ttt.safevault.ServiceLocator;
-import com.ttt.safevault.crypto.KeyDerivationManager;
 import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.databinding.ActivityReceiveShareBinding;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;
@@ -55,7 +54,6 @@ public class ReceiveShareActivity extends AppCompatActivity {
     private ReceiveShareViewModel viewModel;
 
     // 加密管理器
-    private KeyDerivationManager keyManager;
     private ShareEncryptionManager encryptionManager;
 
     // 分享数据
@@ -88,7 +86,6 @@ public class ReceiveShareActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         // 初始化加密管理器
-        keyManager = new KeyDerivationManager(this);
         encryptionManager = new ShareEncryptionManager();
 
         // 获取分享数据，支持多种方式：
@@ -247,11 +244,35 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 return;
             }
 
-            // 获取自己的密钥对（接收方）
-            KeyPair receiverKeyPair = keyManager.deriveKeyPairFromMasterPassword(
-                masterPassword,
-                userEmail
-            );
+            // 获取自己的密钥对（接收方）- SafeVault 3.4.0：使用 SecureKeyStorageManager
+            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+
+            if (!cryptoSession.isUnlocked()) {
+                runOnUiThread(() -> {
+                    binding.progressBar.setVisibility(View.GONE);
+                    binding.scrollView.setVisibility(View.VISIBLE);
+                    Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show();
+                });
+                return;
+            }
+
+            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            java.security.PrivateKey privateKey = secureStorage.decryptRsaPrivateKey(dataKey);
+            java.security.PublicKey publicKey = secureStorage.getRsaPublicKey();
+
+            if (privateKey == null || publicKey == null) {
+                runOnUiThread(() -> {
+                    binding.progressBar.setVisibility(View.GONE);
+                    binding.scrollView.setVisibility(View.VISIBLE);
+                    Toast.makeText(this, "无法获取密钥对", Toast.LENGTH_SHORT).show();
+                });
+                return;
+            }
+
+            KeyPair receiverKeyPair = new java.security.KeyPair(publicKey, privateKey);
 
             // 从解密后的数据中获取发送方公钥
             // 由于新版本使用混合加密，我们需要使用 openEncryptedPacket() 方法
@@ -558,7 +579,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
     private String getMasterPassword() {
         try {
             return ServiceLocator.getInstance()
-                .getCryptoManager()
+                .getBackendService()
                 .getMasterPassword();
         } catch (Exception e) {
             return null;

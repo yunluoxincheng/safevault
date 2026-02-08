@@ -3,6 +3,7 @@ package com.ttt.safevault.viewmodel;
 import android.app.Application;
 import android.content.Context;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -10,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.ttt.safevault.crypto.Argon2KeyDerivationManager;
 import com.ttt.safevault.dto.response.AuthResponse;
 import com.ttt.safevault.dto.response.EmailLoginResponse;
 import com.ttt.safevault.dto.response.EmailRegistrationResponse;
@@ -18,7 +20,7 @@ import com.ttt.safevault.dto.response.VerifyEmailResponse;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.security.KeyManager;
+import com.ttt.safevault.security.SecureKeyStorageManager;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -31,6 +33,10 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
 
 /**
  * 用户认证ViewModel
+ *
+ * 三层安全架构：移除 KeyManager 依赖，使用 SecureKeyStorageManager 和 Argon2KeyDerivationManager
+ *
+ * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  */
 public class AuthViewModel extends AndroidViewModel {
     private static final String TAG = "AuthViewModel";
@@ -38,7 +44,8 @@ public class AuthViewModel extends AndroidViewModel {
     private final BackendService backendService;
     private final RetrofitClient retrofitClient;
     private final TokenManager tokenManager;
-    private final KeyManager keyManager;
+    private final SecureKeyStorageManager secureKeyStorage;
+    private final Argon2KeyDerivationManager argon2Manager;
     private final CompositeDisposable disposables = new CompositeDisposable();
 
     private final MutableLiveData<AuthResponse> authResponseLiveData = new MutableLiveData<>();
@@ -57,7 +64,36 @@ public class AuthViewModel extends AndroidViewModel {
         this.backendService = com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
         this.retrofitClient = RetrofitClient.getInstance(application);
         this.tokenManager = retrofitClient.getTokenManager();
-        this.keyManager = KeyManager.getInstance(application);
+        this.secureKeyStorage = SecureKeyStorageManager.getInstance(application);
+        this.argon2Manager = Argon2KeyDerivationManager.getInstance(application);
+    }
+
+    /**
+     * 获取设备ID
+     */
+    private String getDeviceId() {
+        return Settings.Secure.getString(
+            getApplication().getContentResolver(),
+            Settings.Secure.ANDROID_ID
+        );
+    }
+
+    /**
+     * 获取RSA公钥
+     */
+    private String getPublicKey() {
+        try {
+            java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
+            if (publicKey == null) {
+                Log.w(TAG, "RSA公钥尚未生成");
+                return null;
+            }
+            byte[] publicKeyBytes = publicKey.getEncoded();
+            return Base64.getEncoder().encodeToString(publicKeyBytes);
+        } catch (Exception e) {
+            Log.e(TAG, "获取RSA公钥失败", e);
+            return null;
+        }
     }
 
     /**
@@ -67,8 +103,8 @@ public class AuthViewModel extends AndroidViewModel {
         loadingLiveData.setValue(true);
 
         // 获取设备ID和公钥
-        String deviceId = keyManager.getDeviceId();
-        String publicKey = keyManager.getPublicKey();
+        String deviceId = getDeviceId();
+        String publicKey = getPublicKey();
 
         if (deviceId == null || publicKey == null) {
             loadingLiveData.setValue(false);
@@ -113,7 +149,7 @@ public class AuthViewModel extends AndroidViewModel {
         }
 
         // 获取设备ID
-        String deviceId = keyManager.getDeviceId();
+        String deviceId = getDeviceId();
         if (deviceId == null) {
             loadingLiveData.setValue(false);
             errorLiveData.setValue("设备ID获取失败");
@@ -153,7 +189,7 @@ public class AuthViewModel extends AndroidViewModel {
         loadingLiveData.setValue(true);
 
         // 获取设备ID
-        String deviceId = keyManager.getDeviceId();
+        String deviceId = getDeviceId();
         if (deviceId == null) {
             loadingLiveData.setValue(false);
             errorLiveData.setValue("设备ID获取失败");
@@ -379,7 +415,7 @@ public class AuthViewModel extends AndroidViewModel {
         loadingLiveData.setValue(true);
 
         // 获取设备ID
-        String deviceId = keyManager.getDeviceId();
+        String deviceId = getDeviceId();
         if (deviceId == null) {
             loadingLiveData.setValue(false);
             errorLiveData.setValue("设备ID获取失败");
@@ -394,8 +430,8 @@ public class AuthViewModel extends AndroidViewModel {
             .subscribe(
                 precheckResponse -> {
                     loginPrecheckLiveData.setValue(precheckResponse);
-                    // 第二步：使用 nonce 进行登录
-                    performLoginWithEmail(email, masterPassword, deviceId, precheckResponse.getNonce());
+                    // 第二步：使用 nonce 和 passwordVerifier 进行登录
+                    performLoginWithEmail(email, masterPassword, deviceId, precheckResponse);
                 },
                 error -> {
                     loadingLiveData.setValue(false);
@@ -409,16 +445,29 @@ public class AuthViewModel extends AndroidViewModel {
     }
 
     /**
-     * 执行邮箱登录（使用 nonce 进行签名）
+     * 执行邮箱登录（使用 nonce 和 passwordVerifier 进行签名）
+     *
+     * Challenge-Response 机制：
+     * 1. 服务器在 loginPrecheck 中返回 nonce 和 passwordVerifier
+     * 2. 客户端使用 passwordVerifier 作为 HMAC 密钥对 (email + deviceId + nonce) 进行签名
+     * 3. 服务器使用相同的 passwordVerifier 验证签名
+     *
+     * @param email 邮箱
+     * @param masterPassword 主密码（不再需要，保留参数用于兼容）
+     * @param deviceId 设备ID
+     * @param precheckResponse 登录预检查响应（包含 nonce 和 passwordVerifier）
      */
-    private void performLoginWithEmail(String email, String masterPassword, String deviceId, String nonce) {
+    private void performLoginWithEmail(String email, String masterPassword, String deviceId,
+                                       com.ttt.safevault.dto.response.LoginPrecheckResponse precheckResponse) {
         // 获取设备信息
         String deviceName = getDeviceName();
         String deviceType = "android";
         String osVersion = "Android " + Build.VERSION.RELEASE;
 
-        // 使用 nonce 生成派生密钥签名
-        String signature = generateDerivedKeySignatureWithNonce(email, deviceId, masterPassword, nonce);
+        // 使用服务器返回的 passwordVerifier 生成签名
+        String nonce = precheckResponse.getNonce();
+        String passwordVerifier = precheckResponse.getPasswordVerifier();
+        String signature = generateSignatureWithVerifier(email, deviceId, nonce, passwordVerifier);
 
         Disposable disposable = retrofitClient.getAuthServiceApi()
             .loginByEmail(new com.ttt.safevault.dto.request.LoginByEmailRequest(
@@ -450,47 +499,54 @@ public class AuthViewModel extends AndroidViewModel {
     }
 
     /**
-     * 生成派生密钥签名（使用 PBKDF2 和 nonce）
-     * Challenge-Response 机制：使用服务器生成的 nonce 进行签名
+     * 使用服务器返回的 passwordVerifier 生成 HMAC-SHA256 签名
+     *
+     * Challenge-Response 机制：
+     * - passwordVerifier 是用户注册时使用 Argon2id 派生的密钥
+     * - 服务器在 loginPrecheck 中返回此密钥
+     * - 客户端使用此密钥对 (email + deviceId + nonce) 进行 HMAC 签名
+     *
+     * @param email 邮箱
+     * @param deviceId 设备ID
+     * @param nonce 服务器生成的挑战码
+     * @param passwordVerifier Base64 编码的派生密钥
+     * @return Base64 编码的 HMAC-SHA256 签名
      */
-    private String generateDerivedKeySignatureWithNonce(String email, String deviceId, String masterPassword, String nonce) {
+    private String generateSignatureWithVerifier(String email, String deviceId, String nonce, String passwordVerifier) {
         try {
-            // 1. 获取或生成用户盐值
-            String salt = keyManager.getUserSalt(email);
-            if (salt == null) {
-                // 如果是首次登录，使用临时盐值生成签名
-                // 实际使用中，盐值应该在注册时生成并保存
-                salt = keyManager.generateSaltForUser(email);
-            }
+            // 解码 passwordVerifier 获取派生密钥字节数组
+            byte[] derivedKeyBytes = Base64.getDecoder().decode(passwordVerifier);
 
-            // 2. 从主密码派生密钥
-            javax.crypto.SecretKey derivedKey = keyManager.deriveKeyFromMasterPassword(masterPassword, salt);
-
-            // 3. 使用派生密钥对 nonce 进行 HMAC 签名
+            // 构造待签名数据：email + deviceId + nonce
             String data = email + deviceId + nonce;
             byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
 
+            // 使用派生密钥进行 HMAC-SHA256 签名
             javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
-            mac.init(derivedKey);
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(
+                    derivedKeyBytes, "HmacSHA256");
+            mac.init(secretKey);
             byte[] signatureBytes = mac.doFinal(dataBytes);
 
             String signature = Base64.getEncoder().encodeToString(signatureBytes);
 
-            Log.d(TAG, "Derived key signature generated successfully with nonce");
+            Log.d(TAG, "Signature generated with server-provided passwordVerifier");
             return signature;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to generate derived key signature with nonce", e);
-            // 降级处理（向后兼容）
-            try {
-                String data = email + deviceId + nonce;
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
-                return Base64.getEncoder().encodeToString(hash);
-            } catch (Exception ex) {
-                Log.e(TAG, "Failed to generate fallback signature", ex);
-                return "";
-            }
+            Log.e(TAG, "Failed to generate signature with passwordVerifier", e);
+            return "";
         }
+    }
+
+    /**
+     * @deprecated 旧方法，已被 generateSignatureWithVerifier 替代
+     * 保留此方法仅为向后兼容，不应再使用
+     */
+    @Deprecated
+    private String generateDerivedKeySignatureWithNonce(String email, String deviceId, String masterPassword, String nonce) {
+        // 此方法已废弃，不再使用
+        Log.w(TAG, "Using deprecated generateDerivedKeySignatureWithNonce method");
+        return "";
     }
 
     /**

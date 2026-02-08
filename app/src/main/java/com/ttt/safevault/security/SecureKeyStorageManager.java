@@ -721,9 +721,13 @@ public class SecureKeyStorageManager {
     }
 
     // ========== 旧存储迁移 ==========
+    // 注意：旧安全架构已完全移除（SafeVault 3.4.0），迁移方法已废弃
 
     /**
      * 从旧存储迁移密钥到三层安全架构
+     *
+     * 此方法已废弃，因为旧安全架构（KeyManager、CryptoManager）已完全移除。
+     * SafeVault 3.4.0+ 统一使用三层安全架构（Argon2id + AES-GCM）。
      *
      * 迁移流程：
      * 1. 从旧KeyManager获取RSA密钥对（SharedPreferences明文存储）
@@ -735,20 +739,26 @@ public class SecureKeyStorageManager {
      * 7. 创建云端备份
      * 8. 标记迁移完成
      *
-     * @param oldKeyManager 旧的KeyManager实例
      * @param masterPassword 主密码
      * @param saltBase64 盐值（Base64编码）
+     * @param oldPublicKeyBase64 旧公钥（Base64编码）
+     * @param oldPrivateKeyBytes 旧私钥字节（PKCS8格式）
      * @return 迁移结果
+     * @deprecated 旧安全架构已完全移除，新用户直接使用三层架构
      */
+    @Deprecated
     @NonNull
-    public MigrationResult migrateFromLegacy(@NonNull KeyManager oldKeyManager,
-                                             @NonNull String masterPassword,
-                                             @NonNull String saltBase64) {
+    public MigrationResult migrateFromLegacy(@NonNull String masterPassword,
+                                             @NonNull String saltBase64,
+                                             @NonNull String oldPublicKeyBase64,
+                                             @NonNull byte[] oldPrivateKeyBytes) {
         MigrationResult result = new MigrationResult();
 
         try {
-            // 1. 从旧存储获取RSA私钥
-            java.security.PrivateKey oldPrivateKey = oldKeyManager.getPrivateKey();
+            // 1. 解析旧私钥
+            KeyFactory keyFactory = KeyFactory.getInstance(RSA_ALGORITHM);
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(oldPrivateKeyBytes);
+            java.security.PrivateKey oldPrivateKey = keyFactory.generatePrivate(keySpec);
             if (oldPrivateKey == null) {
                 return result.failure("No RSA private key found in legacy storage");
             }
@@ -771,15 +781,9 @@ public class SecureKeyStorageManager {
             }
 
             // 6. 解析公钥
-            String publicKeyBase64 = oldKeyManager.getPublicKey();
-            if (publicKeyBase64 == null) {
-                return result.failure("No RSA public key found in legacy storage");
-            }
-
-            byte[] publicKeyBytes = android.util.Base64.decode(publicKeyBase64, android.util.Base64.NO_WRAP);
-            KeyFactory keyFactory = KeyFactory.getInstance(RSA_ALGORITHM);
-            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(publicKeyBytes);
-            java.security.PublicKey publicKey = keyFactory.generatePublic(keySpec);
+            byte[] publicKeyBytes = android.util.Base64.decode(oldPublicKeyBase64, android.util.Base64.NO_WRAP);
+            X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(publicKeyBytes);
+            java.security.PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
 
             // 7. 用DataKey加密RSA私钥并保存
             if (!encryptAndSaveRsaPrivateKey(oldPrivateKey, dataKey, publicKey)) {
@@ -1101,6 +1105,48 @@ public class SecureKeyStorageManager {
 
             Log.i(TAG, "生物识别解锁成功（三层架构）");
             return privateKey;
+
+        } catch (SecurityException e) {
+            Log.e(TAG, "生物识别解锁失败：" + e.getMessage(), e);
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "生物识别解锁异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 使用生物识别解锁并返回 DataKey（用于会话恢复）
+     *
+     * 解锁流程：
+     * 1. 获取DeviceKey（需要生物识别认证，30秒有效期）
+     * 2. 使用DeviceKey解密DataKey
+     * 3. 返回DataKey供CryptoSession缓存
+     *
+     * 此方法用于生物识别登录后的会话恢复，将 DataKey 缓存到 CryptoSession 中，
+     * 使得后续的加密解密操作可以正常进行。
+     *
+     * 注意：调用此方法前，用户必须已经通过生物识别UI认证（由 BiometricAuthManager 触发）
+     *
+     * @return DataKey（SecretKey），解锁失败返回null
+     */
+    @Nullable
+    public SecretKey unlockDataKeyWithBiometric() {
+        try {
+            Log.d(TAG, "unlockDataKeyWithBiometric() 被调用");
+
+            // 1. 获取DeviceKey（需要生物识别认证）
+            SecretKey deviceKey = getOrCreateDeviceKey();
+            if (deviceKey == null) {
+                Log.e(TAG, "生物识别解锁失败：无法获取DeviceKey");
+                return null;
+            }
+
+            // 2. 使用DeviceKey解密DataKey
+            SecretKey dataKey = decryptDataKeyWithDevice(deviceKey);
+
+            Log.i(TAG, "生物识别解锁成功（DataKey已恢复）");
+            return dataKey;
 
         } catch (SecurityException e) {
             Log.e(TAG, "生物识别解锁失败：" + e.getMessage(), e);

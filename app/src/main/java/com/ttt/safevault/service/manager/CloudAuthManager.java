@@ -5,10 +5,11 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.security.KeyManager;
+import com.ttt.safevault.security.SecureKeyStorageManager;
+import com.ttt.safevault.model.BackendService;
+import com.ttt.safevault.ServiceLocator;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -17,24 +18,25 @@ import java.util.Base64;
 /**
  * 云端认证管理器
  * 负责云端用户注册、登录、Token刷新等认证相关功能
+ *
+ * SafeVault 3.4.0 更新：
+ * - 完全移除 CryptoManager 和 KeyManager 依赖
+ * - 使用 SecureKeyStorageManager
  */
 public class CloudAuthManager {
     private static final String TAG = "CloudAuthManager";
 
     private final Context context;
-    private final CryptoManager cryptoManager;
     private final RetrofitClient retrofitClient;
     private final TokenManager tokenManager;
-    private final KeyManager keyManager;
+    private final SecureKeyStorageManager secureKeyStorage;
 
     public CloudAuthManager(@NonNull Context context,
-                           @NonNull CryptoManager cryptoManager,
                            @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();
-        this.cryptoManager = cryptoManager;
         this.retrofitClient = retrofitClient;
         this.tokenManager = retrofitClient.getTokenManager();
-        this.keyManager = KeyManager.getInstance(context);
+        this.secureKeyStorage = SecureKeyStorageManager.getInstance(context);
     }
 
     /**
@@ -43,8 +45,8 @@ public class CloudAuthManager {
     public com.ttt.safevault.dto.response.AuthResponse register(String username, String password, String displayName) {
         try {
             // 获取设备ID和公钥
-            String deviceId = keyManager.getDeviceId();
-            String publicKey = keyManager.getPublicKey();
+            String deviceId = getDeviceId();
+            String publicKey = getPublicKey();
 
             com.ttt.safevault.dto.request.RegisterRequest request = new com.ttt.safevault.dto.request.RegisterRequest(
                 deviceId, username, displayName, publicKey
@@ -73,7 +75,7 @@ public class CloudAuthManager {
         try {
             // 获取保存的userId和设备ID
             String userId = tokenManager.getUserId();
-            String deviceId = keyManager.getDeviceId();
+            String deviceId = getDeviceId();
 
             if (userId == null) {
                 Log.e(TAG, "No userId found, please register first");
@@ -138,7 +140,7 @@ public class CloudAuthManager {
     public void logoutCloud() {
         try {
             String userId = tokenManager.getUserId();
-            String deviceId = keyManager.getDeviceId();
+            String deviceId = getDeviceId();
 
             if (userId != null && !userId.isEmpty()) {
                 // 构建注销请求
@@ -173,30 +175,76 @@ public class CloudAuthManager {
     public com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
             String email, String username, String masterPassword) {
         try {
-            // 1. 生成盐值
-            String salt = keyManager.generateSaltForUser(email);
-            keyManager.saveUserSalt(email, salt);
+            // 0. 检查是否已初始化本地保险库，如果没有则先初始化
+            BackendService backendService =
+                ServiceLocator.getInstance().getBackendService();
 
-            // 2. 派生密钥并生成密码验证器
-            javax.crypto.SecretKey derivedKey = keyManager.deriveKeyFromMasterPassword(masterPassword, salt);
-            String passwordVerifier = Base64.getEncoder().encodeToString(derivedKey.getEncoded());
-
-            // 3. 生成 RSA 密钥对
-            String publicKey = keyManager.getPublicKey();
-            java.security.PrivateKey privateKey = keyManager.getPrivateKey();
-
-            if (privateKey == null) {
-                throw new RuntimeException("无法生成私钥");
+            if (!backendService.isInitialized()) {
+                Log.d(TAG, "本地保险库未初始化，开始初始化...");
+                boolean initialized = backendService.initialize(masterPassword);
+                if (!initialized) {
+                    throw new RuntimeException("本地保险库初始化失败");
+                }
+                Log.d(TAG, "本地保险库初始化成功");
+            } else {
+                // 已初始化但会话可能未解锁，需要解锁
+                if (!backendService.isUnlocked()) {
+                    Log.d(TAG, "本地保险库已初始化但会话未解锁，开始解锁...");
+                    boolean unlocked = backendService.unlock(masterPassword);
+                    if (!unlocked) {
+                        throw new RuntimeException("会话解锁失败，请检查主密码");
+                    }
+                    Log.d(TAG, "会话解锁成功");
+                }
             }
 
-            // 4. 使用主密码加密私钥
-            KeyManager.EncryptedPrivateKey encryptedKey =
-                    keyManager.encryptPrivateKey(privateKey, masterPassword, email);
+            // 1. 生成盐值
+            com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
+                com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context);
+            String salt = argon2Manager.getOrGenerateUserSalt(email);
 
-            // 5. 获取设备ID
-            String deviceId = keyManager.getDeviceId();
+            // 2. 派生密钥并生成密码验证器
+            javax.crypto.SecretKey derivedKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, salt);
+            String passwordVerifier = Base64.getEncoder().encodeToString(derivedKey.getEncoded());
 
-            // 6. 构建完成注册请求
+            // 3. 获取 RSA 公钥（从 SecureKeyStorageManager）
+            String publicKey = getPublicKey();
+            if (publicKey == null) {
+                throw new RuntimeException("无法获取 RSA 公钥，请检查本地保险库初始化状态");
+            }
+
+            // 4. 获取私钥并加密
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+            if (!cryptoSession.isUnlocked()) {
+                throw new RuntimeException("会话未解锁，无法完成注册");
+            }
+
+            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            if (dataKey == null) {
+                throw new RuntimeException("无法获取 DataKey");
+            }
+
+            java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
+            if (privateKey == null) {
+                throw new RuntimeException("无法获取私钥");
+            }
+
+            // 5. 使用主密码加密私钥（使用 BackupEncryptionManager）
+            com.ttt.safevault.security.BackupEncryptionManager backupManager =
+                com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
+
+            com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptedKey =
+                backupManager.encryptForCloudSync(
+                    android.util.Base64.encodeToString(privateKey.getEncoded(), android.util.Base64.NO_WRAP),
+                    masterPassword,
+                    salt
+                );
+
+            // 6. 获取设备ID
+            String deviceId = getDeviceId();
+
+            // 7. 构建完成注册请求
             com.ttt.safevault.dto.request.CompleteRegistrationRequest request =
                     com.ttt.safevault.dto.request.CompleteRegistrationRequest.builder()
                             .email(email)
@@ -209,23 +257,15 @@ public class CloudAuthManager {
                             .deviceId(deviceId)
                             .build();
 
-            // 7. 调用后端完成注册 API
+            // 8. 调用后端完成注册 API
             com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
                     retrofitClient.getAuthServiceApi()
                             .completeRegistration(request)
                             .blockingFirst();
 
             if (response != null && response.getSuccess()) {
-                // 8. 保存令牌
+                // 9. 保存令牌
                 tokenManager.saveTokens(response.getUserId(), response.getAccessToken(), response.getRefreshToken());
-
-                // 9. 初始化 CryptoManager
-                if (!cryptoManager.isInitialized()) {
-                    cryptoManager.initialize(masterPassword);
-                }
-
-                // 注意：不再需要保存主密码到生物识别存储
-                // 生物识别现在使用三层架构，直接通过DeviceKey解锁
 
                 Log.d(TAG, "Registration completed successfully for user: " + username);
             }
@@ -235,6 +275,34 @@ public class CloudAuthManager {
         } catch (Exception e) {
             Log.e(TAG, "Failed to complete registration", e);
             throw new RuntimeException("注册完成失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取设备ID
+     */
+    private String getDeviceId() {
+        return android.provider.Settings.Secure.getString(
+            context.getContentResolver(),
+            android.provider.Settings.Secure.ANDROID_ID
+        );
+    }
+
+    /**
+     * 获取公钥
+     */
+    private String getPublicKey() {
+        try {
+            java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
+            if (publicKey == null) {
+                Log.w(TAG, "RSA公钥尚未生成");
+                return null;
+            }
+            byte[] publicKeyBytes = publicKey.getEncoded();
+            return android.util.Base64.encodeToString(publicKeyBytes, android.util.Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e(TAG, "获取RSA公钥失败", e);
+            return null;
         }
     }
 

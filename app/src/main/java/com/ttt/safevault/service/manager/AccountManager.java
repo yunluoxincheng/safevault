@@ -6,15 +6,12 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.ttt.safevault.crypto.CryptoManager;
 import com.ttt.safevault.dto.DeviceRecoveryResult;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.security.KeyManager;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -29,16 +26,15 @@ import java.util.List;
  * - 移除AccountManager中的生物识别相关方法（unlockWithBiometric、canUseBiometricAuthentication等）
  * - 所有生物识别认证统一通过BiometricAuthManager处理
  *
- * 方案 B 更新：
- * - 实现 CryptoManager.SessionPasswordProvider 接口
- * - 统一使用三层安全存储架构
+ * SafeVault 3.4.0 更新：
+ * - 完全移除 CryptoManager 和 KeyManager 依赖
+ * - 使用 CryptoSession 和 SecureKeyStorageManager
  */
-public class AccountManager implements CryptoManager.SessionPasswordProvider {
+public class AccountManager {
     private static final String TAG = "AccountManager";
     private static final String KEY_USER_EMAIL = "user_email";
 
     private final Context context;
-    private final CryptoManager cryptoManager;
     private final PasswordManager passwordManager;
     private final SecurityConfig securityConfig;
     private final android.content.SharedPreferences prefs;
@@ -50,21 +46,16 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
     private String sessionMasterPassword;
 
     public AccountManager(@NonNull Context context,
-                         @NonNull CryptoManager cryptoManager,
                          @NonNull PasswordManager passwordManager,
                          @NonNull SecurityConfig securityConfig,
                          @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();
-        this.cryptoManager = cryptoManager;
         this.passwordManager = passwordManager;
         this.securityConfig = securityConfig;
         this.retrofitClient = retrofitClient;
         this.tokenManager = retrofitClient.getTokenManager();
         this.prefs = context.getSharedPreferences("backend_prefs", Context.MODE_PRIVATE);
         this.secureStorage = SecureKeyStorageManager.getInstance(context);
-
-        // 设置自己为会话密码提供者（方案 B：三层架构统一）
-        CryptoManager.setSessionPasswordProvider(this);
 
         Log.d(TAG, "AccountManager initialized with SecureKeyStorageManager");
     }
@@ -107,8 +98,8 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
             }
             Log.d(TAG, "Local password data deleted");
 
-            // 3. 清除加密密钥和生物识别数据
-            cryptoManager.lock();
+            // 3. 清除加密密钥和生物识别数据（使用 CryptoSession）
+            com.ttt.safevault.security.CryptoSession.getInstance().lock();
             clearBiometricData();
             Log.d(TAG, "Encryption keys cleared");
 
@@ -130,7 +121,8 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
      * 登出
      */
     public void logout() {
-        cryptoManager.lock();
+        // 锁定会话（使用 CryptoSession）
+        com.ttt.safevault.security.CryptoSession.getInstance().lock();
         // 清除内存中的敏感数据
     }
 
@@ -141,9 +133,9 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
      * 生物识别功能已迁移到 BiometricAuthManager
      */
     private void clearBiometricData() {
-        // 生物识别数据不再由AccountManager管理
-        // BiometricAuthManager负责处理所有生物识别相关状态
-        Log.d(TAG, "Biometric data cleared (delegated to BiometricAuthManager)");
+        // 清除 SecureKeyStorageManager 中的生物识别数据
+        secureStorage.clearBiometricData();
+        Log.d(TAG, "Biometric data cleared (delegated to SecureKeyStorageManager)");
     }
 
     // ========== 新设备数据恢复 ==========
@@ -164,7 +156,7 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
             // 步骤1：下载加密的私钥
             Log.d(TAG, "Step 1: Downloading encrypted private key...");
             EncryptionSyncManager syncManager = new EncryptionSyncManager(context, retrofitClient);
-            KeyManager.EncryptedPrivateKey encryptedKey = syncManager.downloadEncryptedPrivateKey();
+            EncryptionSyncManager.EncryptedPrivateKey encryptedKey = syncManager.downloadEncryptedPrivateKey();
 
             // 如果云端没有私钥（旧账号），生成新的密钥对并上传
             if (encryptedKey == null) {
@@ -174,18 +166,32 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
 
             Log.d(TAG, "Encrypted private key downloaded successfully");
 
-            // 步骤2：解密私钥
+            // 步骤2：解密私钥（使用 BackupEncryptionManager）
             Log.d(TAG, "Step 2: Decrypting private key...");
-            KeyManager keyManager = KeyManager.getInstance(context);
             java.security.PrivateKey privateKey;
 
             try {
-                privateKey = keyManager.decryptPrivateKey(
-                        encryptedKey.getEncryptedData(),
-                        masterPassword,
-                        encryptedKey.getSalt(),  // 使用云端返回的盐值
-                        encryptedKey.getIv()
+                // 使用 BackupEncryptionManager 解密私钥
+                com.ttt.safevault.security.BackupEncryptionManager backupManager =
+                    com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
+
+                // 解密私钥数据（AES-GCM）
+                // 注意：加密后的密文已包含 GCM authTag，所以 authTag 参数传 null
+                String decryptedKeyBytes = backupManager.decryptCloudSync(
+                    encryptedKey.getEncryptedKey(),
+                    masterPassword,
+                    encryptedKey.getSalt(),
+                    encryptedKey.getIv(),
+                    null // authTag 已包含在 encryptedKey 中
                 );
+
+                // 将解密后的字节转换为 PrivateKey
+                byte[] keyBytes = android.util.Base64.decode(decryptedKeyBytes, android.util.Base64.NO_WRAP);
+                java.security.KeyFactory keyFactory = java.security.KeyFactory.getInstance("RSA");
+                java.security.spec.PKCS8EncodedKeySpec keySpec =
+                    new java.security.spec.PKCS8EncodedKeySpec(keyBytes);
+                privateKey = keyFactory.generatePrivate(keySpec);
+
                 Log.d(TAG, "Private key decrypted successfully");
             } catch (Exception e) {
                 Log.e(TAG, "Failed to decrypt private key", e);
@@ -220,23 +226,49 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
         Log.d(TAG, "Generating new key pair for email: " + email);
 
         try {
-            KeyManager keyManager = KeyManager.getInstance(context);
+            // SecureKeyStorageManager 已经自动生成了密钥对
+            // 获取当前私钥
+            java.security.KeyFactory keyFactory = java.security.KeyFactory.getInstance("RSA");
 
-            // 获取当前私钥（KeyManager 已经自动生成了密钥对）
-            java.security.PrivateKey privateKey = keyManager.getPrivateKey();
-            if (privateKey == null) {
-                return DeviceRecoveryResult.failure("生成密钥对失败", DeviceRecoveryResult.Stage.IMPORT_KEY);
+            // 获取 DataKey 来解密私钥
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+            if (!cryptoSession.isUnlocked()) {
+                return DeviceRecoveryResult.failure("会话未锁定", DeviceRecoveryResult.Stage.IMPORT_KEY);
             }
 
-            // 加密私钥并上传到云端
-            KeyManager.EncryptedPrivateKey encryptedKey = keyManager.encryptPrivateKey(
-                    privateKey, masterPassword, email);
+            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            if (dataKey == null) {
+                return DeviceRecoveryResult.failure("无法获取 DataKey", DeviceRecoveryResult.Stage.IMPORT_KEY);
+            }
+
+            // 从 SecureKeyStorageManager 解密私钥
+            java.security.PrivateKey privateKey = secureStorage.decryptRsaPrivateKey(dataKey);
+            if (privateKey == null) {
+                return DeviceRecoveryResult.failure("无法获取私钥", DeviceRecoveryResult.Stage.IMPORT_KEY);
+            }
+
+            // 获取 salt
+            String salt = com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context)
+                .getOrGenerateUserSalt(email);
+
+            // 加密私钥并准备上传
+            com.ttt.safevault.security.BackupEncryptionManager backupManager =
+                com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
+
+            // 加密私钥（使用云端同步模式）
+            com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptionResult =
+                backupManager.encryptForCloudSync(
+                    android.util.Base64.encodeToString(privateKey.getEncoded(), android.util.Base64.NO_WRAP),
+                    masterPassword,
+                    salt
+                );
 
             EncryptionSyncManager syncManager = new EncryptionSyncManager(context, retrofitClient);
             boolean uploaded = syncManager.uploadEncryptedPrivateKey(
-                    encryptedKey.getEncryptedData(),
-                    encryptedKey.getIv(),
-                    encryptedKey.getSalt()
+                encryptionResult.getEncryptedData(),
+                encryptionResult.getIv(),
+                encryptionResult.getSalt()
             );
 
             if (uploaded) {
@@ -297,25 +329,22 @@ public class AccountManager implements CryptoManager.SessionPasswordProvider {
         Log.d(TAG, "Session master password set (memory only)");
     }
 
-    // ========== CryptoManager.SessionPasswordProvider 接口实现 ==========
-
-    /**
-     * SessionPasswordProvider 接口实现
-     * 返回当前会话的主密码
-     *
-     * @return 当前会话的主密码，未设置返回null
-     */
-    @Override
-    @Nullable
-    public String getMasterPassword() {
-        return sessionMasterPassword;
-    }
-
     /**
      * 清除当前会话的主密码
      */
     public void clearSessionMasterPassword() {
         this.sessionMasterPassword = null;
         Log.d(TAG, "Session master password cleared");
+    }
+
+    /**
+     * 获取会话主密码（供 BackendService 调用）
+     * 与 getCurrentMasterPassword() 相同，但使用不同的命名约定
+     *
+     * @return 当前会话的主密码，未设置返回null
+     */
+    @Nullable
+    public String getSessionMasterPassword() {
+        return sessionMasterPassword;
     }
 }

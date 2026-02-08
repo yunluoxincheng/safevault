@@ -9,11 +9,11 @@ import androidx.annotation.Nullable;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import com.ttt.safevault.crypto.KeyDerivationManager;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.ContactDao;
 import com.ttt.safevault.network.TokenManager;
+import com.ttt.safevault.security.SecureKeyStorageManager;
 
 import java.security.PublicKey;
 import java.util.ArrayList;
@@ -32,13 +32,13 @@ public class ContactManager {
 
     private final Context context;
     private final ContactDao contactDao;
-    private final KeyDerivationManager keyDerivationManager;
+    private final SecureKeyStorageManager secureKeyStorage;
     private final Gson gson;
 
     public ContactManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.contactDao = AppDatabase.getInstance(context).contactDao();
-        this.keyDerivationManager = new KeyDerivationManager(context);
+        this.secureKeyStorage = SecureKeyStorageManager.getInstance(context);
         this.gson = new Gson();
     }
 
@@ -55,8 +55,12 @@ public class ContactManager {
             @NonNull String masterPassword
     ) {
         try {
-            // 1. 获取我的公钥
-            PublicKey publicKey = keyDerivationManager.getPublicKey(masterPassword, userEmail);
+            // 1. 获取我的公钥（从 SecureKeyStorageManager）
+            java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
+            if (publicKey == null) {
+                Log.e(TAG, "Failed to get RSA public key");
+                return null;
+            }
             String publicKeyBase64 = Base64.encodeToString(
                 publicKey.getEncoded(),
                 Base64.NO_WRAP

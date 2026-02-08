@@ -16,6 +16,9 @@ public class LoginPrecheckResponse {
     @SerializedName("userId")
     private String userId;
 
+    @SerializedName("passwordVerifier")
+    private String passwordVerifier;
+
     public LoginPrecheckResponse() {
     }
 
@@ -41,5 +44,13 @@ public class LoginPrecheckResponse {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+
+    public String getPasswordVerifier() {
+        return passwordVerifier;
+    }
+
+    public void setPasswordVerifier(String passwordVerifier) {
+        this.passwordVerifier = passwordVerifier;
     }
 }
