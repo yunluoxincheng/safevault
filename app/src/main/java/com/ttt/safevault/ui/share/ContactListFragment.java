@@ -104,7 +104,8 @@ public class ContactListFragment extends Fragment {
 
         initViews(view);
         setupSearchView(view);
-        loadContacts();
+        // 移除这里的 loadContacts() 调用，避免与 onResume() 中的 syncAndLoadContacts() 重复加载
+        // onResume() 会立即被调用并负责加载数据
     }
 
     private void initViews(View view) {
@@ -170,11 +171,10 @@ public class ContactListFragment extends Fragment {
         }
     }
 
+    /**
+     * 加载联系人列表
+     */
     private void loadContacts() {
-        if (swipeRefreshLayout != null) {
-            swipeRefreshLayout.setRefreshing(true);
-        }
-
         Executors.newSingleThreadExecutor().execute(() -> {
             List<Contact> contacts;
             if (searchQuery.isEmpty()) {
@@ -186,10 +186,6 @@ public class ContactListFragment extends Fragment {
             requireActivity().runOnUiThread(() -> {
                 adapter.submitList(contacts);
                 updateEmptyView(contacts.isEmpty());
-
-                if (swipeRefreshLayout != null) {
-                    swipeRefreshLayout.setRefreshing(false);
-                }
             });
         });
     }
