@@ -1,267 +1,736 @@
-# Android 密码管理应用 —— 后端开发文档（草稿）
+# SafeVault Android 后端开发文档
 
-## 概述
-本文件为 Android 原生密码管理应用的 **后端开发文档草稿**。后端职责包括：加密核心、密钥管理、数据持久化、同步 API、TOTP 与审计、以及为前端提供明确的安全接口。该草稿包含函数级的加密模块拆解、数据库详细 schema、Repository 与 API 规范、以及按 Sprint 的开发任务分配。
+## 1. 概述
 
----
+本文件为 SafeVault Android 密码管理应用的 **后端开发文档**。后端职责包括：加密核心、密钥管理、数据持久化、云端同步API、密码分享加密、以及为前端提供明确的安全接口。
 
-# 1. 技术栈建议
-- 语言：Java（同前端）或 Kotlin（可选）
-- 本地库：SQLCipher（若后端实现于设备内）或 Room（仅数据结构，配合加密层）
-- 加密：Java Cryptography Architecture (JCA)，BouncyCastle（如需）
-- 网络（若实现云同步）：Spring Boot / Node.js + Express / Ktor
-- 数据库（服务器端）：PostgreSQL / MySQL
-- 测试：JUnit, Mockito
+### 技术栈
 
----
-
-# 2. 后端职责边界
-- **加密逻辑**：主密钥派生、Item Key 管理、字段级加密、TOTP 加密/解密、导入导出加密格式
-- **持久化**：设计数据库 schema、实现 Repository CRUD
-- **同步 API（可选）**：用户认证、vault 上传/下载、冲突解决
-- **安全审计**：登录/导出/共享等事件的审计日志
-- **密钥生命周期 & 内存管理**：避免长时间保存明文，及时清零
+| 技术 | 版本/说明 |
+|------|----------|
+| 语言 | Java 17 |
+| 加密 | JCA + BouncyCastle |
+| 密钥派生 | Argon2Kt (Android) / Argon2-JVM (后端) |
+| 本地存储 | SQLite + SQLCipher |
+| 网络通信 | Retrofit 2 + OkHttp 4 |
+| 数据解析 | Gson |
+| 异步处理 | RxJava 3 |
 
 ---
 
-# 3. 数据库 Schema（详细）
-见主文档中推荐的完整 schema。这里补充索引、约束与优化建议：
-- 为 `vault_items.uuid` 和 `users.email` 添加唯一索引
-- 为 `vault_items.updated_at` 添加索引以支持增量同步
-- `item_key_enc` 与 `data_enc` 使用 BLOB 类型
-- 对审计日志使用分区策略（按月）以避免日志膨胀
+## 2. 后端职责边界
+
+### 2.1 核心职责
+
+- **加密逻辑**：主密钥派生、密码加密/解密、数据完整性校验
+- **密钥管理**：Android KeyStore集成、密钥包装/解包
+- **数据持久化**：数据库CRUD、加密数据存储
+- **云端同步**：端到端加密数据同步
+- **密码分享**：离线和云端分享的加密/解密
+- **认证管理**：Challenge-Response登录、Token管理
+
+### 2.2 前后端边界
+
+```
+前端 (UI/ViewModel)
+    ↓ 调用
+BackendService (接口)
+    ↓ 实现
+后端实现层
+    ├── SecureKeyStorageManager (密钥)
+    ├── PasswordManager (密码)
+    ├── EncryptionSyncManager (同步)
+    ├── CloudAuthManager (认证)
+    ├── ContactManager (联系人)
+    └── ShareEncryptionManager (分享)
+```
 
 ---
 
-# 4. 加密模块 —— 函数级拆分
+## 3. 三层安全架构
 
-模块名：`CryptoService`（Java 类/组件）
+### 3.1 架构设计
 
-职责：负责所有对称/非对称加解密、密钥派生、随机数生成、内存清零。
+```
+┌─────────────────────────────────────┐
+│      BackendService Interface       │  统一接口
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│         Manager Layer               │
+│  ┌─────────────────────────────┐   │
+│  │ SecureKeyStorageManager     │   │  密钥存储层
+│  └─────────────────────────────┘   │
+│  ┌─────────────────────────────┐   │
+│  │ PasswordManager             │   │  密码管理层
+│  └─────────────────────────────┘   │
+│  ┌─────────────────────────────┐   │
+│  │ EncryptionSyncManager       │   │  加密同步层
+│  └─────────────────────────────┘   │
+└─────────────────┬───────────────────┘
+                  │
+┌─────────────────▼───────────────────┐
+│         Storage & Network Layer     │
+│  - SQLite Database                  │
+│  - Android KeyStore                 │
+│  - Retrofit Client                  │
+└─────────────────────────────────────┘
+```
+
+### 3.2 核心管理器
+
+#### SecureKeyStorageManager (密钥存储层)
+
+**职责**：
+- 管理Android KeyStore中的密钥
+- Argon2密钥派生
+- 加密存储敏感数据（设备私钥、主密钥）
+
+**核心方法**：
+```java
+public class SecureKeyStorageManager {
+    // Argon2密钥派生
+    public byte[] deriveKey(String password, byte[] salt);
+
+    // KeyStore操作
+    public SecretKey getOrCreateKey(String alias);
+    public void deleteKey(String alias);
+
+    // 加密解密
+    public EncryptedData encrypt(byte[] plaintext, SecretKey key);
+    public byte[] decrypt(EncryptedData encrypted, SecretKey key);
+
+    // 密钥包装
+    public WrappedKey wrapKey(SecretKey keyToWrap, SecretKey wrappingKey);
+    public SecretKey unwrapKey(WrappedKey wrappedKey, SecretKey wrappingKey);
+
+    // 设备密钥管理
+    public KeyPair generateDeviceKeyPair();
+    public void storeEncryptedPrivateKey(PrivateKey privateKey, String password);
+    public PrivateKey getDevicePrivateKey(String password);
+}
+```
+
+#### PasswordManager (密码管理层)
+
+**职责**：
+- 密码的加密和解密
+- 密码数据的持久化
+- 密码搜索和查询
+
+**核心方法**：
+```java
+public class PasswordManager {
+    // CRUD操作
+    public int addPassword(PasswordItem item);
+    public boolean updatePassword(PasswordItem item);
+    public boolean deletePassword(int id);
+    public PasswordItem getPassword(int id);
+    public List<PasswordItem> getAllPasswords();
+
+    // 搜索
+    public List<PasswordItem> searchPasswords(String query);
+
+    // 统计
+    public AppStats getStats();
+
+    // 内部加密方法
+    private EncryptedPassword encryptPassword(PasswordItem item);
+    private PasswordItem decryptPassword(EncryptedPassword encrypted);
+}
+```
+
+#### EncryptionSyncManager (加密同步层)
+
+**职责**：
+- 端到端加密数据同步
+- 设备密钥对管理
+- 密码库加密导出/导入
+
+**核心方法**：
+```java
+public class EncryptionSyncManager {
+    // 密码库同步
+    public EncryptedVaultData encryptVaultData(List<PasswordItem> passwords);
+    public List<PasswordItem> decryptVaultData(EncryptedVaultData encrypted);
+
+    // 云端同步
+    public boolean uploadEncryptedVault();
+    public boolean downloadEncryptedVault();
+
+    // 导入导出
+    public boolean exportData(String exportPath);
+    public boolean importData(String importPath);
+}
+```
+
+#### CloudAuthManager (认证管理)
+
+**职责**：
+- 用户注册和登录
+- Challenge-Response认证
+- Token管理和刷新
+- 邮箱验证
+
+**核心方法**：
+```java
+public class CloudAuthManager {
+    // 认证
+    public AuthResponse login(String username, String password);
+    public AuthResponse register(String username, String password, String displayName);
+    public CompleteRegistrationResponse completeRegistration(
+        String email, String username, String masterPassword);
+    public void logout();
+
+    // Token管理
+    public void refreshToken();
+    public boolean isTokenValid();
+
+    // 邮箱验证
+    public void sendEmailVerification(String email);
+    public boolean verifyEmailCode(String email, String code);
+}
+```
+
+#### ContactManager (联系人管理)
+
+**职责**：
+- 联系人CRUD操作
+- 身份码管理
+- 公钥存储
+
+**核心方法**：
+```java
+public class ContactManager {
+    // 联系人操作
+    public List<Contact> getContacts();
+    public boolean addContact(String publicKey, String nickname);
+    public boolean deleteContact(String contactId);
+    public Contact getContact(String contactId);
+
+    // 身份管理
+    public String getMyIdentityKey();
+    public String getMyIdentityCode();
+}
+```
+
+#### ShareEncryptionManager (分享加密)
+
+**职责**：
+- 端到端加密分享
+- 离线分享
+- 分享权限管理
+
+**核心方法**：
+```java
+public class ShareEncryptionManager {
+    // 端到端加密分享
+    public String createEncryptedSharePacket(PasswordItem password, PublicKey recipientKey);
+    public PasswordItem openEncryptedSharePacket(String encryptedPacket, PrivateKey myPrivateKey);
+
+    // 离线分享
+    public String createOfflineShare(PasswordItem password);
+    public PasswordItem openOfflineShare(String encryptedData);
+}
+```
+
+---
+
+## 4. 数据库设计
+
+### 4.1 表结构
+
+#### passwords (密码表)
+
+```sql
+CREATE TABLE passwords (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    username_enc BLOB NOT NULL,
+    password_enc BLOB NOT NULL,
+    url TEXT,
+    notes_enc BLOB,
+    iv BLOB NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- 索引
+CREATE INDEX idx_passwords_updated ON passwords(updated_at);
+```
+
+#### contacts (联系人表)
+
+```sql
+CREATE TABLE contacts (
+    contact_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    nickname TEXT,
+    public_key TEXT NOT NULL,
+    added_at INTEGER NOT NULL
+);
+```
+
+#### shares (分享记录表)
+
+```sql
+CREATE TABLE shares (
+    share_id TEXT PRIMARY KEY,
+    password_id INTEGER NOT NULL,
+    recipient_id TEXT,
+    encrypted_data TEXT NOT NULL,
+    permission_json TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (password_id) REFERENCES passwords(id) ON DELETE CASCADE
+);
+```
+
+#### user_settings (用户设置表)
+
+```sql
+CREATE TABLE user_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- 预设设置项
+INSERT INTO user_settings (key, value) VALUES
+    ('pin_code_enabled', '0'),
+    ('biometric_enabled', '1'),
+    ('auto_lock_timeout', '5'),
+    ('master_password_hash', '');
+```
+
+### 4.2 加密数据格式
+
+#### EncryptedPassword (加密密码)
 
 ```java
-public class CryptoService {
-
-  // === 主密钥派生（PBKDF2 / Argon2） ===
-  public SecretKey deriveMasterKey(char[] masterPassword, byte[] salt, int iterations, int keyLen);
-
-  // === 随机数与 IV ===
-  public byte[] generateRandomBytes(int len);
-  public byte[] generateIv(); // 默认 12 bytes for GCM
-
-  // === 数据加密/解密（AES-GCM） ===
-  public CipherText encryptAesGcm(byte[] plaintext, SecretKey key);
-  public byte[] decryptAesGcm(byte[] ciphertext, byte[] iv, SecretKey key);
-
-  // === Item Key 管理 ===
-  public byte[] wrapItemKey(SecretKey itemKey, SecretKey masterKey);
-  public SecretKey unwrapItemKey(byte[] wrappedKey, SecretKey masterKey);
-
-  // === HMAC / 完整性校验（如需要额外校验） ===
-  public byte[] computeHmac(byte[] data, SecretKey macKey);
-  public boolean verifyHmac(byte[] data, byte[] expectedMac, SecretKey macKey);
-
-  // === 密钥生成/销毁 ===
-  public SecretKey generateAesKey(int keySize);
-  public void clearSensitive(byte[] data);
-  public void clearSensitive(char[] data);
+public class EncryptedPassword {
+    private int id;
+    private String title;
+    private byte[] usernameEnc;  // AES-GCM加密
+    private byte[] passwordEnc;  // AES-GCM加密
+    private String url;
+    private byte[] notesEnc;     // AES-GCM加密
+    private byte[] iv;           // 12字节IV
+    private long createdAt;
+    private long updatedAt;
 }
 ```
 
-### 4.1 函数细节说明
-- `deriveMasterKey`：实现 PBKDF2WithHmacSHA256，或在可能时提供 Argon2 的实现（需要原生库或第三方）。返回 256-bit AES key 或密钥材料。
-- `generateRandomBytes`：使用 `SecureRandom`。
-- `encryptAesGcm`：生成随机 12 字节 IV，使用 `GCMParameterSpec(128, iv)`，返回包含 iv + ciphertext + tag 的结构（或分别存储）。
-- `wrapItemKey` / `unwrapItemKey`：使用 masterKey 加密 itemKey，可直接用 AES-GCM 对 itemKey 加密并返回密文。
-- `computeHmac`：可用于对导出文件或网络传输进行额外完整性校验（HMAC-SHA256）。
-- `clearSensitive`：显式覆盖数组内容以减少内存残留。
-
 ---
 
-# 5. Repository 与接口设计（设备内实现）
+## 5. 加密模块设计
 
-如果后端逻辑部署在设备内（即在应用模块内实现“后端”），则 Repository 接口示例：
+### 5.1 Argon2密钥派生
 
 ```java
-public interface VaultRepository {
-  void saveItem(VaultItemPlain plaintextItem, char[] masterPassword) throws CryptoException;
-  VaultItemPlain getItem(UUID uuid, char[] masterPassword) throws CryptoException;
-  List<VaultItemMeta> listItemsMeta();
-  void deleteItem(UUID uuid);
-  List<VaultItemPlain> search(String query, char[] masterPassword);
+public class Argon2KeyDerivationManager {
+    private static final int ARGON2_ITERATIONS = 3;
+    private static final int ARGON2_MEMORY = 65536;  // 64 MB
+    private static final int ARGON2_PARALLELISM = 1;
+    private static final int ARGON2_OUTPUT_LENGTH = 32;  // 256 bits
+
+    public byte[] deriveKey(String password, byte[] salt) {
+        // 使用Argon2id算法
+        Argon2Result result = Argon2Factory.create()
+            .hash(
+                ARGON2_ITERATIONS,
+                ARGON2_MEMORY,
+                ARGON2_PARALLELISM,
+                password.toCharArray(),
+                salt
+            );
+        return result.getHash();
+    }
 }
 ```
 
-实现要点：
-- `saveItem`：内部生成 itemKey -> 使用 itemKey 加密字段 -> 使用 masterKey wrap itemKey -> 存入数据库
-- `getItem`：读取 itemKey_enc -> unwrap -> decrypt fields -> 返回明文模型（调用方应尽快清零）
+### 5.2 AES-GCM加密
 
----
-
-# 6. API 规范（若实现云同步/服务器）
-
-### 6.1 登录与认证
-- `POST /api/v1/auth/login`：请求体 `email + clientDerivedHash`，返回 `sessionToken`。服务器只验证派生的 hash（非明文主密码）。
-
-### 6.2 Vault 上传/下载
-- `GET /api/v1/vault`：返回加密 vault（JSON）
-- `POST /api/v1/vault`：上传加密变更（条目级）
-
-### 6.3 冲突解决
-- 每个 item 带 `version` 与 `updatedAt`
-- 服务端以 `updatedAt` 为主，若冲突则返回冲突项并让客户端决定覆盖或合并
-
-### 6.4 导出/导入
-- 导出文件包含：`salt`, `iterations`, `version`, `payload`（加密），并附带 `HMAC` 签名
-- 导入时校验 HMAC，再解密 payload
-
----
-
-# 7. TOTP 模块
-
-模块：`TOTPService`
-
-函数签名：
 ```java
-public class TOTPService {
-  public String generateTOTP(byte[] secret, long time, int digits, int period);
-  public boolean verifyTOTP(byte[] secret, String code, int window);
-  public byte[] decodeBase32Secret(String base32);
+public class AesGcmEncryption {
+    private static final String GCM_ALGO = "AES/GCM/NoPadding";
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_LENGTH = 128;
+
+    public EncryptedData encrypt(byte[] plaintext, SecretKey key)
+        throws Exception {
+        // 生成随机IV
+        byte[] iv = generateRandomBytes(GCM_IV_LENGTH);
+
+        // 加密
+        Cipher cipher = Cipher.getInstance(GCM_ALGO);
+        GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+        cipher.init(Cipher.ENCRYPT_MODE, key, spec);
+        byte[] ciphertext = cipher.doFinal(plaintext);
+
+        return new EncryptedData(iv, ciphertext);
+    }
+
+    public byte[] decrypt(EncryptedData encrypted, SecretKey key)
+        throws Exception {
+        Cipher cipher = Cipher.getInstance(GCM_ALGO);
+        GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, encrypted.iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, spec);
+        return cipher.doFinal(encrypted.ciphertext);
+    }
 }
 ```
 
-实现说明：
-- 使用 HMAC-SHA1（或 HMAC-SHA256）按 RFC6238 实现
-- `window` 参数用于允许前后 N 步的偏移以兼容时间偏差
-- secret 在数据库中应以加密形式保存，并在使用后立即清零
+### 5.3 RSA密钥对管理
 
----
+```java
+public class RsaKeyManager {
+    private static final String RSA_ALGO = "RSA";
+    private static final int RSA_KEY_SIZE = 2048;
+    private static final String RSA_PADDING = "OAEPWITHSHA-256ANDMGF1PADDING";
 
-# 8. 密码强度与审计模块
+    public KeyPair generateKeyPair() throws Exception {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance(RSA_ALGO);
+        keyGen.initialize(RSA_KEY_SIZE);
+        return keyGen.generateKeyPair();
+    }
 
-### PasswordStrengthService
-- `int scorePassword(String password)`：返回 0-4 或 0-100 分
-- 可集成 zxcvbn（Java 移植版）或自实现规则
+    public byte[] encryptWithPublicKey(byte[] data, PublicKey publicKey)
+        throws Exception {
+        Cipher cipher = Cipher.getInstance(RSA_ALGO + "/" + RSA_PADDING);
+        cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        return cipher.doFinal(data);
+    }
 
-### AuditService
-- 记录事件：login_attempt, export, import, autofill_used, share_invite, share_accept
-- 审计记录包含：user_id, event_type, timestamp, metadata
-- 提供 UI 供前端查询（仅显示非敏感信息）
-
----
-
-# 9. 同步设计（E2EE）
-
-原则：服务器不解密数据，服务器仅存储密文
-
-流程简介：
-1. 客户端派生 Master Key (MK)
-2. 客户端对每个 item 使用 Item Key 加密并用 MK wrap Item Key
-3. 上传的 payload 包含：{item_id, item_key_enc, data_enc, updatedAt, version}
-4. 服务器存储该 payload
-5. 其他设备拉取后用本地 MK 解开 item_key_enc 并解密 data_enc
-
-冲突策略：基于 version 与 timestamp
-
----
-
-# 10. 导出文件格式（示例 JSON）
-
-```json
-{
-  "schema_version": 1,
-  "salt": "BASE64",
-  "kdf": "PBKDF2",
-  "iterations": 100000,
-  "payload": "BASE64(CIPHERTEXT)",
-  "hmac": "BASE64(HMAC)"
+    public byte[] decryptWithPrivateKey(byte[] encrypted, PrivateKey privateKey)
+        throws Exception {
+        Cipher cipher = Cipher.getInstance(RSA_ALGO + "/" + RSA_PADDING);
+        cipher.init(Cipher.DECRYPT_MODE, privateKey);
+        return cipher.doFinal(encrypted);
+    }
 }
 ```
 
 ---
 
-# 11. Sprint 分工（后端部分）
+## 6. 网络层设计
 
-### Sprint 0 — 准备（1 周）
-- 初始化后端模块仓库（或后端子模块）
-- 设定编码规范、测试流程
-- 确定依赖（JCA, SQLCipher, zxcvbn）
+### 6.1 API接口定义
 
-### Sprint 1 — Crypto Core（2 周）
-- 实现 CryptoService 的函数：deriveMasterKey, generateRandomBytes, encryptAesGcm, decryptAesGcm
-- 单元测试覆盖（KAT tests）
-- 内存清零工具实现
+#### AuthApi
 
-### Sprint 2 — Vault Repository（2 周）
-- 实现 VaultRepository CRUD
-- 完成数据库 schema 实现（Room + SQLCipher 或 SQLite + SQLCipher）
-- 集成 Item Key wrap/unwrap 流程
+```java
+public interface AuthApi {
+    @POST("/v1/auth/login")
+    Observable<AuthResponse> login(@Body LoginRequest request);
 
-### Sprint 3 — TOTP 与 Password Strength（1 周）
-- 实现 TOTPService 并集成到 VaultRepository
-- 实现 PasswordStrengthService（集成 zxcvbn-java）
+    @POST("/v1/auth/register")
+    Observable<AuthResponse> register(@Body RegisterRequest request);
 
-### Sprint 4 — Autofill 后台与 API（1 周）
-- 实现用于 Autofill 的查找接口（按 domain/package）
-- 若支持云：实现 minimal Vault API（upload/download）
+    @POST("/v1/auth/refresh")
+    Observable<AuthResponse> refreshToken(@Body RefreshRequest request);
 
-### Sprint 5 — 导出/导入 与 审计（1 周）
-- 导出/导入实现与 HMAC 校验
-- 审计日志实现
+    @POST("/v1/auth/send-verification")
+    Observable<BaseResponse> sendVerification(@Body EmailRequest request);
 
-### Sprint 6 — 测试与发布（1 周）
-- 整体集成测试
-- 安全扫描（静态分析）
-- 性能测试（数据库、加密热点）
+    @POST("/v1/auth/verify-email")
+    Observable<BaseResponse> verifyEmail(@Body VerifyRequest request);
 
----
-
-# 12. 单元测试与安全验证
-- 加密：使用 known-answer-tests (KAT) 验证加密/解密一致性
-- 性能：测量 PBKDF2 时间并设定合理迭代次数
-- 安全：使用静态分析工具（SpotBugs, MobSF）检测潜在漏洞
-
----
-
-# 13. 接口契约（供前端使用的简明 API）
-
-```
-Unlock:
-- Request: masterPassword (char[])
-- Response: success / failure
-
-GetItem:
-- Request: itemId
-- Response: {title, username, password, url, notes} (plaintext)
-
-SaveItem:
-- Request: {title, username, password, url, notes}
-- Response: itemId
-
-Search:
-- Request: query
-- Response: list of {itemId, title, snippet}
-
-GeneratePassword:
-- Request: length, useSymbols, useNumbers
-- Response: password
+    @POST("/v1/auth/complete-registration")
+    Observable<CompleteRegistrationResponse> completeRegistration(
+        @Body CompleteRegistrationRequest request);
+}
 ```
 
-注意：上述接口在实现时需确保传输层加密（如果为进程内调用则无需网络）。
+#### VaultApi
+
+```java
+public interface VaultApi {
+    @GET("/v1/vault")
+    Observable<VaultResponse> getVault();
+
+    @POST("/v1/vault")
+    Observable<BaseResponse> uploadVault(@Body VaultRequest request);
+
+    @POST("/v1/vault/sync")
+    Observable<SyncResponse> syncVault(@Body SyncRequest request);
+}
+```
+
+#### ShareApi
+
+```java
+public interface ShareApi {
+    @POST("/v1/shares")
+    Observable<ShareResponse> createShare(@Body ShareRequest request);
+
+    @GET("/v1/shares/{shareId}")
+    Observable<ReceivedShareResponse> getShare(@Path("shareId") String shareId);
+
+    @DELETE("/v1/shares/{shareId}")
+    Observable<BaseResponse> revokeShare(@Path("shareId") String shareId);
+
+    @GET("/v1/shares/my")
+    Observable<ShareListResponse> getMyShares();
+
+    @GET("/v1/shares/received")
+    Observable<ShareListResponse> getReceivedShares();
+}
+```
+
+#### ContactApi
+
+```java
+public interface ContactApi {
+    @GET("/v1/contacts")
+    Observable<ContactListResponse> getContacts();
+
+    @POST("/v1/contacts")
+    Observable<ContactResponse> addContact(@Body ContactRequest request);
+
+    @DELETE("/v1/contacts/{contactId}")
+    Observable<BaseResponse> deleteContact(@Path("contactId") String contactId);
+}
+```
+
+### 6.2 Token管理
+
+```java
+public class TokenManager {
+    private static final String ACCESS_TOKEN_KEY = "access_token";
+    private static final String REFRESH_TOKEN_KEY = "refresh_token";
+    private static final String EXPIRES_AT_KEY = "expires_at";
+
+    private SharedPreferences prefs;
+
+    public void saveTokens(String accessToken, String refreshToken, long expiresIn) {
+        prefs.edit()
+            .putString(ACCESS_TOKEN_KEY, accessToken)
+            .putString(REFRESH_TOKEN_KEY, refreshToken)
+            .putLong(EXPIRES_AT_KEY, System.currentTimeMillis() + expiresIn * 1000)
+            .apply();
+    }
+
+    public String getAccessToken() {
+        return prefs.getString(ACCESS_TOKEN_KEY, null);
+    }
+
+    public String getRefreshToken() {
+        return prefs.getString(REFRESH_TOKEN_KEY, null);
+    }
+
+    public boolean isAccessTokenExpired() {
+        long expiresAt = prefs.getLong(EXPIRES_AT_KEY, 0);
+        return System.currentTimeMillis() >= expiresAt;
+    }
+
+    public void clearTokens() {
+        prefs.edit()
+            .remove(ACCESS_TOKEN_KEY)
+            .remove(REFRESH_TOKEN_KEY)
+            .remove(EXPIRES_AT_KEY)
+            .apply();
+    }
+}
+```
+
+### 6.3 Token刷新拦截器
+
+```java
+public class TokenRefreshInterceptor implements Interceptor {
+    private TokenManager tokenManager;
+    private AuthApi authApi;
+
+    @Override
+    public Response intercept(Chain chain) throws IOException {
+        Request originalRequest = chain.request();
+
+        // 检查Token是否即将过期
+        if (tokenManager.isAccessTokenExpired()) {
+            try {
+                // 刷新Token
+                String refreshToken = tokenManager.getRefreshToken();
+                AuthResponse response = authApi.refreshToken(
+                    new RefreshRequest(refreshToken)).blockingGet();
+
+                // 保存新Token
+                tokenManager.saveTokens(
+                    response.getAccessToken(),
+                    response.getRefreshToken(),
+                    response.getExpiresIn()
+                );
+
+                // 重新构建请求
+                originalRequest = originalRequest.newBuilder()
+                    .header("Authorization", "Bearer " + response.getAccessToken())
+                    .build();
+            } catch (Exception e) {
+                // 刷新失败，清除Token
+                tokenManager.clearTokens();
+            }
+        }
+
+        return chain.proceed(originalRequest);
+    }
+}
+```
 
 ---
 
-# 14. 风险与缓解（补充）
-- 高迭代次数导致性能瓶颈：提供可配置的 iterations 与异步派生（不阻塞 UI）
-- 内存残留：严格使用 `char[]` 与 `byte[]` 并及时清零
-- 数据库备份泄露：导出文件必须加密与 HMAC
+## 7. BackendService接口
+
+```java
+public interface BackendService {
+    // ========== 认证相关 ==========
+    AuthResponse register(String username, String password, String displayName);
+    AuthResponse login(String username, String password);
+    AuthResponse refreshToken(String refreshToken);
+    void logout();
+    boolean deleteAccount();
+    CompleteRegistrationResponse completeRegistration(
+        String email, String username, String masterPassword);
+
+    // ========== 密码管理 ==========
+    PasswordItem decryptItem(int id);
+    List<PasswordItem> search(String query);
+    int saveItem(PasswordItem item);
+    boolean deleteItem(int id);
+    List<PasswordItem> getAllItems();
+
+    // ========== 密码生成 ==========
+    String generatePassword(int length, boolean symbols);
+    String generatePassword(int length, boolean useUppercase, boolean useLowercase,
+                           boolean useNumbers, boolean useSymbols);
+
+    // ========== 本地安全 ==========
+    void lock();
+    boolean isUnlocked();
+    String getMasterPassword();
+    void setSessionMasterPassword(String masterPassword);
+    boolean isInitialized();
+    boolean initialize(String masterPassword);
+    boolean changeMasterPassword(String oldPassword, String newPassword);
+
+    // ========== 分享功能 ==========
+    String createOfflineShare(int passwordId, int expireInMinutes, SharePermission permission);
+    PasswordItem receiveOfflineShare(String encryptedData);
+    ShareResponse createCloudShare(int passwordId, String toUserId,
+                                   int expireInMinutes, SharePermission permission);
+    ReceivedShareResponse receiveCloudShare(String shareId);
+    void revokeCloudShare(String shareId);
+
+    // ========== 联系人管理 ==========
+    List<Contact> getContacts();
+    boolean addContact(String publicKey, String nickname);
+    boolean deleteContact(String contactId);
+
+    // ========== 加密同步 ==========
+    boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt);
+    EncryptedPrivateKey downloadEncryptedPrivateKey();
+    boolean uploadEncryptedVaultData(String encryptedVaultData, String iv, String authTag);
+    EncryptedVaultData downloadEncryptedVaultData();
+}
+```
 
 ---
 
-如果你想，我可以：
-- 把后端文档转换为 Markdown / PDF / Word 并提供下载
-- 将两个草稿合并为最终的前后端分工版并生成 Sprint 任务 CSV
-- 生成 CryptoService 的 Java 模板代码（含单元测试示例）
+## 8. 开发流程（Sprint）
 
-请选择下一步（或直接告诉我要生成的文件类型）。
+### Sprint 1 - 密钥与加密 ✅
 
+- [x] Argon2密钥派生实现
+- [x] AES-GCM加密解密
+- [x] RSA密钥对生成
+- [x] Android KeyStore集成
+
+### Sprint 2 - 密码管理 ✅
+
+- [x] PasswordManager实现
+- [x] 数据库CRUD操作
+- [x] 密码搜索功能
+- [x] 统计功能
+
+### Sprint 3 - 认证管理 ✅
+
+- [x] Challenge-Response登录
+- [x] Token管理
+- [x] 邮箱验证
+- [x] 生物识别集成
+
+### Sprint 4 - 分享功能 ✅
+
+- [x] ShareEncryptionManager实现
+- [x] 离线二维码分享
+- [x] ContactManager实现
+- [x] 端到端加密分享
+
+### Sprint 5 - 同步功能 ✅
+
+- [x] EncryptionSyncManager实现
+- [x] 密码库加密导出
+- [x] 密码库加密导入
+- [x] 云端同步API
+
+---
+
+## 9. 测试与安全
+
+### 9.1 单元测试
+
+```java
+// 密钥派生测试
+@Test
+public void testArgon2KeyDerivation() {
+    byte[] salt = secureKeyStorageManager.generateSalt();
+    byte[] key1 = argon2Manager.deriveKey("password123", salt);
+    byte[] key2 = argon2Manager.deriveKey("password123", salt);
+    assertArrayEquals(key1, key2);
+}
+
+// 加密解密测试
+@Test
+public void testAesGcmEncryption() throws Exception {
+    byte[] plaintext = "Hello, World!".getBytes();
+    SecretKey key = secureKeyStorageManager.generateKey();
+    EncryptedData encrypted = aesGcmEncryption.encrypt(plaintext, key);
+    byte[] decrypted = aesGcmEncryption.decrypt(encrypted, key);
+    assertArrayEquals(plaintext, decrypted);
+}
+```
+
+### 9.2 安全检查清单
+
+- [ ] 密码不以明文存储
+- [ ] 主密码不存储在SharedPreferences
+- [ ] 敏感数据使用FLAG_SECURE
+- [ ] 网络传输使用HTTPS
+- [ ] Token过期自动刷新
+- [ ] 密钥使用后及时清零
+
+---
+
+## 10. 性能优化
+
+### 10.1 数据库优化
+
+- 使用索引加速查询
+- 批量操作使用事务
+- 加密数据使用BLOB类型
+
+### 10.2 加密优化
+
+- 密钥派生使用异步执行
+- 复用Cipher实例
+- 预生成随机IV池
+
+### 10.3 网络优化
+
+- 使用连接池
+- 启用GZIP压缩
+- 实现请求缓存
+
+---
+
+**文档版本**: 3.0
+**最后更新**: 2026-02-28
+**维护者**: SafeVault 开发团队

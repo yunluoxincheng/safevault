@@ -7,13 +7,13 @@ public class ApiConstants {
     // 基础URL - 根据实际部署修改
     // public static final String BASE_URL = "http://10.0.2.2:8080/api/";  // Android模拟器访问本地服务器
     // public static final String BASE_URL = "http://172.17.176.22:8080/api/";  // 真机访问局域网服务器
-     public static final String BASE_URL = "https://frp-hat.com:27784/api/";  // 生产环境
+     public static final String BASE_URL = "https://frp-ski.com:41751/api/";  // 生产环境
     
     // WebSocket URL
     // 注意：后端context-path是 /api，所以完整路径是 /api/ws
     //public static final String WS_URL = "ws://10.0.2.2:8080/api/ws";  // Android模拟器访问本地服务器
     //public static final String WS_URL = "ws://172.17.176.22:8080/api/ws";  // 真机访问局域网服务器
-    public static final String WS_URL = "wss://frp-hat.com:27784/api/ws";  // 生产环境
+    public static final String WS_URL = "wss://frp-ski.com:41751/api/ws";  // 生产环境
     
     // 认证端点
     public static final String AUTH_REGISTER = "v1/auth/register";
@@ -46,3 +46,4 @@ public class ApiConstants {
     public static final int READ_TIMEOUT = 30;
     public static final int WRITE_TIMEOUT = 30;
 }
+
