@@ -158,21 +158,56 @@ public class SecureKeyStorageManager {
     // ========== Level 1: PasswordKey派生 ==========
 
     /**
-     * 从主密码派生PasswordKey（Level 1 根层）
+     * 从主密码派生 PasswordKey（Level 1 根层）- 使用 char[]
      *
      * 使用 Argon2id 算法（与后端一致）
      * 参数：timeCost=3, memoryCost=128MB, parallelism=4
-     * 用于加密DataKey以便云端备份
+     * 用于加密 DataKey 以便云端备份
      *
-     * @param masterPassword 主密码
+     * 此方法在密钥派生完成后会自动清零密码字符数组（内存安全强化）
+     *
+     * @param masterPassword 主密码字符数组（会被自动清零）
      * @param saltBase64 盐值（Base64编码）
      * @return PasswordKey（256位AES密钥）
      * @throws SecurityException 派生失败时抛出
      */
+    @NonNull
+    public SecretKey derivePasswordKey(@NonNull char[] masterPassword, @NonNull String saltBase64) {
+        try {
+            // 使用 Argon2id 派生密钥（与后端一致）
+            SecretKey passwordKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, saltBase64);
+            Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=128MB, p=4）");
+            return passwordKey;
+        } finally {
+            // 自动清零密码字符数组（内存安全强化）
+            MemorySanitizer.secureWipe(masterPassword);
+            Log.d(TAG, "密码字符数组已自动清零");
+        }
+    }
+
+    /**
+     * 从主密码派生 PasswordKey（Level 1 根层）- 使用 String
+     *
+     * 使用 Argon2id 算法（与后端一致）
+     * 参数：timeCost=3, memoryCost=128MB, parallelism=4
+     * 用于加密 DataKey 以便云端备份
+     *
+     * 注意：此方法接受 String 参数，无法清零内存（String 不可变）。
+     * 推荐使用 {@link #derivePasswordKey(char[], String)} 版本以获得更好的内存安全性。
+     *
+     * @param masterPassword 主密码（String，无法清零）
+     * @param saltBase64 盐值（Base64编码）
+     * @return PasswordKey（256位AES密钥）
+     * @throws SecurityException 派生失败时抛出
+     * @deprecated 使用 {@link #derivePasswordKey(char[], String)} 替代，获得更好的内存安全性
+     */
+    @Deprecated
+    @NonNull
     public SecretKey derivePasswordKey(@NonNull String masterPassword, @NonNull String saltBase64) {
         // 使用 Argon2id 派生密钥（与后端一致）
         SecretKey passwordKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, saltBase64);
         Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=128MB, p=4）");
+        Log.w(TAG, "使用 String 参数派生密钥（无法清零内存），推荐使用 char[] 版本");
         return passwordKey;
     }
 
@@ -503,21 +538,53 @@ public class SecureKeyStorageManager {
     }
 
     /**
-     * 使用PasswordKey解密DataKey（跨设备恢复）
+     * 使用 PasswordKey 解密 DataKey（跨设备恢复）- 使用 char[]
      *
-     * @param masterPassword 主密码
+     * 此方法在密钥派生完成后会自动清零密码字符数组（内存安全强化）
+     *
+     * @param masterPassword 主密码字符数组（会被自动清零）
      * @param saltBase64 盐值（Base64编码）
      * @return DataKey
      * @throws SecurityException 解密失败时抛出
      */
     @NonNull
+    public SecretKey decryptDataKeyWithPassword(@NonNull char[] masterPassword,
+                                                @NonNull String saltBase64) {
+        try {
+            String encrypted = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
+            if (encrypted == null) {
+                throw new IllegalStateException("未找到 PasswordKey 加密的 DataKey");
+            }
+            SecretKey passwordKey = derivePasswordKey(masterPassword, saltBase64);
+            return decryptKeyWithAES(encrypted, passwordKey);
+        } finally {
+            // 确保密码被清零（derivePasswordKey 已经清零，这里作为双重保险）
+            MemorySanitizer.secureWipe(masterPassword);
+        }
+    }
+
+    /**
+     * 使用 PasswordKey 解密 DataKey（跨设备恢复）- 使用 String
+     *
+     * 注意：此方法接受 String 参数，无法清零内存（String 不可变）。
+     * 推荐使用 {@link #decryptDataKeyWithPassword(char[], String)} 版本以获得更好的内存安全性。
+     *
+     * @param masterPassword 主密码（String，无法清零）
+     * @param saltBase64 盐值（Base64编码）
+     * @return DataKey
+     * @throws SecurityException 解密失败时抛出
+     * @deprecated 使用 {@link #decryptDataKeyWithPassword(char[], String)} 替代
+     */
+    @Deprecated
+    @NonNull
     public SecretKey decryptDataKeyWithPassword(@NonNull String masterPassword,
-                                                 @NonNull String saltBase64) {
+                                                @NonNull String saltBase64) {
         String encrypted = prefs.getString(PASSWORD_ENCRYPTED_DATA_KEY, null);
         if (encrypted == null) {
-            throw new IllegalStateException("未找到PasswordKey加密的DataKey");
+            throw new IllegalStateException("未找到 PasswordKey 加密的 DataKey");
         }
         SecretKey passwordKey = derivePasswordKey(masterPassword, saltBase64);
+        Log.w(TAG, "使用 String 参数解密 DataKey（无法清零内存），推荐使用 char[] 版本");
         return decryptKeyWithAES(encrypted, passwordKey);
     }
 

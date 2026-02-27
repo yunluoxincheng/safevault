@@ -39,9 +39,9 @@ public class CryptoSession {
     /** 单例实例 */
     private static volatile CryptoSession INSTANCE;
 
-    /** 缓存的 DataKey（仅在解锁态存在） */
+    /** 缓存的 DataKey（仅在解锁态存在）- 使用 SensitiveData 包装实现内存安全强化 */
     @Nullable
-    private SecretKey dataKey;
+    private SensitiveData<byte[]> dataKey;
 
     /** 会话解锁状态 */
     private volatile boolean unlocked;
@@ -101,6 +101,13 @@ public class CryptoSession {
             return false;
         }
 
+        // 检查 SensitiveData 是否已关闭
+        if (dataKey.isClosed()) {
+            Log.w(TAG, "会话未解锁：dataKey 已关闭（unlocked=true 但 dataKey 已关闭，这是不一致状态）");
+            unlocked = false;
+            return false;
+        }
+
         // 检查会话是否超时
         if (isSessionExpired()) {
             long elapsed = System.currentTimeMillis() - sessionStartTime;
@@ -116,15 +123,48 @@ public class CryptoSession {
     /**
      * 获取缓存的 DataKey（仅在解锁态可用）
      *
-     * @return DataKey，未解锁返回 null
+     * @return DataKey（SecretKey 对象），未解锁返回 null
      */
     @Nullable
     public SecretKey getDataKey() {
+        return getDataKeyAsSecretKey();
+    }
+
+    /**
+     * 获取缓存的 DataKey（仅在解锁态可用）
+     *
+     * @return DataKey 的字节数组（SecretKey 编码），未解锁返回 null
+     * @deprecated 使用 {@link #getDataKey()} 或 {@link #getDataKeyAsSecretKey()} 获取 SecretKey 对象
+     */
+    @Nullable
+    @Deprecated
+    public byte[] getDataKeyBytes() {
         if (!isUnlocked()) {
             Log.w(TAG, "尝试获取 DataKey，但会话未解锁");
             return null;
         }
-        return dataKey;
+        return dataKey != null ? dataKey.get() : null;
+    }
+
+    /**
+     * 获取缓存的 DataKey 作为 SecretKey（仅在解锁态可用）
+     *
+     * @return DataKey（SecretKey 对象），未解锁返回 null
+     */
+    @Nullable
+    public SecretKey getDataKeyAsSecretKey() {
+        if (!isUnlocked()) {
+            Log.w(TAG, "尝试获取 DataKey，但会话未解锁");
+            return null;
+        }
+
+        byte[] keyBytes = dataKey != null ? dataKey.get() : null;
+        if (keyBytes == null) {
+            return null;
+        }
+
+        // 创建 SecretKey 对象（注意：调用方负责安全处理）
+        return new javax.crypto.spec.SecretKeySpec(keyBytes, "AES");
     }
 
     /**
@@ -132,39 +172,48 @@ public class CryptoSession {
      *
      * 调用此方法表示用户已通过主密码验证，DataKey 进入内存
      *
-     * @param dataKey 解密后的 DataKey
+     * @param dataKey 解密后的 DataKey（SecretKey 对象）
      */
     public void unlockWithDataKey(@NonNull SecretKey dataKey) {
         Log.d(TAG, "unlockWithDataKey() 被调用 - dataKey=" + (dataKey != null ? "非null" : "null"));
 
+        // 获取密钥编码
+        byte[] keyBytes = dataKey.getEncoded();
+        if (keyBytes == null) {
+            Log.e(TAG, "无法获取 DataKey 编码（可能是 AndroidKeyStore 密钥）");
+            throw new IllegalArgumentException("DataKey 必须是可导出的密钥");
+        }
+
         // 先清除旧的 DataKey（如果存在）
         if (this.dataKey != null) {
             Log.d(TAG, "清除旧的 DataKey");
-            zeroize(this.dataKey);
+            this.dataKey.close();
         }
 
-        this.dataKey = dataKey;
+        // 使用 SensitiveData 包装新的 DataKey
+        this.dataKey = new SensitiveData<>(keyBytes);
         this.unlocked = true;
         this.sessionStartTime = System.currentTimeMillis();
 
-        Log.i(TAG, "会话已解锁（DataKey 已缓存） - sessionStartTime=" + sessionStartTime);
+        Log.i(TAG, "会话已解锁（DataKey 已使用 SensitiveData 包装） - sessionStartTime=" + sessionStartTime);
     }
 
     /**
      * 清除会话（锁定）
      *
-     * 安全清除 DataKey，将内存清零
+     * 安全清除 DataKey，将内存清零（使用 SensitiveData.close()）
      */
     public void clear() {
         if (dataKey != null) {
-            zeroize(dataKey);
+            // 调用 SensitiveData.close() 执行安全清零
+            dataKey.close();
             dataKey = null;
         }
 
         unlocked = false;
         sessionStartTime = 0;
 
-        Log.i(TAG, "会话已清除（DataKey 已从内存移除）");
+        Log.i(TAG, "会话已清除（DataKey 已通过 SensitiveData 安全清零）");
     }
 
     /**
@@ -207,29 +256,6 @@ public class CryptoSession {
     }
 
     /**
-     * 安全清零 SecretKey
-     *
-     * 尝试清除密钥的内存内容（尽最大努力）
-     *
-     * @param key 待清除的密钥
-     */
-    private void zeroize(@NonNull SecretKey key) {
-        try {
-            byte[] keyBytes = key.getEncoded();
-            if (keyBytes != null) {
-                // 用随机数据覆写密钥内存
-                java.security.SecureRandom random = new java.security.SecureRandom();
-                random.nextBytes(keyBytes);
-                // 再次用零覆写
-                java.util.Arrays.fill(keyBytes, (byte) 0);
-            }
-            Log.d(TAG, "SecretKey 已安全清零");
-        } catch (Exception e) {
-            Log.w(TAG, "清零 SecretKey 时出现异常（可能已被 GC 回收）", e);
-        }
-    }
-
-    /**
      * 刷新会话时间（延长会话）
      *
      * 在用户执行敏感操作时调用，重置超时计时器
@@ -244,13 +270,13 @@ public class CryptoSession {
     /**
      * 获取 DataKey（Guarded Execution 模式）
      *
-     * 与 getDataKey() 的区别：
-     * - getDataKey(): 返回 null（静默失败）
+     * 与 getDataKeyAsSecretKey() 的区别：
+     * - getDataKeyAsSecretKey(): 返回 null（静默失败）
      * - requireDataKey(): 抛出 SessionLockedException（显式失败）
      *
      * 此方法用于 Guarded Execution 模式，确保调用方必须处理会话锁定的情况。
      *
-     * @return DataKey（保证非 null）
+     * @return DataKey（SecretKey 对象，保证非 null）
      * @throws SessionLockedException 如果会话未解锁
      */
     @NonNull
@@ -259,7 +285,15 @@ public class CryptoSession {
             Log.w(TAG, "requireDataKey: 会话未解锁，抛出 SessionLockedException");
             throw new SessionLockedException("会话未解锁，无法获取 DataKey");
         }
-        return dataKey;
+
+        byte[] keyBytes = dataKey != null ? dataKey.get() : null;
+        if (keyBytes == null) {
+            Log.e(TAG, "requireDataKey: SensitiveData 内部数据为 null（不一致状态）");
+            throw new SessionLockedException("会话未解锁，无法获取 DataKey");
+        }
+
+        // 创建 SecretKey 对象
+        return new javax.crypto.spec.SecretKeySpec(keyBytes, "AES");
     }
 
     /**

@@ -124,13 +124,82 @@ public class Argon2KeyDerivationManager {
     // ========== 核心密钥派生方法 ==========
 
     /**
-     * 使用 Argon2id 从主密码派生密钥
+     * 使用 Argon2id 从主密码派生密钥（使用 char[]）- 内存安全版本
      *
-     * @param masterPassword 主密码
+     * 此方法接受 char[] 参数，在密钥派生完成后会自动清零密码字符数组（内存安全强化）
+     *
+     * @param masterPassword 主密码字符数组（会被自动清零）
      * @param saltBase64 盐值（Base64编码）
      * @return 派生的密钥（256位 AES 密钥）
      * @throws SecurityException 派生失败时抛出
      */
+    @NonNull
+    public SecretKey deriveKeyWithArgon2id(@NonNull char[] masterPassword,
+                                           @NonNull String saltBase64) {
+        try {
+            long startTime = System.currentTimeMillis();
+
+            // 将密码字符数组转换为字节数组
+            byte[] passwordBytes = new byte[masterPassword.length * 2];
+            for (int i = 0; i < masterPassword.length; i++) {
+                passwordBytes[i * 2] = (byte) (masterPassword[i] >> 8);
+                passwordBytes[i * 2 + 1] = (byte) masterPassword[i];
+            }
+
+            byte[] salt = Base64.decode(saltBase64, Base64.NO_WRAP);
+
+            // 使用 argon2kt 进行密钥派生
+            Argon2KtResult result = argon2Kt.hash(
+                    Argon2Mode.ARGON2_ID,        // Argon2id 模式
+                    passwordBytes,               // 密码字节数组
+                    salt,                        // 盐值字节数组
+                    ARGON2_TIME_COST,            // 迭代次数
+                    ARGON2_MEMORY_COST           // 内存成本（KB）
+            );
+
+            // 从结果中获取原始哈希值
+            ByteBuffer hashBuffer = result.getRawHash();
+            byte[] hash = new byte[hashBuffer.remaining()];
+            hashBuffer.get(hash);
+
+            // 确保密钥长度为 32 字节（256 位）
+            byte[] keyBytes = new byte[32];
+            System.arraycopy(hash, 0, keyBytes, 0, Math.min(hash.length, 32));
+
+            // 创建 AES 密钥
+            SecretKey derivedKey = new SecretKeySpec(keyBytes, "AES");
+
+            // 安全清除敏感数据
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(passwordBytes);
+            java.util.Arrays.fill(hash, (byte) 0);
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            Log.d(TAG, "Argon2id 密钥派生成功（char[]），耗时: " + elapsed + "ms");
+
+            return derivedKey;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Argon2id 密钥派生失败", e);
+            throw new SecurityException("Argon2id key derivation failed", e);
+        } finally {
+            // 自动清零密码字符数组（内存安全强化）
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(masterPassword);
+        }
+    }
+
+    /**
+     * 使用 Argon2id 从主密码派生密钥（使用 String）- 向后兼容版本
+     *
+     * 注意：此方法接受 String 参数，无法清零内存（String 不可变）。
+     * 推荐使用 {@link #deriveKeyWithArgon2id(char[], String)} 版本以获得更好的内存安全性。
+     *
+     * @param masterPassword 主密码（String，无法清零）
+     * @param saltBase64 盐值（Base64编码）
+     * @return 派生的密钥（256位 AES 密钥）
+     * @throws SecurityException 派生失败时抛出
+     * @deprecated 使用 {@link #deriveKeyWithArgon2id(char[], String)} 替代
+     */
+    @Deprecated
     @NonNull
     public SecretKey deriveKeyWithArgon2id(@NonNull String masterPassword,
                                            @NonNull String saltBase64) {
@@ -170,7 +239,8 @@ public class Argon2KeyDerivationManager {
             java.util.Arrays.fill(hash, (byte) 0);
 
             long elapsed = System.currentTimeMillis() - startTime;
-            Log.d(TAG, "Argon2id 密钥派生成功，耗时: " + elapsed + "ms");
+            Log.d(TAG, "Argon2id 密钥派生成功（String），耗时: " + elapsed + "ms");
+            Log.w(TAG, "使用 String 参数派生密钥（无法清零内存），推荐使用 char[] 版本");
 
             return derivedKey;
 
@@ -356,16 +426,80 @@ public class Argon2KeyDerivationManager {
     }
 
     /**
-     * 验证密码（使用存储的哈希值）
+     * 验证密码（使用存储的哈希值）- 使用 char[]
      *
      * 注意：此方法用于验证主密码，不用于派生密钥
      * 派生密钥应使用 deriveKeyWithArgon2id()
      *
-     * @param masterPassword 主密码
+     * 此方法在验证完成后会自动清零密码字符数组（内存安全强化）
+     *
+     * @param masterPassword 主密码字符数组（会被自动清零）
      * @param storedHash 存储的哈希值（Base64 编码的原始哈希）
      * @param saltBase64 盐值（Base64 编码）
      * @return 密码是否匹配
      */
+    public boolean verifyPassword(@NonNull char[] masterPassword,
+                                  @NonNull String storedHash,
+                                  @NonNull String saltBase64) {
+        try {
+            // 将密码字符数组转换为字节数组
+            byte[] passwordBytes = new byte[masterPassword.length * 2];
+            for (int i = 0; i < masterPassword.length; i++) {
+                passwordBytes[i * 2] = (byte) (masterPassword[i] >> 8);
+                passwordBytes[i * 2 + 1] = (byte) masterPassword[i];
+            }
+
+            byte[] salt = Base64.decode(saltBase64, Base64.NO_WRAP);
+
+            // 使用 argon2kt 重新计算哈希
+            Argon2KtResult result = argon2Kt.hash(
+                    Argon2Mode.ARGON2_ID,
+                    passwordBytes,
+                    salt,
+                    ARGON2_TIME_COST,
+                    ARGON2_MEMORY_COST
+            );
+
+            // 获取计算出的原始哈希值
+            ByteBuffer hashBuffer = result.getRawHash();
+            byte[] computedHash = new byte[hashBuffer.remaining()];
+            hashBuffer.get(computedHash);
+
+            // 解析存储的哈希值
+            byte[] storedHashBytes = Base64.decode(storedHash, Base64.NO_WRAP);
+
+            // 比较哈希值
+            boolean matches = java.util.Arrays.equals(computedHash, storedHashBytes);
+
+            // 安全清除敏感数据
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(passwordBytes);
+            java.util.Arrays.fill(computedHash, (byte) 0);
+
+            Log.d(TAG, "密码验证" + (matches ? "成功" : "失败"));
+            return matches;
+
+        } catch (Exception e) {
+            Log.e(TAG, "密码验证失败", e);
+            return false;
+        } finally {
+            // 自动清零密码字符数组（内存安全强化）
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(masterPassword);
+        }
+    }
+
+    /**
+     * 验证密码（使用存储的哈希值）- 使用 String
+     *
+     * 注意：此方法接受 String 参数，无法清零内存（String 不可变）。
+     * 推荐使用 {@link #verifyPassword(char[], String, String)} 版本以获得更好的内存安全性。
+     *
+     * @param masterPassword 主密码（String，无法清零）
+     * @param storedHash 存储的哈希值（Base64 编码的原始哈希）
+     * @param saltBase64 盐值（Base64 编码）
+     * @return 密码是否匹配
+     * @deprecated 使用 {@link #verifyPassword(char[], String, String)} 替代
+     */
+    @Deprecated
     public boolean verifyPassword(@NonNull String masterPassword,
                                   @NonNull String storedHash,
                                   @NonNull String saltBase64) {
@@ -400,6 +534,7 @@ public class Argon2KeyDerivationManager {
             java.util.Arrays.fill(computedHash, (byte) 0);
 
             Log.d(TAG, "密码验证" + (matches ? "成功" : "失败"));
+            Log.w(TAG, "使用 String 参数验证密码（无法清零内存），推荐使用 char[] 版本");
             return matches;
 
         } catch (Exception e) {
@@ -409,12 +544,80 @@ public class Argon2KeyDerivationManager {
     }
 
     /**
-     * 对密码进行哈希（用于存储或传输）
+     * 对密码进行哈希（用于存储或传输）- 使用 char[]
      *
-     * @param masterPassword 主密码
+     * 此方法在哈希完成后会自动清零密码字符数组（内存安全强化）
+     *
+     * @param masterPassword 主密码字符数组（会被自动清零）
      * @param salt 盐值（Base64编码，如果为 null，则自动生成）
      * @return 包含哈希值和盐值的 Map
      */
+    @NonNull
+    public Map<String, String> hashPassword(@NonNull char[] masterPassword,
+                                            String salt) {
+        Map<String, String> result = new HashMap<>();
+
+        if (salt == null) {
+            salt = generateSalt();
+        }
+
+        try {
+            // 将密码字符数组转换为字节数组
+            byte[] passwordBytes = new byte[masterPassword.length * 2];
+            for (int i = 0; i < masterPassword.length; i++) {
+                passwordBytes[i * 2] = (byte) (masterPassword[i] >> 8);
+                passwordBytes[i * 2 + 1] = (byte) masterPassword[i];
+            }
+
+            byte[] saltBytes = Base64.decode(salt, Base64.NO_WRAP);
+
+            // 使用 argon2kt 哈希密码
+            Argon2KtResult hashResult = argon2Kt.hash(
+                    Argon2Mode.ARGON2_ID,
+                    passwordBytes,
+                    saltBytes,
+                    ARGON2_TIME_COST,
+                    ARGON2_MEMORY_COST
+            );
+
+            // 获取原始哈希值并编码为 Base64
+            ByteBuffer hashBuffer = hashResult.getRawHash();
+            byte[] rawHash = new byte[hashBuffer.remaining()];
+            hashBuffer.get(rawHash);
+            String hashBase64 = Base64.encodeToString(rawHash, Base64.NO_WRAP);
+
+            // 安全清除敏感数据
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(passwordBytes);
+            java.util.Arrays.fill(rawHash, (byte) 0);
+
+            result.put("hash", hashBase64);
+            result.put("salt", salt);
+            result.put("algorithm", ALGORITHM_ARGON2ID);
+
+            Log.d(TAG, "密码哈希完成（char[]）");
+            return result;
+
+        } catch (Exception e) {
+            Log.e(TAG, "密码哈希失败", e);
+            throw new SecurityException("Password hashing failed", e);
+        } finally {
+            // 自动清零密码字符数组（内存安全强化）
+            com.ttt.safevault.security.MemorySanitizer.secureWipe(masterPassword);
+        }
+    }
+
+    /**
+     * 对密码进行哈希（用于存储或传输）- 使用 String
+     *
+     * 注意：此方法接受 String 参数，无法清零内存（String 不可变）。
+     * 推荐使用 {@link #hashPassword(char[], String)} 版本以获得更好的内存安全性。
+     *
+     * @param masterPassword 主密码（String，无法清零）
+     * @param salt 盐值（Base64编码，如果为 null，则自动生成）
+     * @return 包含哈希值和盐值的 Map
+     * @deprecated 使用 {@link #hashPassword(char[], String)} 替代
+     */
+    @Deprecated
     @NonNull
     public Map<String, String> hashPassword(@NonNull String masterPassword,
                                             String salt) {
@@ -452,7 +655,8 @@ public class Argon2KeyDerivationManager {
             result.put("salt", salt);
             result.put("algorithm", ALGORITHM_ARGON2ID);
 
-            Log.d(TAG, "密码哈希完成");
+            Log.d(TAG, "密码哈希完成（String）");
+            Log.w(TAG, "使用 String 参数哈希密码（无法清零内存），推荐使用 char[] 版本");
             return result;
 
         } catch (Exception e) {

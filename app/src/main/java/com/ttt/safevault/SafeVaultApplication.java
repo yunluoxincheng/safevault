@@ -7,6 +7,7 @@ import android.util.Log;
 import androidx.appcompat.app.AppCompatDelegate;
 
 import com.ttt.safevault.model.BackendService;
+import com.ttt.safevault.security.ApplicationLifecycleWatcher;
 import com.ttt.safevault.security.SecurityConfig;
 
 /**
@@ -32,6 +33,10 @@ public class SafeVaultApplication extends Application implements Application.Act
 
         // 注册 Activity 生命周期回调
         registerActivityLifecycleCallbacks(this);
+
+        // 注册应用生命周期监听器（内存安全强化）
+        ApplicationLifecycleWatcher.register(this);
+        Log.i(TAG, "ApplicationLifecycleWatcher 已注册（内存安全强化）");
 
         // 加载并应用主题设置
         applyThemeSettings();
@@ -87,6 +92,9 @@ public class SafeVaultApplication extends Application implements Application.Act
             // 应用从后台回到前台
             Log.d(TAG, "=== 应用回到前台 ===");
             isAppInForeground = true;
+
+            // 通知 ApplicationLifecycleWatcher（内存安全强化）
+            ApplicationLifecycleWatcher.getInstance().onForeground();
         }
     }
 
@@ -99,6 +107,10 @@ public class SafeVaultApplication extends Application implements Application.Act
             // 应用真正进入后台（所有Activity都停止了）
             Log.d(TAG, "=== 应用进入后台，记录时间 ===");
             isAppInForeground = false;
+
+            // 通知 ApplicationLifecycleWatcher（内存安全强化）
+            ApplicationLifecycleWatcher.getInstance().onBackground();
+
             if (backendService != null) {
                 backendService.recordBackgroundTime();
                 Log.d(TAG, "后台时间已记录: " + backendService.getBackgroundTime());

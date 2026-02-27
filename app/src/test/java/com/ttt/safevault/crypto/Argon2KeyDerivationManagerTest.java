@@ -1,15 +1,12 @@
 package com.ttt.safevault.crypto;
 
-import android.util.Base64;
-
-import androidx.test.ext.junit.runners.AndroidJUnit4;
-
 import com.lambdapioneer.argon2kt.Argon2Kt;
 import com.lambdapioneer.argon2kt.Argon2KtResult;
 import com.lambdapioneer.argon2kt.Argon2Mode;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +20,7 @@ import static org.junit.Assert.*;
  *
  * 验证 argon2kt 的基本功能和与后端 argon2-jvm 的兼容性
  */
-@RunWith(AndroidJUnit4.class)
+@RunWith(JUnit4.class)
 public class Argon2KeyDerivationManagerTest {
 
     // ========== 与后端一致的参数配置 ==========
