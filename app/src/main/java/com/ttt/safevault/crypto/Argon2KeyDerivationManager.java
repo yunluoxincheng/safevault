@@ -23,10 +23,10 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  * Argon2id 密钥派生管理器
  *
- * 使用 Argon2id 算法进行密钥派生，与后端保持一致的参数配置：
- * - 时间成本 (timeCost): 3 次迭代
- * - 内存成本 (memoryCost): 128MB (131072 KB)
- * - 并行度 (parallelism): 4 线程
+ * 使用 Argon2id 算法进行密钥派生，支持自适应参数配置：
+ * - 根据设备能力自动调整参数（内存、迭代次数、并行度）
+ * - 最低安全下限：64MB 内存、2 次迭代、2 并行
+ * - 标准配置：128MB 内存、3 次迭代、4 并行
  * - 输出长度 (outputLength): 32 字节 (256 位)
  * - 盐值长度 (saltLength): 16 字节
  *
@@ -36,6 +36,7 @@ import javax.crypto.spec.SecretKeySpec;
  *
  * @since SafeVault 3.1.0 (安全加固第二阶段 - Argon2id 升级)
  * @since SafeVault 3.2.0 (迁移至 argon2kt，解决 Android 兼容性问题)
+ * @since SafeVault 3.6.0 (自适应性能调优)
  */
 public class Argon2KeyDerivationManager {
     private static final String TAG = "Argon2KeyDerivationManager";
@@ -44,17 +45,19 @@ public class Argon2KeyDerivationManager {
     private static final String KEY_USER_SALT_PREFIX = "user_salt_";
     private static final String KEY_MIGRATION_REQUIRED = "migration_required";
 
-    // ========== Argon2id 参数配置（与后端一致） ==========
-    /** 时间成本（迭代次数） */
-    private static final int ARGON2_TIME_COST = 3;
-    /** 内存成本（KB）- 128MB */
-    private static final int ARGON2_MEMORY_COST = 131072;
-    /** 并行度（线程数） */
-    private static final int ARGON2_PARALLELISM = 4;
+    // ========== Argon2id 参数常量 ==========
     /** 输出长度（字节）- 256位 */
     private static final int ARGON2_OUTPUT_LENGTH = 32;
     /** 盐值长度（字节） */
     private static final int ARGON2_SALT_LENGTH = 16;
+
+    // ========== 自适应参数（实例变量） ==========
+    /** 时间成本（迭代次数）- 根据设备自适应 */
+    private final int argon2TimeCost;
+    /** 内存成本（KB）- 根据设备自适应 */
+    private final int argon2MemoryCost;
+    /** 并行度（线程数）- 根据设备自适应 */
+    private final int argon2Parallelism;
 
     // ========== 算法版本标识 ==========
     /** 旧版 PBKDF2 算法标识 */
@@ -97,13 +100,19 @@ public class Argon2KeyDerivationManager {
     private Argon2KeyDerivationManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        // 初始化自适应参数
+        AdaptiveArgon2Config.Argon2Parameters params =
+                AdaptiveArgon2Config.initializeParameters(context);
+        this.argon2TimeCost = params.getIterations();
+        this.argon2MemoryCost = params.getMemory();
+        this.argon2Parallelism = params.getParallelism();
+
         // 创建 Argon2Kt 实例（线程安全，专为 Android 设计）
         this.argon2Kt = new Argon2Kt();
 
-        Log.i(TAG, "Argon2KeyDerivationManager 初始化成功（使用 argon2kt）");
-        Log.i(TAG, "参数配置: timeCost=" + ARGON2_TIME_COST +
-                   ", memoryCost=" + ARGON2_MEMORY_COST + "KB (" + (ARGON2_MEMORY_COST / 1024) + "MB)" +
-                   ", parallelism=" + ARGON2_PARALLELISM +
+        Log.i(TAG, "Argon2KeyDerivationManager 初始化成功（使用 argon2kt + 自适应参数）");
+        Log.i(TAG, "参数配置: " + params.getDetailedInfo() +
                    ", outputLength=" + ARGON2_OUTPUT_LENGTH + " bytes");
     }
 
@@ -153,8 +162,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,        // Argon2id 模式
                     passwordBytes,               // 密码字节数组
                     salt,                        // 盐值字节数组
-                    ARGON2_TIME_COST,            // 迭代次数
-                    ARGON2_MEMORY_COST           // 内存成本（KB）
+                    argon2TimeCost,              // 迭代次数（自适应）
+                    argon2MemoryCost             // 内存成本（KB，自适应）
             );
 
             // 从结果中获取原始哈希值
@@ -217,8 +226,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,        // Argon2id 模式
                     passwordBytes,               // 密码字节数组
                     salt,                        // 盐值字节数组
-                    ARGON2_TIME_COST,            // 迭代次数
-                    ARGON2_MEMORY_COST           // 内存成本（KB）
+                    argon2TimeCost,              // 迭代次数（自适应）
+                    argon2MemoryCost             // 内存成本（KB，自适应）
             );
 
             // 从结果中获取原始哈希值
@@ -398,10 +407,10 @@ public class Argon2KeyDerivationManager {
     @NonNull
     public String getParametersInfo() {
         return String.format("Argon2id(timeCost=%d, memoryCost=%dKB (%dMB), parallelism=%d, outputLength=%d bytes, saltLength=%d bytes)",
-                ARGON2_TIME_COST,
-                ARGON2_MEMORY_COST,
-                ARGON2_MEMORY_COST / 1024,
-                ARGON2_PARALLELISM,
+                argon2TimeCost,
+                argon2MemoryCost,
+                argon2MemoryCost / 1024,
+                argon2Parallelism,
                 ARGON2_OUTPUT_LENGTH,
                 ARGON2_SALT_LENGTH);
     }
@@ -415,14 +424,26 @@ public class Argon2KeyDerivationManager {
     public Map<String, Object> getParameters() {
         Map<String, Object> params = new HashMap<>();
         params.put("algorithm", "ARGON2ID");
-        params.put("timeCost", ARGON2_TIME_COST);
-        params.put("memoryCost", ARGON2_MEMORY_COST);
-        params.put("memoryCostMB", ARGON2_MEMORY_COST / 1024);
-        params.put("parallelism", ARGON2_PARALLELISM);
+        params.put("timeCost", argon2TimeCost);
+        params.put("memoryCost", argon2MemoryCost);
+        params.put("memoryCostMB", argon2MemoryCost / 1024);
+        params.put("parallelism", argon2Parallelism);
         params.put("outputLength", ARGON2_OUTPUT_LENGTH);
         params.put("saltLength", ARGON2_SALT_LENGTH);
         params.put("implementation", "argon2kt"); // 标识 Android 端实现
+        params.put("adaptive", true); // 标识使用自适应参数
         return params;
+    }
+
+    /**
+     * 检查是否使用降级参数
+     *
+     * @return 如果参数低于标准配置返回 true
+     */
+    public boolean isUsingDegradedParameters() {
+        return argon2MemoryCost < AdaptiveArgon2Config.getStandardParameters().getMemory() ||
+               argon2TimeCost < AdaptiveArgon2Config.getStandardParameters().getIterations() ||
+               argon2Parallelism < AdaptiveArgon2Config.getStandardParameters().getParallelism();
     }
 
     /**
@@ -456,8 +477,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,
                     passwordBytes,
                     salt,
-                    ARGON2_TIME_COST,
-                    ARGON2_MEMORY_COST
+                    argon2TimeCost,
+                    argon2MemoryCost
             );
 
             // 获取计算出的原始哈希值
@@ -513,8 +534,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,
                     passwordBytes,
                     salt,
-                    ARGON2_TIME_COST,
-                    ARGON2_MEMORY_COST
+                    argon2TimeCost,
+                    argon2MemoryCost
             );
 
             // 获取计算出的原始哈希值
@@ -576,8 +597,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,
                     passwordBytes,
                     saltBytes,
-                    ARGON2_TIME_COST,
-                    ARGON2_MEMORY_COST
+                    argon2TimeCost,
+                    argon2MemoryCost
             );
 
             // 获取原始哈希值并编码为 Base64
@@ -636,8 +657,8 @@ public class Argon2KeyDerivationManager {
                     Argon2Mode.ARGON2_ID,
                     passwordBytes,
                     saltBytes,
-                    ARGON2_TIME_COST,
-                    ARGON2_MEMORY_COST
+                    argon2TimeCost,
+                    argon2MemoryCost
             );
 
             // 获取原始哈希值并编码为 Base64

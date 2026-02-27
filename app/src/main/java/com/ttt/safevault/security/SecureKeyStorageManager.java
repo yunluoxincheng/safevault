@@ -64,13 +64,14 @@ import javax.crypto.spec.SecretKeySpec;
  * - 使用commit()保证原子性写入
  * - PasswordKey 使用 Argon2id 派生（与后端一致）
  *
- * Argon2id 参数（与后端 Argon2PasswordHasher 一致）：
- * - 时间成本: 3 次迭代
- * - 内存成本: 128MB (131072 KB)
- * - 并行度: 4 线程
+ * Argon2id 参数（自适应配置）：
+ * - 根据设备能力自动调整
+ * - 最低安全下限：64MB 内存、2 次迭代、2 并行
+ * - 标准配置：128MB 内存、3 次迭代、4 并行
  * - 输出长度: 32 字节 (256 位)
  *
  * @since SafeVault 3.2.0 (安全加固第二阶段 - Argon2id 升级)
+ * @since SafeVault 3.6.0 (自适应性能调优)
  */
 public class SecureKeyStorageManager {
     private static final String TAG = "SecureKeyStorageManager";
@@ -176,7 +177,7 @@ public class SecureKeyStorageManager {
         try {
             // 使用 Argon2id 派生密钥（与后端一致）
             SecretKey passwordKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, saltBase64);
-            Log.d(TAG, "PasswordKey 派生成功（Argon2id: t=3, m=128MB, p=4）");
+            Log.d(TAG, "PasswordKey 派生成功（Argon2id 自适应参数）");
             return passwordKey;
         } finally {
             // 自动清零密码字符数组（内存安全强化）

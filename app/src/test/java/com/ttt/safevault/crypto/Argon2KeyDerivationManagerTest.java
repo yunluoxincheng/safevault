@@ -250,6 +250,61 @@ public class Argon2KeyDerivationManagerTest {
         Arrays.fill(passwordBytes, (byte) 0);
     }
 
+    // ========== 自适应参数测试 ==========
+
+    /**
+     * 测试最低安全下限参数
+     */
+    @Test
+    public void testMinimumParameters() {
+        AdaptiveArgon2Config.Argon2Parameters minParams =
+                AdaptiveArgon2Config.getMinimumParameters();
+
+        assertEquals("最低内存应为 64MB (65536 KB)", 65536, minParams.getMemory());
+        assertEquals("最低迭代次数应为 2", 2, minParams.getIterations());
+        assertEquals("最低并行度应为 2", 2, minParams.getParallelism());
+
+        String info = minParams.toString();
+        assertTrue("参数信息应包含 'm=64'", info.contains("m=64"));
+        assertTrue("参数信息应包含 't=2'", info.contains("t=2"));
+        assertTrue("参数信息应包含 'p=2'", info.contains("p=2"));
+    }
+
+    /**
+     * 测试标准配置参数
+     */
+    @Test
+    public void testStandardParameters() {
+        AdaptiveArgon2Config.Argon2Parameters stdParams =
+                AdaptiveArgon2Config.getStandardParameters();
+
+        assertEquals("标准内存应为 128MB (131072 KB)", 131072, stdParams.getMemory());
+        assertEquals("标准迭代次数应为 3", 3, stdParams.getIterations());
+        assertEquals("标准并行度应为 4", 4, stdParams.getParallelism());
+
+        String info = stdParams.toString();
+        assertTrue("参数信息应包含 'm=128'", info.contains("m=128"));
+        assertTrue("参数信息应包含 't=3'", info.contains("t=3"));
+        assertTrue("参数信息应包含 'p=4'", info.contains("p=4"));
+    }
+
+    /**
+     * 测试参数详细信息的格式
+     */
+    @Test
+    public void testParameterDetailedInfo() {
+        AdaptiveArgon2Config.Argon2Parameters params =
+                new AdaptiveArgon2Config.Argon2Parameters(131072, 3, 4);
+
+        String detailedInfo = params.getDetailedInfo();
+
+        assertTrue("详细信息应包含 'memoryCost'", detailedInfo.contains("memoryCost"));
+        assertTrue("详细信息应包含 'timeCost'", detailedInfo.contains("timeCost"));
+        assertTrue("详细信息应包含 'parallelism'", detailedInfo.contains("parallelism"));
+        assertTrue("详细信息应包含 '131072KB'", detailedInfo.contains("131072KB"));
+        assertTrue("详细信息应包含 '(128MB)'", detailedInfo.contains("(128MB)"));
+    }
+
     // ========== 辅助方法 ==========
 
     /**
