@@ -7,6 +7,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.ttt.safevault.crypto.SecurePaddingUtil;
 import com.ttt.safevault.data.EncryptedPasswordEntity;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.PasswordItem;
@@ -40,6 +41,11 @@ public class PasswordManager {
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int IV_SIZE = 12; // GCM推荐IV大小
     private static final int TAG_SIZE = 128; // GCM认证标签大小
+
+    // 加密版本标识
+    private static final String ENCRYPTION_VERSION_V1 = "v1"; // 无填充（旧格式）
+    private static final String ENCRYPTION_VERSION_V2 = "v2"; // 带随机填充（新格式）
+    private static final String CURRENT_VERSION = ENCRYPTION_VERSION_V2; // 当前使用的版本
 
     private final PasswordDao passwordDao;
     private final CryptoSession cryptoSession;
@@ -223,8 +229,9 @@ public class PasswordManager {
     }
 
     /**
-     * 加密单个字段，返回格式: iv:ciphertext
+     * 加密单个字段，返回格式: version:iv:ciphertext
      * 使用 CryptoSession 的 DataKey 进行加密（三层架构）
+     * 版本 2.0：使用安全随机填充防止元数据泄露
      */
     @Nullable
     private String encryptField(@Nullable String plaintext) {
@@ -248,13 +255,23 @@ public class PasswordManager {
             GCMParameterSpec spec = new GCMParameterSpec(TAG_SIZE, iv);
             cipher.init(Cipher.ENCRYPT_MODE, key, spec);
 
-            // 加密
-            byte[] encrypted = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            // 版本 2.0：先进行安全随机填充，再加密
+            byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
+            byte[] paddedBytes = SecurePaddingUtil.pad(plaintextBytes);
 
+            // 加密填充后的数据
+            byte[] encrypted = cipher.doFinal(paddedBytes);
+
+            // 组合：version:iv:ciphertext
+            String version = CURRENT_VERSION;
             String ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP);
             String ciphertextBase64 = Base64.encodeToString(encrypted, Base64.NO_WRAP);
 
-            return ivBase64 + ":" + ciphertextBase64;
+            String result = version + ":" + ivBase64 + ":" + ciphertextBase64;
+            Log.d(TAG, "encryptField: encrypted with " + version + ", "
+                    + plaintextBytes.length + " -> " + paddedBytes.length + " -> "
+                    + encrypted.length + " bytes");
+            return result;
         } catch (Exception e) {
             Log.e(TAG, "encryptField: 加密失败", e);
             return null;
@@ -287,8 +304,10 @@ public class PasswordManager {
     }
 
     /**
-     * 解密单个字段，输入格式: iv:ciphertext
+     * 解密单个字段，输入格式: version:iv:ciphertext 或 iv:ciphertext（旧格式）
      * 使用 CryptoSession.DataKey 解密（三层架构）
+     * 版本 2.0：解密后去除安全随机填充
+     * 版本 1.0：直接解密（向后兼容）
      */
     @Nullable
     private String decryptField(@Nullable String encrypted) {
@@ -296,14 +315,30 @@ public class PasswordManager {
             return null;
         }
 
-        String[] parts = encrypted.split(":", 2);
-        if (parts.length != 2) {
-            return null;
-        }
-
         try {
-            byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
-            byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+            // 解析格式：version:iv:ciphertext 或 iv:ciphertext（旧格式）
+            String[] parts = encrypted.split(":", 3);
+            String version;
+            String ivBase64;
+            String ciphertextBase64;
+
+            if (parts.length == 3) {
+                // 新格式：version:iv:ciphertext
+                version = parts[0];
+                ivBase64 = parts[1];
+                ciphertextBase64 = parts[2];
+            } else if (parts.length == 2) {
+                // 旧格式：iv:ciphertext（版本 1.0）
+                version = ENCRYPTION_VERSION_V1;
+                ivBase64 = parts[0];
+                ciphertextBase64 = parts[1];
+            } else {
+                Log.e(TAG, "decryptField: 无效的加密格式");
+                return null;
+            }
+
+            byte[] ciphertext = Base64.decode(ciphertextBase64, Base64.NO_WRAP);
+            byte[] iv = Base64.decode(ivBase64, Base64.NO_WRAP);
 
             SecretKey dataKey = getEncryptionKey();
 
@@ -312,7 +347,25 @@ public class PasswordManager {
             cipher.init(Cipher.DECRYPT_MODE, dataKey, spec);
 
             byte[] decrypted = cipher.doFinal(ciphertext);
-            return new String(decrypted, StandardCharsets.UTF_8);
+
+            // 版本 2.0：去除填充
+            if (ENCRYPTION_VERSION_V2.equals(version)) {
+                try {
+                    byte[] unpadded = SecurePaddingUtil.unpad(decrypted);
+                    Log.d(TAG, "decryptField: decrypted with " + version + ", "
+                            + ciphertext.length + " -> " + decrypted.length + " -> "
+                            + unpadded.length + " bytes");
+                    return new String(unpadded, StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException e) {
+                    Log.e(TAG, "decryptField: 去除填充失败", e);
+                    return null;
+                }
+            } else {
+                // 版本 1.0：直接返回
+                Log.d(TAG, "decryptField: decrypted with " + version + ", "
+                        + ciphertext.length + " -> " + decrypted.length + " bytes");
+                return new String(decrypted, StandardCharsets.UTF_8);
+            }
         } catch (Exception e) {
             Log.e(TAG, "decryptField: 解密失败", e);
             return null;

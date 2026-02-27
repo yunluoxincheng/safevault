@@ -109,6 +109,7 @@ dependencies {
     implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
 
     testImplementation libs.junit
+    testImplementation 'org.robolectric:robolectric:4.11.1'
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 }

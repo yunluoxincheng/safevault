@@ -551,6 +551,7 @@ public class ShareEncryptionManager {
 
     /**
      * 使用 AES-256-GCM 加密数据
+     * 版本 2.0：使用安全随机填充防止元数据泄露
      *
      * @param data 要加密的数据
      * @param key AES 密钥
@@ -560,11 +561,15 @@ public class ShareEncryptionManager {
     @Nullable
     private String encryptWithAES(@NonNull byte[] data, @NonNull SecretKey key, @NonNull byte[] iv) {
         try {
+            // 先进行安全随机填充
+            byte[] paddedData = SecurePaddingUtil.pad(data);
+            Log.d(TAG, "AES encryption: " + data.length + " -> " + paddedData.length + " bytes (padded)");
+
             Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
             GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             cipher.init(Cipher.ENCRYPT_MODE, key, spec);
 
-            byte[] encrypted = cipher.doFinal(data);
+            byte[] encrypted = cipher.doFinal(paddedData);
             String result = Base64.encodeToString(encrypted, Base64.NO_WRAP);
             Log.d(TAG, "AES encryption successful, output size: " + result.length() + " chars");
             return result;
@@ -579,6 +584,7 @@ public class ShareEncryptionManager {
 
     /**
      * 使用 AES-256-GCM 解密数据
+     * 版本 2.0：解密后去除安全随机填充
      *
      * @param encryptedBase64 Base64 编码的加密数据
      * @param key AES 密钥
@@ -595,8 +601,12 @@ public class ShareEncryptionManager {
             cipher.init(Cipher.DECRYPT_MODE, key, spec);
 
             byte[] decrypted = cipher.doFinal(encrypted);
-            Log.d(TAG, "AES decryption successful, output size: " + decrypted.length + " bytes");
-            return decrypted;
+
+            // 去除安全随机填充
+            byte[] unpadded = SecurePaddingUtil.unpad(decrypted);
+            Log.d(TAG, "AES decryption successful: " + encrypted.length + " -> "
+                    + decrypted.length + " -> " + unpadded.length + " bytes (unpadded)");
+            return unpadded;
         } catch (javax.crypto.AEADBadTagException e) {
             Log.e(TAG, "GCM authentication tag verification failed - data may be tampered", e);
             return null;
