@@ -32,6 +32,7 @@ import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.ShareDataPacket;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.SafetyNumberManager;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.manager.ContactManager;
 import com.ttt.safevault.service.manager.ShareRecordManager;
@@ -71,6 +72,7 @@ public class ShareActivity extends AppCompatActivity {
     private ContactManager contactManager;
     private ShareEncryptionManager encryptionManager;
     private ShareRecordManager recordManager;
+    private SafetyNumberManager safetyNumberManager;
 
     private TextView textContactName;
     private TextView textUsername;
@@ -127,6 +129,7 @@ public class ShareActivity extends AppCompatActivity {
         contactManager = new ContactManager(this);
         encryptionManager = new ShareEncryptionManager();
         recordManager = new ShareRecordManager(this);
+        safetyNumberManager = SafetyNumberManager.getInstance(this);
     }
 
     private void initViews() {
@@ -405,6 +408,92 @@ public class ShareActivity extends AppCompatActivity {
             return;
         }
 
+        // 安全码验证检查
+        checkSafetyNumberAndProceed(() -> doGenerateShare(masterPassword, userEmail));
+    }
+
+    /**
+     * 检查安全码验证状态，并在必要时显示验证对话框
+     */
+    private void checkSafetyNumberAndProceed(Runnable onProceed) {
+        new Thread(() -> {
+            try {
+                // 获取接收方公钥
+                PublicKey receiverPublicKey = parsePublicKey(selectedContact.publicKey);
+
+                // 获取发送方密钥对
+                com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
+                com.ttt.safevault.security.CryptoSession cryptoSession =
+                    com.ttt.safevault.security.CryptoSession.getInstance();
+
+                if (!cryptoSession.isUnlocked()) {
+                    runOnUiThread(() -> Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+
+                javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+                java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
+                java.security.PublicKey senderPublicKey = secureKeyStorage.getRsaPublicKey();
+
+                if (privateKey == null || senderPublicKey == null) {
+                    runOnUiThread(() -> Toast.makeText(this, "无法获取密钥对", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+
+                // 检查验证状态
+                boolean isVerified = safetyNumberManager.isVerified(selectedContact.username, receiverPublicKey);
+                boolean publicKeyChanged = safetyNumberManager.hasPublicKeyChanged(selectedContact.username, receiverPublicKey);
+
+                runOnUiThread(() -> {
+                    // 如果公钥已变化或未验证，显示验证对话框
+                    if (publicKeyChanged || !isVerified) {
+                        SafetyNumberVerificationDialog.show(
+                            this,
+                            selectedContact,
+                            receiverPublicKey,
+                            senderPublicKey,
+                            new SafetyNumberVerificationDialog.Callback() {
+                                @Override
+                                public void onVerified() {
+                                    onProceed.run();
+                                }
+
+                                @Override
+                                public void onNotMatch() {
+                                    Toast.makeText(ShareActivity.this,
+                                        "安全码不匹配，分享已取消。请通过其他渠道联系对方确认。",
+                                        Toast.LENGTH_LONG).show();
+                                }
+
+                                @Override
+                                public void onSkip() {
+                                    // 允许跳过，但继续分享
+                                    onProceed.run();
+                                }
+                            }
+                        );
+                    } else {
+                        // 已验证且公钥未变化，直接继续
+                        onProceed.run();
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e(TAG, "检查安全码验证状态失败", e);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "验证检查失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    // 即使验证检查失败，也允许继续分享
+                    onProceed.run();
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * 执行实际的分享操作
+     */
+    private void doGenerateShare(String masterPassword, String userEmail) {
         showLoading("正在加密并创建云端分享...");
 
         // 在后台线程执行加密和云端分享

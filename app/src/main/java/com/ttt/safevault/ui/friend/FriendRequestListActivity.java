@@ -10,6 +10,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.FriendRequestAdapter;
 import com.ttt.safevault.data.AppDatabase;
+import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.FriendRequest;
 import com.ttt.safevault.dto.request.RespondFriendRequestRequest;
 import com.ttt.safevault.dto.response.FriendRequestDto;
@@ -18,8 +19,11 @@ import com.ttt.safevault.exception.TokenExpiredException;
 import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.api.FriendServiceApi;
 import com.ttt.safevault.network.TokenManager;
+import com.ttt.safevault.security.SafetyNumberManager;
 import com.ttt.safevault.service.ContactSyncManager;
+import com.ttt.safevault.ui.share.SafetyNumberVerificationDialog;
 
+import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -290,6 +294,11 @@ public class FriendRequestListActivity extends AppCompatActivity {
                         result -> {
                             android.util.Log.d(TAG, "联系人同步成功: 新增=" + result.getToAdd().size()
                                     + ", 更新=" + result.getToUpdate().size());
+
+                            // 如果有新添加的联系人，显示安全码验证对话框
+                            if (!result.getToAdd().isEmpty()) {
+                                showSafetyNumberVerificationForNewContacts(result.getToAdd());
+                            }
                         },
                         error -> {
                             android.util.Log.e(TAG, "联系人同步失败", error);
@@ -317,6 +326,87 @@ public class FriendRequestListActivity extends AppCompatActivity {
                             }
                         }
                 );
+    }
+
+    /**
+     * 为新添加的联系人显示安全码验证对话框
+     */
+    private void showSafetyNumberVerificationForNewContacts(List<com.ttt.safevault.dto.response.FriendDto> newContacts) {
+        if (newContacts.isEmpty()) {
+            return;
+        }
+
+        // 只为第一个新联系人显示验证对话框（避免多个对话框）
+        com.ttt.safevault.dto.response.FriendDto firstContact = newContacts.get(0);
+
+        try {
+            // 解析接收方公钥
+            String receiverPublicKeyBase64 = firstContact.getPublicKey();
+            if (receiverPublicKeyBase64 == null || receiverPublicKeyBase64.isEmpty()) {
+                android.util.Log.w(TAG, "新联系人公钥为空，跳过安全码验证");
+                return;
+            }
+
+            byte[] keyBytes = android.util.Base64.decode(receiverPublicKeyBase64, android.util.Base64.NO_WRAP);
+            java.security.spec.X509EncodedKeySpec spec =
+                new java.security.spec.X509EncodedKeySpec(keyBytes);
+            java.security.KeyFactory factory = java.security.KeyFactory.getInstance("RSA");
+            PublicKey receiverPublicKey = factory.generatePublic(spec);
+
+            // 获取发送方公钥
+            com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
+                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
+            com.ttt.safevault.security.CryptoSession cryptoSession =
+                com.ttt.safevault.security.CryptoSession.getInstance();
+
+            if (!cryptoSession.isUnlocked()) {
+                android.util.Log.w(TAG, "CryptoSession 未锁定，跳过安全码验证");
+                return;
+            }
+
+            PublicKey senderPublicKey = secureKeyStorage.getRsaPublicKey();
+            if (senderPublicKey == null) {
+                android.util.Log.w(TAG, "无法获取发送方公钥，跳过安全码验证");
+                return;
+            }
+
+            // 创建临时 Contact 对象
+            Contact contact = new Contact();
+            contact.username = firstContact.getUsername() != null ? firstContact.getUsername() : "";
+            contact.displayName = firstContact.getDisplayName() != null && !firstContact.getDisplayName().isEmpty()
+                ? firstContact.getDisplayName()
+                : firstContact.getUsername();
+            contact.publicKey = receiverPublicKeyBase64;
+
+            // 显示安全码验证对话框
+            runOnUiThread(() -> {
+                SafetyNumberVerificationDialog.show(
+                    this,
+                    contact,
+                    receiverPublicKey,
+                    senderPublicKey,
+                    new SafetyNumberVerificationDialog.Callback() {
+                        @Override
+                        public void onVerified() {
+                            // 用户已验证
+                        }
+
+                        @Override
+                        public void onNotMatch() {
+                            // 安全码不匹配
+                        }
+
+                        @Override
+                        public void onSkip() {
+                            // 用户跳过验证
+                        }
+                    }
+                );
+            });
+
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "显示安全码验证对话框失败", e);
+        }
     }
 
     private void showMessage(String title, String message) {

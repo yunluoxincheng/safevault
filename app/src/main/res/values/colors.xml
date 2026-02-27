@@ -106,4 +106,9 @@
     <color name="red_500">#F44336</color>
     <color name="orange_500">#FF9800</color>
     <color name="gray_500">#9E9E9E</color>
+
+    <!-- Safety Number Verification Colors -->
+    <color name="verified_color">#4CAF50</color>
+    <color name="unverified_color">#9E9E9E</color>
+    <color name="warning_color">#F44336</color>
 </resources>

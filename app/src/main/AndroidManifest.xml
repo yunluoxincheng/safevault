@@ -139,6 +139,13 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.SafeVault.NoActionBar" />
 
+        <!-- 安全码验证详情页面 -->
+        <activity
+            android:name=".ui.share.SafetyNumberDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
         <!-- 联系人管理相关页面 -->
         <activity
             android:name=".ui.share.ContactListActivity"
