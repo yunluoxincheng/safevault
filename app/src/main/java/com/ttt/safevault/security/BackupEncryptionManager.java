@@ -301,6 +301,115 @@ public class BackupEncryptionManager {
         return argon2Manager.getOrGenerateUserSalt(userEmail);
     }
 
+    // ========== 云端同步专用方法（固定参数） ==========
+
+    /**
+     * 为云端同步加密数据（使用固定参数）
+     *
+     * 使用 Argon2id 固定高配参数（128MB, 3 iterations, 4 parallelism）进行加密，
+     * 确保跨设备、跨安装的密钥派生结果一致。
+     *
+     * @param plaintext 明文
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码，应使用 {@link com.ttt.safevault.crypto.Argon2KeyDerivationManager#generateCloudSalt()} 生成）
+     * @return 加密结果（包含加密数据、IV、salt、authTag）
+     */
+    @NonNull
+    public CloudBackupResult encryptForCloudSyncWithFixedParams(@NonNull String plaintext,
+                                                                 @NonNull String masterPassword,
+                                                                 @NonNull String saltBase64) {
+        try {
+            // 生成随机 IV（每次加密都使用新的IV）
+            byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
+            new SecureRandom().nextBytes(iv);
+
+            // 使用固定参数的 Argon2id 派生密钥
+            SecretKey key = argon2Manager.deriveKeyWithArgon2idForCloud(masterPassword, saltBase64);
+
+            // 准备加密
+            byte[] plaintextBytes = plaintext.getBytes(StandardCharsets.UTF_8);
+
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION_GCM);
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv);
+            cipher.init(Cipher.ENCRYPT_MODE, key, gcmSpec);
+
+            // 加密
+            byte[] ciphertext = cipher.doFinal(plaintextBytes);
+
+            // 分离密文和认证标签
+            int tagLength = GCM_TAG_LENGTH_BITS / 8;
+            byte[] authTagBytes = new byte[tagLength];
+            byte[] actualCiphertext = new byte[ciphertext.length - tagLength];
+
+            System.arraycopy(ciphertext, 0, actualCiphertext, 0, actualCiphertext.length);
+            System.arraycopy(ciphertext, actualCiphertext.length, authTagBytes, 0, tagLength);
+
+            String encryptedData = Base64.encodeToString(actualCiphertext, Base64.NO_WRAP);
+            String ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP);
+            String authTag = Base64.encodeToString(authTagBytes, Base64.NO_WRAP);
+
+            Log.d(TAG, "云端同步加密成功（固定参数 + authTag 已分离）");
+            return new CloudBackupResult(encryptedData, ivBase64, saltBase64, authTag);
+
+        } catch (Exception e) {
+            Log.e(TAG, "云端同步加密失败（固定参数）", e);
+            throw new SecurityException("云端同步加密失败（固定参数）", e);
+        }
+    }
+
+    /**
+     * 解密云端同步数据（使用固定参数）
+     *
+     * 使用 Argon2id 固定高配参数进行解密。
+     *
+     * @param encryptedData 加密的数据
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码，应从云端获取）
+     * @param iv IV
+     * @param authTag GCM 认证标签
+     * @return 解密后的明文
+     */
+    @NonNull
+    public String decryptCloudSyncWithFixedParams(@NonNull String encryptedData,
+                                                   @NonNull String masterPassword,
+                                                   @NonNull String saltBase64,
+                                                   @NonNull String iv,
+                                                   @Nullable String authTag) {
+        try {
+            // 使用固定参数的 Argon2id 派生密钥
+            SecretKey key = argon2Manager.deriveKeyWithArgon2idForCloud(masterPassword, saltBase64);
+
+            // 解码数据
+            byte[] ciphertext = Base64.decode(encryptedData, Base64.NO_WRAP);
+            byte[] ivBytes = Base64.decode(iv, Base64.NO_WRAP);
+
+            // 重组密文和认证标签
+            byte[] combined;
+            if (authTag == null || authTag.isEmpty()) {
+                combined = ciphertext;
+                Log.d(TAG, "解密（固定参数）：authTag 已包含在密文中（旧格式）");
+            } else {
+                byte[] authTagBytes = Base64.decode(authTag, Base64.NO_WRAP);
+                combined = new byte[ciphertext.length + authTagBytes.length];
+                System.arraycopy(ciphertext, 0, combined, 0, ciphertext.length);
+                System.arraycopy(authTagBytes, 0, combined, ciphertext.length, authTagBytes.length);
+                Log.d(TAG, "解密（固定参数）：重组密文和分离的 authTag（标准格式）");
+            }
+
+            // 解密
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION_GCM);
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH_BITS, ivBytes);
+            cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec);
+
+            byte[] plaintextBytes = cipher.doFinal(combined);
+            return new String(plaintextBytes, StandardCharsets.UTF_8);
+
+        } catch (Exception e) {
+            Log.e(TAG, "云端同步解密失败（固定参数）", e);
+            throw new SecurityException("云端同步解密失败（固定参数）", e);
+        }
+    }
+
     // ========== 内部类 ==========
 
     /**

@@ -31,6 +31,12 @@ public class VaultResponse {
     private String dataAuthTag;
 
     /**
+     * Salt（Base64 编码）
+     * 用于 Argon2id 密钥派生
+     */
+    private String salt;
+
+    /**
      * 版本号
      */
     private Long version;
@@ -91,6 +97,14 @@ public class VaultResponse {
 
     public void setDataAuthTag(String dataAuthTag) {
         this.dataAuthTag = dataAuthTag;
+    }
+
+    public String getSalt() {
+        return salt;
+    }
+
+    public void setSalt(String salt) {
+        this.salt = salt;
     }
 
     public Long getVersion() {

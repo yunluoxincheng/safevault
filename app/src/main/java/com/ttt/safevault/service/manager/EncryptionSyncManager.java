@@ -82,11 +82,13 @@ public class EncryptionSyncManager {
         private final String encryptedKey;
         private final String iv;
         private final String salt;
+        private final String authTag;
 
-        public EncryptedPrivateKey(String encryptedKey, String iv, String salt) {
+        public EncryptedPrivateKey(String encryptedKey, String iv, String salt, String authTag) {
             this.encryptedKey = encryptedKey;
             this.iv = iv;
             this.salt = salt;
+            this.authTag = authTag;
         }
 
         public String getEncryptedKey() {
@@ -99,6 +101,10 @@ public class EncryptionSyncManager {
 
         public String getSalt() {
             return salt;
+        }
+
+        public String getAuthTag() {
+            return authTag;
         }
     }
 
@@ -119,7 +125,7 @@ public class EncryptionSyncManager {
     /**
      * 上传加密私钥
      */
-    public boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt) {
+    public boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt, String authTag) {
         try {
             String userId = tokenManager.getUserId();
             if (userId == null) {
@@ -133,7 +139,7 @@ public class EncryptionSyncManager {
 
             com.ttt.safevault.dto.request.UploadPrivateKeyRequest request =
                 new com.ttt.safevault.dto.request.UploadPrivateKeyRequest(
-                    encryptedPrivateKey, iv, salt, nextVersion
+                    encryptedPrivateKey, iv, salt, authTag, nextVersion
                 );
 
             com.ttt.safevault.dto.response.UploadPrivateKeyResponse response =
@@ -195,7 +201,8 @@ public class EncryptionSyncManager {
                 return new EncryptedPrivateKey(
                     response.getEncryptedPrivateKey(),
                     response.getIv(),
-                    response.getSalt()
+                    response.getSalt(),
+                    response.getAuthTag()
                 );
             } else {
                 Log.w(TAG, "Private key response is null or empty");
@@ -221,10 +228,15 @@ public class EncryptionSyncManager {
             // 获取当前版本号
             long currentVersion = getVaultVersion();
 
-            // 构建同步请求
+            // 生成随机 salt（每次上传都生成新的）
+            com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
+                com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context);
+            String randomSalt = argon2Manager.generateCloudSalt();
+
+            // 构建同步请求（包含 salt）
             com.ttt.safevault.dto.request.VaultSyncRequest request =
                 new com.ttt.safevault.dto.request.VaultSyncRequest(
-                    encryptedVaultData, iv, authTag, currentVersion, false
+                    encryptedVaultData, iv, authTag, randomSalt, currentVersion, false
                 );
 
             com.ttt.safevault.dto.response.VaultSyncResponse response =
@@ -263,6 +275,61 @@ public class EncryptionSyncManager {
     }
 
     /**
+     * 上传加密密码库数据（包含 salt）
+     */
+    public boolean uploadEncryptedVaultDataWithSalt(String encryptedVaultData, String iv, String authTag, String salt) {
+        try {
+            String userId = tokenManager.getUserId();
+            if (userId == null) {
+                Log.e(TAG, "No user ID found for vault upload");
+                return false;
+            }
+
+            // 获取当前版本号
+            long currentVersion = getVaultVersion();
+
+            // 构建同步请求（包含 salt）
+            com.ttt.safevault.dto.request.VaultSyncRequest request =
+                new com.ttt.safevault.dto.request.VaultSyncRequest(
+                    encryptedVaultData, iv, authTag, salt, currentVersion, false
+                );
+
+            com.ttt.safevault.dto.response.VaultSyncResponse response =
+                retrofitClient.getVaultServiceApi()
+                    .syncVault(userId, request)
+                    .blockingFirst();
+
+            if (response != null) {
+                if (response.isHasConflict()) {
+                    Log.w(TAG, "Vault sync conflict: serverVersion=" + response.getServerVersion() +
+                             ", clientVersion=" + response.getClientVersion());
+                    // 保存服务器数据供冲突处理
+                    prefs.edit()
+                        .putString("server_vault_data", response.getServerVault().getEncryptedData())
+                        .putString("server_vault_iv", response.getServerVault().getDataIv())
+                        .putLong("server_vault_version", response.getServerVersion())
+                        .apply();
+                    return false;
+                }
+
+                if (response.isSuccess()) {
+                    // 保存新版本号和时间戳
+                    prefs.edit()
+                        .putLong("vault_version", response.getNewVersion())
+                        .putLong("vault_last_sync", System.currentTimeMillis())
+                        .apply();
+                    Log.d(TAG, "Vault uploaded successfully with salt, new version: " + response.getNewVersion());
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to upload encrypted vault data with salt", e);
+            return false;
+        }
+    }
+
+    /**
      * 下载加密密码库数据
      */
     @Nullable
@@ -290,7 +357,8 @@ public class EncryptionSyncManager {
                 return new BackendService.EncryptedVaultData(
                     response.getEncryptedData(),
                     response.getDataIv(),
-                    response.getDataAuthTag(),  // 添加 authTag
+                    response.getDataAuthTag(),
+                    response.getSalt(),  // 云端存储的 salt
                     String.valueOf(response.getVersion())
                 );
             }
@@ -416,11 +484,12 @@ public class EncryptionSyncManager {
                 long cloudVersion = response.getVersion();
                 Log.d(TAG, "Cloud vault version: " + cloudVersion);
 
-                // 创建 EncryptedVaultData 对象
+                // 创建 EncryptedVaultData 对象（包含 salt）
                 BackendService.EncryptedVaultData cloudVault = new BackendService.EncryptedVaultData(
                     response.getEncryptedData(),
                     response.getDataIv(),
                     response.getDataAuthTag(),
+                    response.getSalt(),  // 云端存储的 salt
                     String.valueOf(cloudVersion)
                 );
 
@@ -554,32 +623,24 @@ public class EncryptionSyncManager {
             String jsonData = com.ttt.safevault.utils.BackupJsonUtil.serializePasswordList(items);
             Log.d(TAG, "Serialized data length: " + jsonData.length() + " characters");
 
-            // 7. 获取用户邮箱以生成固定 salt
-            // 注意：必须使用邮箱而不是 userId，因为 salt 需要跨设备一致
-            String email = tokenManager.getLastLoginEmail();
-            if (email == null || email.isEmpty()) {
-                // 降级：尝试从 SharedPreferences 获取
-                email = prefs.getString("user_email", "");
-            }
-            if (email == null || email.isEmpty()) {
-                Log.e(TAG, "Cannot get user email for salt generation");
-                return SyncResult.failure("无法获取用户邮箱");
-            }
+            // 7. 生成随机 salt（每次上传都生成新的随机 salt）
+            com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
+                com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context);
+            String randomSalt = argon2Manager.generateCloudSalt();
+            Log.d(TAG, "Generated random salt for cloud sync");
 
-            String fixedSalt = backupEncryptionManager.getOrGenerateUserSalt(email);
-            Log.d(TAG, "Using fixed salt for encryption based on email: " + email);
-
-            // 8. 使用主密码和固定 salt 加密数据（云端同步模式）
+            // 8. 使用主密码、随机 salt 和固定参数加密数据（云端同步模式）
             com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptionResult =
-                backupEncryptionManager.encryptForCloudSync(jsonData, masterPassword, fixedSalt);
+                backupEncryptionManager.encryptForCloudSyncWithFixedParams(jsonData, masterPassword, randomSalt);
 
-            Log.d(TAG, "Data encrypted successfully with fixed salt (Argon2id)");
+            Log.d(TAG, "Data encrypted successfully with random salt + fixed Argon2 params (128MB, 3 iterations, 4 parallelism)");
 
-            // 9. 上传加密数据到服务器
-            boolean uploadSuccess = uploadEncryptedVaultData(
+            // 9. 上传加密数据到服务器（包含 salt）
+            boolean uploadSuccess = uploadEncryptedVaultDataWithSalt(
                 encryptionResult.getEncryptedData(),
                 encryptionResult.getIv(),
-                encryptionResult.getAuthTag()
+                encryptionResult.getAuthTag(),
+                encryptionResult.getSalt()
             );
 
             if (uploadSuccess) {
@@ -639,32 +700,23 @@ public class EncryptionSyncManager {
             }
             Log.d(TAG, "Master password obtained, length: " + masterPassword.length());
 
-            // 4. 获取用户邮箱以生成固定 salt（与加密时相同）
-            // 注意：必须使用邮箱而不是 userId，确保与加密时使用相同的 salt
-            String email = tokenManager.getLastLoginEmail();
-            Log.d(TAG, "Email from tokenManager: " + (email != null ? email : "null"));
-
-            if (email == null || email.isEmpty()) {
-                // 降级：尝试从 SharedPreferences 获取
-                email = prefs.getString("user_email", "");
-                Log.d(TAG, "UserId from prefs: " + (email != null ? email : "null"));
+            // 4. 获取云端存储的 salt
+            // 注意：salt 应该从云端响应中获取，而不是本地生成
+            if (cloudVault.salt == null || cloudVault.salt.isEmpty()) {
+                Log.e(TAG, "Salt is missing from cloud vault data!");
+                return SyncResult.failure("云端数据缺少 salt，无法解密");
             }
-            if (email == null || email.isEmpty()) {
-                Log.e(TAG, "Cannot get user email for salt generation");
-                return SyncResult.failure("无法获取用户邮箱");
-            }
-
-            String fixedSalt = backupEncryptionManager.getOrGenerateUserSalt(email);
-            Log.d(TAG, "Using fixed salt for decryption based on email: " + email);
-            Log.d(TAG, "Generated salt (Base64): " + fixedSalt);
-            Log.d(TAG, "Salt length: " + fixedSalt.length());
+            String cloudSalt = cloudVault.salt;
+            Log.d(TAG, "Using salt from cloud for decryption");
+            Log.d(TAG, "Salt (Base64): " + cloudSalt);
+            Log.d(TAG, "Salt length: " + cloudSalt.length());
             Log.d(TAG, "IV (Base64): " + cloudVault.iv);
             Log.d(TAG, "AuthTag (Base64): " + (cloudVault.authTag != null ? cloudVault.authTag : "null"));
 
-            // 5. 解密数据（使用与加密时相同的固定 salt，Argon2id）
+            // 5. 解密数据（使用云端 salt + 固定 Argon2 参数）
             String decryptedJson;
             try {
-                Log.d(TAG, "Starting decryption...");
+                Log.d(TAG, "Starting decryption with fixed Argon2 params (128MB, 3 iterations, 4 parallelism)...");
                 Log.d(TAG, "Encrypted data (first 100 chars): " +
                     (cloudVault.encryptedData.length() > 100 ? cloudVault.encryptedData.substring(0, 100) + "..." : cloudVault.encryptedData));
 
@@ -674,15 +726,15 @@ public class EncryptionSyncManager {
                     return SyncResult.failure("云端数据缺少认证标签，无法解密");
                 }
 
-                decryptedJson = backupEncryptionManager.decryptCloudSync(
+                decryptedJson = backupEncryptionManager.decryptCloudSyncWithFixedParams(
                     cloudVault.encryptedData,
                     masterPassword,
-                    fixedSalt,  // 使用基于邮箱生成的固定 salt
+                    cloudSalt,  // 使用云端存储的 salt
                     cloudVault.iv,
                     cloudVault.authTag
                 );
 
-                Log.d(TAG, "Vault data decrypted successfully (Argon2id)");
+                Log.d(TAG, "Vault data decrypted successfully (fixed Argon2 params)");
                 Log.d(TAG, "Decrypted JSON length: " + decryptedJson.length());
                 Log.d(TAG, "Decrypted JSON (first 200 chars): " +
                     (decryptedJson.length() > 200 ? decryptedJson.substring(0, 200) + "..." : decryptedJson));

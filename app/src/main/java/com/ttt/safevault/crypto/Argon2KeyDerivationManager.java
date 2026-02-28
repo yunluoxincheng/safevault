@@ -51,6 +51,14 @@ public class Argon2KeyDerivationManager {
     /** 盐值长度（字节） */
     private static final int ARGON2_SALT_LENGTH = 16;
 
+    // ========== 云端同步固定参数（高配） ==========
+    /** 云端同步固定内存成本（KB）- 128MB */
+    private static final int CLOUD_MEMORY_KB = 131072;
+    /** 云端同步固定迭代次数 */
+    private static final int CLOUD_ITERATIONS = 3;
+    /** 云端同步固定并行度 */
+    private static final int CLOUD_PARALLELISM = 4;
+
     // ========== 自适应参数（实例变量） ==========
     /** 时间成本（迭代次数）- 根据设备自适应 */
     private final int argon2TimeCost;
@@ -684,5 +692,81 @@ public class Argon2KeyDerivationManager {
             Log.e(TAG, "密码哈希失败", e);
             throw new SecurityException("Password hashing failed", e);
         }
+    }
+
+    // ========== 云端同步专用方法（固定参数） ==========
+
+    /**
+     * 使用 Argon2id 从主密码派生密钥（云端同步专用）
+     *
+     * 此方法使用固定的高配参数（128MB, 3 iterations, 4 parallelism），
+     * 确保跨设备、跨安装的密钥派生结果一致。
+     *
+     * 注意：此方法仅用于云端同步的加密/解密，不用于本地数据。
+     *
+     * @param masterPassword 主密码
+     * @param saltBase64 盐值（Base64编码，应从云端获取）
+     * @return 派生的密钥（256位 AES 密钥）
+     * @throws SecurityException 派生失败时抛出
+     */
+    @NonNull
+    public SecretKey deriveKeyWithArgon2idForCloud(@NonNull String masterPassword,
+                                                    @NonNull String saltBase64) {
+        try {
+            long startTime = System.currentTimeMillis();
+
+            // 将密码和盐值转换为字节数组
+            byte[] passwordBytes = masterPassword.getBytes(StandardCharsets.UTF_8);
+            byte[] salt = Base64.decode(saltBase64, Base64.NO_WRAP);
+
+            // 使用固定的高配参数进行密钥派生
+            Argon2KtResult result = argon2Kt.hash(
+                    Argon2Mode.ARGON2_ID,
+                    passwordBytes,
+                    salt,
+                    CLOUD_ITERATIONS,      // 固定迭代次数：3
+                    CLOUD_MEMORY_KB        // 固定内存：128MB
+            );
+
+            // 从结果中获取原始哈希值
+            ByteBuffer hashBuffer = result.getRawHash();
+            byte[] hash = new byte[hashBuffer.remaining()];
+            hashBuffer.get(hash);
+
+            // 确保密钥长度为 32 字节（256 位）
+            byte[] keyBytes = new byte[32];
+            System.arraycopy(hash, 0, keyBytes, 0, Math.min(hash.length, 32));
+
+            // 创建 AES 密钥
+            SecretKey derivedKey = new SecretKeySpec(keyBytes, "AES");
+
+            // 安全清除敏感数据
+            java.util.Arrays.fill(passwordBytes, (byte) 0);
+            java.util.Arrays.fill(hash, (byte) 0);
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            Log.d(TAG, "Argon2id 云端密钥派生成功（固定参数），耗时: " + elapsed + "ms");
+            Log.d(TAG, "云端参数: memory=" + (CLOUD_MEMORY_KB / 1024) + "MB, " +
+                       "iterations=" + CLOUD_ITERATIONS + ", parallelism=" + CLOUD_PARALLELISM);
+
+            return derivedKey;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Argon2id 云端密钥派生失败", e);
+            throw new SecurityException("Argon2id cloud key derivation failed", e);
+        }
+    }
+
+    /**
+     * 生成用于云端同步的随机 Salt
+     *
+     * 每次上传数据到云端时，应生成新的随机 salt。
+     * Salt 与加密数据一起存储在云端，解密时从云端获取。
+     *
+     * @return Base64 编码的 16 字节随机 salt
+     */
+    @NonNull
+    public String generateCloudSalt() {
+        return generateSalt(); // 使用现有的随机 salt 生成方法
     }
 }

@@ -21,6 +21,12 @@ public class VaultSyncRequest {
     private String dataAuthTag;
 
     /**
+     * Salt（Base64 编码）
+     * 用于 Argon2id 密钥派生
+     */
+    private String salt;
+
+    /**
      * 客户端版本号（用于冲突检测）
      */
     private Long clientVersion;
@@ -33,10 +39,11 @@ public class VaultSyncRequest {
     public VaultSyncRequest() {
     }
 
-    public VaultSyncRequest(String encryptedData, String dataIv, String dataAuthTag, Long clientVersion, boolean forceSync) {
+    public VaultSyncRequest(String encryptedData, String dataIv, String dataAuthTag, String salt, Long clientVersion, boolean forceSync) {
         this.encryptedData = encryptedData;
         this.dataIv = dataIv;
         this.dataAuthTag = dataAuthTag;
+        this.salt = salt;
         this.clientVersion = clientVersion;
         this.forceSync = forceSync;
     }
@@ -63,6 +70,14 @@ public class VaultSyncRequest {
 
     public void setDataAuthTag(String dataAuthTag) {
         this.dataAuthTag = dataAuthTag;
+    }
+
+    public String getSalt() {
+        return salt;
+    }
+
+    public void setSalt(String salt) {
+        this.salt = salt;
     }
 
     public Long getClientVersion() {

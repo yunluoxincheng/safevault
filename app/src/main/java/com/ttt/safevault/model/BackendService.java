@@ -218,6 +218,14 @@ public interface BackendService {
      */
     boolean deleteAccount();
 
+    /**
+     * 重置本地保险库
+     * 仅清除本地加密数据，不影响云端账户
+     * 用于注册时检测到本地已有保险库的情况
+     * @return true表示重置成功
+     */
+    boolean resetLocalVault();
+
     // ========== 新增：分享管理接口 ==========
     // 旧的本地分享方法已移除，现在使用云端分享接口
 
@@ -404,9 +412,10 @@ public interface BackendService {
      * @param encryptedPrivateKey 加密的私钥数据（Base64）
      * @param iv 初始化向量（Base64）
      * @param salt 盐值（Base64）
+     * @param authTag GCM认证标签（Base64）
      * @return true表示上传成功
      */
-    boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt);
+    boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt, String authTag);
 
     /**
      * 从云端下载加密的设备私钥
@@ -439,12 +448,21 @@ public interface BackendService {
         public String encryptedData;
         public String iv;
         public String authTag;
+        public String salt;      // 云端存储的 salt（用于 Argon2id 密钥派生）
         public String version;
 
         public EncryptedVaultData(String encryptedData, String iv, String authTag, String version) {
             this.encryptedData = encryptedData;
             this.iv = iv;
             this.authTag = authTag;
+            this.version = version;
+        }
+
+        public EncryptedVaultData(String encryptedData, String iv, String authTag, String salt, String version) {
+            this.encryptedData = encryptedData;
+            this.iv = iv;
+            this.authTag = authTag;
+            this.salt = salt;
             this.version = version;
         }
     }
