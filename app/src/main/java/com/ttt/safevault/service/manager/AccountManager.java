@@ -109,6 +109,15 @@ public class AccountManager {
             prefs.edit().clear().apply();
             Log.d(TAG, "Settings and tokens cleared");
 
+            // 5. 清除 crypto_prefs（存储初始化标志和盐值）
+            context.getSharedPreferences("crypto_prefs", Context.MODE_PRIVATE)
+                .edit().clear().commit();
+            Log.d(TAG, "Crypto preferences cleared");
+
+            // 6. 清除 SecureKeyStorageManager 中的所有密钥数据
+            secureStorage.clearAll();
+            Log.d(TAG, "SecureKeyStorage data cleared");
+
             Log.d(TAG, "Account deletion completed successfully");
             return true;
         } catch (Exception e) {
@@ -176,13 +185,13 @@ public class AccountManager {
                     com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
 
                 // 解密私钥数据（AES-GCM）
-                // 注意：加密后的密文已包含 GCM authTag，所以 authTag 参数传 null
+                // 使用实际下载的 authTag 进行解密
                 String decryptedKeyBytes = backupManager.decryptCloudSync(
                     encryptedKey.getEncryptedKey(),
                     masterPassword,
                     encryptedKey.getSalt(),
                     encryptedKey.getIv(),
-                    null // authTag 已包含在 encryptedKey 中
+                    encryptedKey.getAuthTag()  // 使用实际下载的 authTag
                 );
 
                 // 将解密后的字节转换为 PrivateKey
@@ -268,7 +277,8 @@ public class AccountManager {
             boolean uploaded = syncManager.uploadEncryptedPrivateKey(
                 encryptionResult.getEncryptedData(),
                 encryptionResult.getIv(),
-                encryptionResult.getSalt()
+                encryptionResult.getSalt(),
+                encryptionResult.getAuthTag()
             );
 
             if (uploaded) {

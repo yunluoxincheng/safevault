@@ -520,6 +520,53 @@ public class RegisterActivity extends AppCompatActivity {
             return;
         }
 
+        // 先检查本地保险库是否已存在
+        BackendService backendService =
+                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+        if (backendService.isInitialized()) {
+            // 本地保险库已存在，显示对话框让用户选择
+            showVaultExistsDialog(password);
+            return;
+        }
+
+        // 执行注册完成
+        performCompleteRegistration(password);
+    }
+
+    /**
+     * 显示本地保险库已存在对话框
+     */
+    private void showVaultExistsDialog(String password) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("本地保险库已存在")
+            .setMessage("检测到本地已存在保险库数据。这可能是因为之前的注册未完成或您已有账户。\n\n" +
+                    "选择\"重置并继续\"将清除所有本地数据并重新注册。\n" +
+                    "选择\"取消\"将返回，您可以使用现有账户登录。")
+            .setPositiveButton("重置并继续", (dialog, which) -> {
+                // 重置本地保险库
+                BackendService backendService =
+                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                boolean reset = backendService.resetLocalVault();
+                if (reset) {
+                    // 重置成功，继续注册
+                    performCompleteRegistration(password);
+                } else {
+                    showError("重置本地数据失败，请尝试清除应用数据");
+                }
+            })
+            .setNegativeButton("取消", (dialog, which) -> {
+                // 用户取消，返回登录界面
+                navigateToLogin();
+            })
+            .setCancelable(false)
+            .show();
+    }
+
+    /**
+     * 执行完成注册
+     */
+    private void performCompleteRegistration(String password) {
         // 显示进度提示
         if (progressBar != null) {
             progressBar.setVisibility(View.VISIBLE);

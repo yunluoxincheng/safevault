@@ -408,6 +408,47 @@ public class BackendServiceImpl implements BackendService {
         return accountManager.deleteAccount();
     }
 
+    @Override
+    public boolean resetLocalVault() {
+        try {
+            Log.d(TAG, "Resetting local vault...");
+
+            // 1. 删除所有本地密码数据
+            List<PasswordItem> items = passwordManager.getAllItems();
+            for (PasswordItem item : items) {
+                passwordManager.deleteItem(item.getId());
+            }
+            Log.d(TAG, "Local password data deleted");
+
+            // 2. 清除会话
+            cryptoSession.clear();
+
+            // 3. 清除生物识别数据
+            secureKeyStorage.clearBiometricData();
+
+            // 4. 清除设置（保留用户偏好）
+            securityConfig.clear();
+
+            // 5. 清除 crypto_prefs（存储初始化标志和盐值）
+            context.getSharedPreferences(CRYPTO_PREFS_NAME, Context.MODE_PRIVATE)
+                .edit().clear().commit();
+            Log.d(TAG, "Crypto preferences cleared");
+
+            // 6. 清除 SecureKeyStorageManager 中的所有密钥数据
+            secureKeyStorage.clearAll();
+            Log.d(TAG, "SecureKeyStorage data cleared");
+
+            // 7. 清除 backend_prefs
+            prefs.edit().clear().apply();
+
+            Log.i(TAG, "Local vault reset successfully");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to reset local vault", e);
+            return false;
+        }
+    }
+
     // ==================== 云端认证相关 ====================
 
     @Override
@@ -444,8 +485,8 @@ public class BackendServiceImpl implements BackendService {
     // ==================== 加密数据同步相关 ====================
 
     @Override
-    public boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt) {
-        return encryptionSyncManager.uploadEncryptedPrivateKey(encryptedPrivateKey, iv, salt);
+    public boolean uploadEncryptedPrivateKey(String encryptedPrivateKey, String iv, String salt, String authTag) {
+        return encryptionSyncManager.uploadEncryptedPrivateKey(encryptedPrivateKey, iv, salt, authTag);
     }
 
     @Override

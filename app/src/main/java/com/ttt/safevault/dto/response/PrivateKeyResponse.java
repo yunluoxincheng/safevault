@@ -8,6 +8,7 @@ public class PrivateKeyResponse {
     private String encryptedPrivateKey;
     private String iv;
     private String salt;
+    private String authTag;
     private String version;
     private String updatedAt;
 
@@ -36,6 +37,14 @@ public class PrivateKeyResponse {
 
     public void setSalt(String salt) {
         this.salt = salt;
+    }
+
+    public String getAuthTag() {
+        return authTag;
+    }
+
+    public void setAuthTag(String authTag) {
+        this.authTag = authTag;
     }
 
     public String getVersion() {

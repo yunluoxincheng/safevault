@@ -21,5 +21,6 @@ public class CompleteRegistrationRequest {
     private String publicKey;
     private String encryptedPrivateKey;
     private String privateKeyIv;
+    private String authTag;
     private String deviceId;
 }

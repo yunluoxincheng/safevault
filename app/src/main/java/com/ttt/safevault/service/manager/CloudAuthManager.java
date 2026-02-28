@@ -175,28 +175,26 @@ public class CloudAuthManager {
     public com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
             String email, String username, String masterPassword) {
         try {
-            // 0. 检查是否已初始化本地保险库，如果没有则先初始化
+            // 0. 检查是否已初始化本地保险库
             BackendService backendService =
                 ServiceLocator.getInstance().getBackendService();
 
-            if (!backendService.isInitialized()) {
-                Log.d(TAG, "本地保险库未初始化，开始初始化...");
-                boolean initialized = backendService.initialize(masterPassword);
-                if (!initialized) {
-                    throw new RuntimeException("本地保险库初始化失败");
-                }
-                Log.d(TAG, "本地保险库初始化成功");
-            } else {
-                // 已初始化但会话可能未解锁，需要解锁
-                if (!backendService.isUnlocked()) {
-                    Log.d(TAG, "本地保险库已初始化但会话未解锁，开始解锁...");
-                    boolean unlocked = backendService.unlock(masterPassword);
-                    if (!unlocked) {
-                        throw new RuntimeException("会话解锁失败，请检查主密码");
-                    }
-                    Log.d(TAG, "会话解锁成功");
-                }
+            if (backendService.isInitialized()) {
+                // 已存在本地保险库，不允许重新注册
+                // 这可能是因为：
+                // 1. 用户之前注册失败但本地保险库已创建
+                // 2. 用户已经有账户
+                Log.e(TAG, "本地保险库已存在，无法重新注册。请先清除应用数据或使用现有账户登录。");
+                throw new RuntimeException("本地保险库已存在。如需重新注册，请先在设置中删除账户或清除应用数据。");
             }
+
+            // 本地保险库未初始化，开始初始化
+            Log.d(TAG, "本地保险库未初始化，开始初始化...");
+            boolean initialized = backendService.initialize(masterPassword);
+            if (!initialized) {
+                throw new RuntimeException("本地保险库初始化失败");
+            }
+            Log.d(TAG, "本地保险库初始化成功");
 
             // 1. 生成盐值
             com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
@@ -254,6 +252,7 @@ public class CloudAuthManager {
                             .publicKey(publicKey)
                             .encryptedPrivateKey(encryptedKey.getEncryptedData())
                             .privateKeyIv(encryptedKey.getIv())
+                            .authTag(encryptedKey.getAuthTag())
                             .deviceId(deviceId)
                             .build();
 

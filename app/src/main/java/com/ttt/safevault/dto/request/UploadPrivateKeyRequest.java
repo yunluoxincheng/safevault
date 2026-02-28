@@ -8,15 +8,17 @@ public class UploadPrivateKeyRequest {
     private String encryptedPrivateKey;
     private String iv;
     private String salt;
+    private String authTag;
     private String version;
 
     public UploadPrivateKeyRequest() {
     }
 
-    public UploadPrivateKeyRequest(String encryptedPrivateKey, String iv, String salt, String version) {
+    public UploadPrivateKeyRequest(String encryptedPrivateKey, String iv, String salt, String authTag, String version) {
         this.encryptedPrivateKey = encryptedPrivateKey;
         this.iv = iv;
         this.salt = salt;
+        this.authTag = authTag;
         this.version = version;
     }
 
@@ -42,6 +44,14 @@ public class UploadPrivateKeyRequest {
 
     public void setSalt(String salt) {
         this.salt = salt;
+    }
+
+    public String getAuthTag() {
+        return authTag;
+    }
+
+    public void setAuthTag(String authTag) {
+        this.authTag = authTag;
     }
 
     public String getVersion() {
