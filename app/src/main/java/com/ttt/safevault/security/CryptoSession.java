@@ -19,7 +19,17 @@ import javax.crypto.SecretKey;
  * - DataKey 是"已通过主密码验证"的唯一凭证
  * - 不是字符串、不是 hash、不是 token
  * - 而是能否访问 DataKey
- * - 会话超时时间从 SecurityConfig 读取，与用户配置的自动锁定时间保持一致
+ *
+ * 会话锁定机制（两种方式）：
+ *
+ * 1. 后台时间锁定（由 SafeVaultApplication 和 SessionGuard 管理）
+ *    - 立即锁定模式：应用进入后台即锁定（timeoutMs == 0）
+ *    - 超时锁定模式：后台超过设定时间后锁定
+ *    - 从不锁定：不根据后台时间锁定
+ *
+ * 2. 会话超时锁定（由 CryptoSession 内部管理）
+ *    - 当用户在应用内持续不活动时，会话自动过期
+ *    - 注意：立即锁定模式不会触发会话超时检查，仅由后台时间管理
  *
  * 会话生命周期：
  * ┌─────────────────────────────────────────┐
@@ -33,7 +43,8 @@ import javax.crypto.SecretKey;
  * └─────────────────────────────────────────┘
  *
  * @since SafeVault 3.3.0 (会话管理层)
- * @since SafeVault 3.6.0 (会话超时与自动锁定时间同步)
+ * @since SafeVault 3.6.0 (会话超时与会话锁定时间同步)
+ * @since SafeVault 3.7.0 (修复立即锁定模式问题)
  */
 public class CryptoSession {
     private static final String TAG = "CryptoSession";
@@ -238,17 +249,37 @@ public class CryptoSession {
             return false;
         }
 
+        long timeoutMs = getSessionTimeoutMs();
+
+        // 特殊处理：立即锁定模式（timeoutMs == 0）
+        // 在这种模式下，会话由后台时间管理，而不是超时时间
+        // 这里返回 false，允许在应用内的正常操作
+        if (timeoutMs == 0) {
+            return false;
+        }
+
+        // 从不锁定模式（timeoutMs == Long.MAX_VALUE）
+        if (timeoutMs == Long.MAX_VALUE) {
+            return false;
+        }
+
+        // 其他模式：检查是否超时
         long elapsed = System.currentTimeMillis() - sessionStartTime;
-        return elapsed > getSessionTimeoutMs();
+        return elapsed > timeoutMs;
     }
 
     /**
      * 获取会话超时时间（毫秒）
      *
-     * 从 SecurityConfig 读取用户配置的自动锁定时间，与用户设置保持一致。
+     * 从 SecurityConfig 读取用户配置的会话锁定时间，与用户设置保持一致。
      * 如果无法获取配置（如 Context 不可用），则使用默认值 5 分钟。
      *
-     * @return 超时时间（毫秒）
+     * 注意：
+     * - 立即锁定模式返回 0（由后台时间管理，不使用超时检查）
+     * - 从不锁定模式返回 Long.MAX_VALUE
+     * - 其他模式返回具体的毫秒数
+     *
+     * @return 超时时间（毫秒），0 表示立即锁定，Long.MAX_VALUE 表示从不锁定
      */
     private long getSessionTimeoutMs() {
         try {

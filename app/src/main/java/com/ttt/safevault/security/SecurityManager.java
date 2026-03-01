@@ -23,7 +23,7 @@ import java.util.List;
  * 负责管理应用的安全措施，包括防截图、锁定等
  * 使用单例模式确保整个应用共享同一个实例
  *
- * 注意：自动锁定功能由 MainActivity 和 SafeVaultApplication 统一处理
+ * 注意：会话锁定功能由 MainActivity 和 SafeVaultApplication 统一处理
  */
 public class SecurityManager {
 

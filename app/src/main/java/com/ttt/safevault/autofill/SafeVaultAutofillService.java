@@ -403,30 +403,13 @@ public class SafeVaultAutofillService extends AutofillService {
                 return;
             }
 
-            // 获取自动锁定超时时间（毫秒）
-            com.ttt.safevault.security.SecurityConfig securityConfig =
-                    new com.ttt.safevault.security.SecurityConfig(this);
-            long autoLockTimeoutMillis = securityConfig.getAutoLockTimeoutMillisForMode();
+            // 使用 SessionGuard 统一检查是否需要锁定
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                    com.ttt.safevault.security.SessionGuard.getInstance();
+            sessionGuard.setSecurityConfig(this);
 
-            // 计算超时时间（秒）用于显示
-            long timeoutSeconds = autoLockTimeoutMillis == Long.MAX_VALUE ? -1 : autoLockTimeoutMillis / 1000;
-
-            logDebug("超时设置: " + timeoutSeconds + " 秒 (" + autoLockTimeoutMillis + " 毫秒)");
-
-            if (autoLockTimeoutMillis == Long.MAX_VALUE) {
-                logDebug("自动锁定模式: 从不锁定");
-                return;
-            }
-
-            // 计算经过时间
-            long currentTime = System.currentTimeMillis();
-            long elapsedTime = currentTime - backgroundTime;
-            logDebug("当前时间: " + currentTime);
-            logDebug("后台时长: " + (elapsedTime / 1000) + " 秒");
-
-            // 检查是否超时
-            if (elapsedTime >= autoLockTimeoutMillis) {
-                logDebug("*** 后台超时，执行自动锁定 ***");
+            if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
+                logDebug("*** 后台超时，执行会话锁定 ***");
                 backendService.lock(); // 锁定并清除会话密钥
                 logDebug("锁定完成");
             } else {

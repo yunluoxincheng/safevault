@@ -8,17 +8,19 @@ import androidx.annotation.Nullable;
 import java.util.function.Supplier;
 
 /**
- * 安全会话门控（Guarded Execution 模式）
+ * 安全会话门控（Guarded Execution 模式）和会话锁定管理
  *
  * 设计原则：
  * - Security Boundary Centralization（安全边界集中化）
  * - 所有需要 DataKey 的操作必须通过此门控
+ * - 会话锁定检查逻辑统一管理
  * - 防止竞态条件和逻辑绕过
  *
  * 职责：
  * - 统一管理会话状态检查
  * - 确保敏感操作仅在会话解锁时执行
  * - 提供明确的失败信号（SessionLockedException）
+ * - 统一管理会话锁定超时检查逻辑
  *
  * 使用模式：
  * <pre>
@@ -36,6 +38,15 @@ import java.util.function.Supplier;
  * });
  * </pre>
  *
+ * 会话锁定检查：
+ * <pre>
+ * // 检查是否需要根据后台时间锁定会话
+ * if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
+ *     sessionGuard.lockSession();
+ *     // 跳转到登录页
+ * }
+ * </pre>
+ *
  * UI 层处理：
  * <pre>
  * try {
@@ -49,6 +60,7 @@ import java.util.function.Supplier;
  * </pre>
  *
  * @since SafeVault 3.4.0 (Guarded Execution 模式)
+ * @since SafeVault 3.7.0 (统一会话锁定管理)
  */
 public class SessionGuard {
     private static final String TAG = "SessionGuard";
@@ -58,6 +70,9 @@ public class SessionGuard {
 
     /** 加密会话引用 */
     private final CryptoSession cryptoSession;
+
+    /** SecurityConfig 引用（用于获取会话锁定超时设置） */
+    private SecurityConfig securityConfig;
 
     private SessionGuard(@NonNull CryptoSession cryptoSession) {
         this.cryptoSession = cryptoSession;
@@ -77,6 +92,75 @@ public class SessionGuard {
             }
         }
         return INSTANCE;
+    }
+
+    /**
+     * 设置 SecurityConfig（需要 Context 时调用）
+     *
+     * @param context 应用上下文
+     */
+    public void setSecurityConfig(@NonNull android.content.Context context) {
+        this.securityConfig = new SecurityConfig(context);
+        Log.d(TAG, "SecurityConfig 已设置");
+    }
+
+    /**
+     * 获取会话锁定超时时间（毫秒）
+     *
+     * @return 超时时间（毫秒），Long.MAX_VALUE 表示从不锁定
+     */
+    private long getSessionLockTimeoutMillis() {
+        if (securityConfig != null) {
+            return securityConfig.getAutoLockTimeoutMillisForMode();
+        }
+        // 默认值：1分钟
+        return 60 * 1000L;
+    }
+
+    /**
+     * 检查是否需要根据后台时间锁定会话
+     *
+     * 这是统一的会话锁定检查逻辑，供 MainActivity、SafeVaultAutofillService 等调用
+     *
+     * @param backgroundTime 后台时间戳（毫秒）
+     * @return true 表示需要锁定，false 表示不需要
+     */
+    public boolean shouldLockBySessionTimeout(long backgroundTime) {
+        // 如果没有后台时间记录，不需要锁定（首次启动或刚登录成功）
+        if (backgroundTime == 0) {
+            Log.d(TAG, "shouldLockBySessionTimeout: 没有后台时间记录，不需要锁定");
+            return false;
+        }
+
+        long autoLockTimeoutMillis = getSessionLockTimeoutMillis();
+
+        // 从不锁定模式
+        if (autoLockTimeoutMillis == Long.MAX_VALUE) {
+            Log.d(TAG, "shouldLockBySessionTimeout: 会话锁定模式为从不锁定");
+            return false;
+        }
+
+        // 立即锁定模式：只要有后台时间记录就锁定（应用进入过后台）
+        if (autoLockTimeoutMillis == 0) {
+            Log.d(TAG, "shouldLockBySessionTimeout: 立即锁定模式，需要锁定");
+            return true;
+        }
+
+        // 其他模式：检查是否超时
+        long backgroundMillis = System.currentTimeMillis() - backgroundTime;
+        boolean shouldLock = backgroundMillis >= autoLockTimeoutMillis;
+
+        if (shouldLock) {
+            Log.d(TAG, "shouldLockBySessionTimeout: 后台超时，需要锁定（"
+                    + (backgroundMillis / 1000) + "秒 >= "
+                    + (autoLockTimeoutMillis / 1000) + "秒）");
+        } else {
+            Log.d(TAG, "shouldLockBySessionTimeout: 未超时，不需要锁定（"
+                    + (backgroundMillis / 1000) + "秒 < "
+                    + (autoLockTimeoutMillis / 1000) + "秒）");
+        }
+
+        return shouldLock;
     }
 
     /**

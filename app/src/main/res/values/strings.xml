@@ -103,13 +103,13 @@
     <string name="about">关于</string>
 
     <!-- 账户安全设置 -->
-    <string name="auto_lock">自动锁定</string>
-    <string name="auto_lock_immediately">立即锁定</string>
-    <string name="auto_lock_1_minute">1分钟后</string>
-    <string name="auto_lock_5_minutes">5分钟后</string>
-    <string name="auto_lock_15_minutes">15分钟后</string>
-    <string name="auto_lock_30_minutes">30分钟后</string>
-    <string name="auto_lock_never">从不</string>
+    <string name="session_lock">会话锁定</string>
+    <string name="session_lock_immediately">立即锁定</string>
+    <string name="session_lock_1_minute">1分钟后</string>
+    <string name="session_lock_5_minutes">5分钟后</string>
+    <string name="session_lock_15_minutes">15分钟后</string>
+    <string name="session_lock_30_minutes">30分钟后</string>
+    <string name="session_lock_never">从不</string>
     <string name="biometric_unlock">生物识别解锁</string>
     <string name="biometric_unlock_summary">使用指纹或面部识别快速解锁</string>
     <string name="allow_screenshot">允许截图</string>

@@ -106,10 +106,16 @@ public class MainActivity extends AppCompatActivity {
             android.util.Log.d("MainActivity", "backgroundTime=" + bgTime);
         }
 
+        // 获取 SessionGuard 并设置 SecurityConfig
+        com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
+        sessionGuard.setSecurityConfig(this);
+
         if (savedInstanceState == null && launchedFromHistory) {
             // 从最近任务/后台恢复，检查是否需要锁定
             android.util.Log.d("MainActivity", "从后台恢复，检查是否需要锁定");
-            if (shouldLockOnStart()) {
+            long backgroundTime = backendService != null ? backendService.getBackgroundTime() : 0;
+            if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
                 android.util.Log.d("MainActivity", "需要锁定，跳转到登录页面");
                 lockApp();
                 return;
@@ -612,38 +618,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 检查应用启动时是否需要锁定
-     * 如果后台时间超过设定的超时时间，返回true
-     */
-    private boolean shouldLockOnStart() {
-        if (backendService != null) {
-            long backgroundTime = backendService.getBackgroundTime();
-            long autoLockTimeoutMillis = new com.ttt.safevault.security.SecurityConfig(this)
-                    .getAutoLockTimeoutMillisForMode();
-
-            // 如果没有后台时间记录，不需要锁定（首次启动或刚登录成功）
-            if (backgroundTime == 0) {
-                return false;
-            }
-
-            // 从不锁定模式
-            if (autoLockTimeoutMillis == Long.MAX_VALUE) {
-                return false;
-            }
-
-            // 立即锁定模式：只要有后台时间记录就锁定（应用进入过后台）
-            if (autoLockTimeoutMillis == 0) {
-                return true;
-            }
-
-            // 其他模式：检查是否超时
-            long backgroundMillis = System.currentTimeMillis() - backgroundTime;
-            return backgroundMillis >= autoLockTimeoutMillis;
-        }
-        return false;
-    }
-
-    /**
      * 检查应用从后台返回时是否需要锁定
      * 只在应用真正进入后台（而不是Activity之间切换）时才检查
      *
@@ -653,41 +627,35 @@ public class MainActivity extends AppCompatActivity {
     private void checkAutoLock() {
         android.util.Log.d("MainActivity", "=== checkAutoLock() 开始 ===");
 
-        // 通过检查后台时间来判断是否需要锁定
-        // 如果 backgroundTime == 0，说明应用没有进入过后台，不需要检查锁定
+        if (backendService == null) {
+            android.util.Log.e("MainActivity", "backendService 为 null，无法检查会话锁定");
+            return;
+        }
 
-        if (backendService != null) {
-            long backgroundTime = backendService.getBackgroundTime();
-            long autoLockTimeoutMillis = new com.ttt.safevault.security.SecurityConfig(this)
-                    .getAutoLockTimeoutMillisForMode();
+        long backgroundTime = backendService.getBackgroundTime();
 
-            // 计算超时时间（秒）用于显示
-            long timeoutSeconds = autoLockTimeoutMillis == Long.MAX_VALUE ? -1 : autoLockTimeoutMillis / 1000;
+        android.util.Log.d("MainActivity", "后台时间戳: " + backgroundTime);
 
-            android.util.Log.d("MainActivity", "后台时间戳: " + backgroundTime);
-            android.util.Log.d("MainActivity", "当前时间戳: " + System.currentTimeMillis());
-            android.util.Log.d("MainActivity", "超时设置: " + timeoutSeconds + " 秒 (" + autoLockTimeoutMillis + " 毫秒)");
+        if (backgroundTime > 0) {
+            long backgroundMillis = System.currentTimeMillis() - backgroundTime;
+            android.util.Log.d("MainActivity", "后台时长: " + (backgroundMillis / 1000) + " 秒");
 
-            if (backgroundTime > 0) {
-                long backgroundMillis = System.currentTimeMillis() - backgroundTime;
-                android.util.Log.d("MainActivity", "后台时长: " + (backgroundMillis / 1000) + " 秒");
+            // 使用 SessionGuard 统一检查是否需要锁定
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                    com.ttt.safevault.security.SessionGuard.getInstance();
+            sessionGuard.setSecurityConfig(this);
 
-                if (autoLockTimeoutMillis == Long.MAX_VALUE) {
-                    android.util.Log.d("MainActivity", "自动锁定模式: 从不锁定");
-                } else if (backgroundMillis >= autoLockTimeoutMillis) {
-                    // 超时，需要重新锁定
-                    android.util.Log.d("MainActivity", "*** 自动锁定超时，执行锁定 ***");
-                    lockApp();
-                } else {
-                    // 未超时，清除后台时间记录
-                    android.util.Log.d("MainActivity", "未超时，清除后台时间");
-                    backendService.clearBackgroundTime();
-                }
+            if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
+                // 超时，需要重新锁定
+                android.util.Log.d("MainActivity", "*** 会话锁定超时，执行锁定 ***");
+                lockApp();
             } else {
-                android.util.Log.d("MainActivity", "没有后台时间记录（应用未进入过后台）");
+                // 未超时，清除后台时间记录
+                android.util.Log.d("MainActivity", "未超时，清除后台时间");
+                backendService.clearBackgroundTime();
             }
         } else {
-            android.util.Log.e("MainActivity", "backendService 为 null，无法检查自动锁定");
+            android.util.Log.d("MainActivity", "没有后台时间记录（应用未进入过后台）");
         }
 
         android.util.Log.d("MainActivity", "=== checkAutoLock() 结束 ===");

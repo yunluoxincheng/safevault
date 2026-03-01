@@ -435,9 +435,43 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
             public void onKeyAccessGranted() {
                 // Keystore 授权成功，可以安全访问数据
                 android.util.Log.d(TAG, "生物识别 Keystore 授权成功");
-                runOnUiThread(() -> {
-                    isAuthenticated = true;
-                    loadCredentials();
+
+                // 需要在后台线程执行密钥操作
+                executor.execute(() -> {
+                    try {
+                        // 获取 DataKey 并设置到 CryptoSession（用于会话恢复）
+                        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(AutofillCredentialSelectorActivity.this);
+                        javax.crypto.SecretKey dataKey = secureStorage.unlockDataKeyWithBiometric();
+
+                        if (dataKey == null) {
+                            runOnUiThread(() -> {
+                                android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
+                                        "生物识别失败，请使用主密码", android.widget.Toast.LENGTH_SHORT).show();
+                                showPasswordAuthenticationDialog();
+                            });
+                            return;
+                        }
+
+                        // 设置 DataKey 到 CryptoSession
+                        com.ttt.safevault.security.CryptoSession cryptoSession =
+                                com.ttt.safevault.security.CryptoSession.getInstance();
+                        cryptoSession.unlockWithDataKey(dataKey);
+
+                        android.util.Log.d(TAG, "生物识别验证成功，会话已设置");
+
+                        runOnUiThread(() -> {
+                            isAuthenticated = true;
+                            loadCredentials();
+                        });
+                    } catch (Exception e) {
+                        runOnUiThread(() -> {
+                            android.util.Log.e(TAG, "生物识别解锁异常", e);
+                            android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
+                                    "生物识别失败，请使用主密码", android.widget.Toast.LENGTH_SHORT).show();
+                            showPasswordAuthenticationDialog();
+                        });
+                    }
                 });
             }
 

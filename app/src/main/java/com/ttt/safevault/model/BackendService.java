@@ -155,8 +155,8 @@ public interface BackendService {
     long getBackgroundTime();
 
     /**
-     * 获取自动锁定超时时间
-     * @return 超时时间（分钟）
+     * 获取会话锁定超时时间
+     * @return 超时时间（秒）
      */
     int getAutoLockTimeout();
 

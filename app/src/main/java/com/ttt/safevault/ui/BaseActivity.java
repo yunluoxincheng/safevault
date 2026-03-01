@@ -17,7 +17,7 @@ import com.ttt.safevault.security.SecurityManager;
  * 基础Activity
  * 提供安全管理器和安全措施的便捷访问
  *
- * 注意：自动锁定功能由 MainActivity 和 SafeVaultApplication 统一处理
+ * 注意：会话锁定功能由 MainActivity 和 SafeVaultApplication 统一处理
  */
 public abstract class BaseActivity extends AppCompatActivity {
 

@@ -123,6 +123,11 @@ public class BackendServiceImpl implements BackendService {
             // 保存主密码到内存（用于云端认证等）
             accountManager.setSessionMasterPassword(masterPassword);
 
+            // 清除后台时间记录
+            // 这确保在自动填充场景下验证成功后，后续的会话锁定检查不会误判
+            clearBackgroundTime();
+            Log.d(TAG, "已清除后台时间记录");
+
             Log.i(TAG, "解锁成功（三层架构）");
             return true;
 
@@ -523,7 +528,7 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public int getAutoLockTimeout() {
-        // 返回自动锁定模式的超时时间（秒）
+        // 返回会话锁定模式的超时时间（秒）
         long timeoutMillis = securityConfig.getAutoLockTimeoutMillisForMode();
         if (timeoutMillis == Long.MAX_VALUE) {
             return -1; // 从不锁定

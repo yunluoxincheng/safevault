@@ -209,13 +209,13 @@ public class AccountSecurityFragment extends BaseFragment {
         int currentSelection = securityConfig.getAutoLockMode().ordinal();
 
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(R.string.auto_lock)
+                .setTitle(R.string.session_lock)
                 .setSingleChoiceItems(options, currentSelection, (dialog, which) -> {
                     SecurityConfig.AutoLockMode selectedMode = modes[which];
                     securityConfig.setAutoLockMode(selectedMode);
                     binding.tvAutoLockValue.setText(selectedMode.getDisplayName());
                     dialog.dismiss();
-                    Toast.makeText(requireContext(), "自动锁定已设置为: " + selectedMode.getDisplayName(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), "会话锁定已设置为: " + selectedMode.getDisplayName(), Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();

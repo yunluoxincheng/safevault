@@ -61,7 +61,7 @@ public class SecurityConfig {
     public static final boolean DEFAULT_AUTO_REVOKE_AFTER_VIEW = false;
 
     /**
-     * 自动锁定模式枚举
+     * 会话锁定模式枚举
      */
     public enum AutoLockMode {
         IMMEDIATELY("immediately", "立即锁定"),
