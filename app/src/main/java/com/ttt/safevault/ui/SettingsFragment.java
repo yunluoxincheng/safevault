@@ -78,7 +78,10 @@ public class SettingsFragment extends BaseFragment {
     public void onResume() {
         super.onResume();
         // 每次返回时更新自动填充状态
-        updateAutofillStatus();
+        // 使用多次重试机制，因为 getAutofillServiceComponentName() 可能需要时间准备
+        binding.autofillStatus.postDelayed(() -> updateAutofillStatus(), 100);
+        binding.autofillStatus.postDelayed(() -> updateAutofillStatus(), 500);
+        binding.autofillStatus.postDelayed(() -> updateAutofillStatus(), 1000);
     }
 
     /**
@@ -86,15 +89,55 @@ public class SettingsFragment extends BaseFragment {
      */
     private void updateAutofillStatus() {
         if (binding == null) {
+            Log.w(TAG, "updateAutofillStatus: binding is null");
             return;
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AutofillManager autofillManager = requireContext().getSystemService(AutofillManager.class);
-            if (autofillManager != null && autofillManager.hasEnabledAutofillServices()) {
-                binding.autofillStatus.setText(R.string.autofill_service_enabled);
-                binding.autofillStatus.setTextColor(getResources().getColor(R.color.strength_strong, null));
+            Log.d(TAG, "updateAutofillStatus: AutofillManager = " + (autofillManager != null));
+            Log.d(TAG, "updateAutofillStatus: SDK_INT = " + Build.VERSION.SDK_INT);
+
+            if (autofillManager != null) {
+                boolean isOurServiceEnabled = isOurAutofillServiceEnabled(autofillManager);
+                Log.d(TAG, "updateAutofillStatus: isOurServiceEnabled = " + isOurServiceEnabled);
+
+                // 在主线程更新 UI
+                binding.autofillStatus.post(() -> {
+                    if (isOurServiceEnabled) {
+                        Log.d(TAG, "设置状态为：已启用");
+                        binding.autofillStatus.setText(R.string.autofill_service_enabled);
+                        binding.autofillStatus.setTextColor(getResources().getColor(R.color.strength_strong, null));
+                    } else {
+                        Log.d(TAG, "设置状态为：未启用");
+                        binding.autofillStatus.setText(R.string.autofill_service_disabled);
+                        binding.autofillStatus.setTextColor(getResources().getColor(android.R.color.darker_gray, null));
+                    }
+                    Log.d(TAG, "当前文字: " + binding.autofillStatus.getText());
+                });
+
+                // 如果是 Android 11+ 且第一次检查返回未启用，稍后重试一次
+                // 因为 getAutofillServiceComponentName() 可能需要时间准备
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !isOurServiceEnabled) {
+                    final boolean firstResult = isOurServiceEnabled;
+                    binding.autofillStatus.postDelayed(() -> {
+                        boolean retryResult = isOurAutofillServiceEnabled(autofillManager);
+                        Log.d(TAG, "重试检查: isOurServiceEnabled = " + retryResult);
+                        if (retryResult != firstResult) {
+                            Log.d(TAG, "重试结果不同，更新UI");
+                            if (retryResult) {
+                                binding.autofillStatus.setText(R.string.autofill_service_enabled);
+                                binding.autofillStatus.setTextColor(getResources().getColor(R.color.strength_strong, null));
+                            } else {
+                                binding.autofillStatus.setText(R.string.autofill_service_disabled);
+                                binding.autofillStatus.setTextColor(getResources().getColor(android.R.color.darker_gray, null));
+                            }
+                        }
+                    }, 300);
+                }
             } else {
+                // AutofillManager 为空，视为未启用
+                Log.d(TAG, "AutofillManager 为 null，设置为未启用");
                 binding.autofillStatus.setText(R.string.autofill_service_disabled);
                 binding.autofillStatus.setTextColor(getResources().getColor(android.R.color.darker_gray, null));
             }
@@ -105,13 +148,73 @@ public class SettingsFragment extends BaseFragment {
     }
 
     /**
+     * 检查是否启用了当前应用的自动填充服务
+     *
+     * @param autofillManager AutofillManager 实例
+     * @return 是否启用了 SafeVault 的自动填充服务
+     */
+    private boolean isOurAutofillServiceEnabled(@NonNull AutofillManager autofillManager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return false;
+        }
+
+        // 方法1: 使用 Settings.Secure 获取当前启用的自动填充服务
+        String enabledService = null;
+        try {
+            android.content.ContentResolver resolver = requireContext().getContentResolver();
+            enabledService = android.provider.Settings.Secure.getString(resolver, "autofill_service");
+        } catch (Exception e) {
+            // 忽略异常，尝试其他方法
+        }
+
+        // 如果获取到了服务信息
+        if (enabledService != null && !enabledService.isEmpty()) {
+            try {
+                android.content.ComponentName componentName = android.content.ComponentName.unflattenFromString(enabledService);
+                if (componentName != null) {
+                    String ourPackageName = requireContext().getPackageName();
+                    String ourServiceClassName = ourPackageName + ".autofill.SafeVaultAutofillService";
+
+                    boolean packageNameMatches = componentName.getPackageName().equals(ourPackageName);
+                    boolean classNameMatches = componentName.getClassName().equals(ourServiceClassName);
+
+                    return packageNameMatches && classNameMatches;
+                }
+            } catch (Exception e) {
+                // 忽略异常，尝试其他方法
+            }
+        }
+
+        // 方法2: 使用 getAutofillServiceComponentName() (Android 11+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                android.content.ComponentName enabledServiceComponent = autofillManager.getAutofillServiceComponentName();
+                if (enabledServiceComponent != null) {
+                    String ourPackageName = requireContext().getPackageName();
+                    String ourServiceClassName = ourPackageName + ".autofill.SafeVaultAutofillService";
+
+                    boolean packageNameMatches = enabledServiceComponent.getPackageName().equals(ourPackageName);
+                    boolean classNameMatches = enabledServiceComponent.getClassName().equals(ourServiceClassName);
+
+                    return packageNameMatches && classNameMatches;
+                }
+            } catch (Exception e) {
+                // 忽略异常，尝试其他方法
+            }
+        }
+
+        // 方法3: 使用 hasEnabledAutofillServices() 作为最后备选
+        return autofillManager.hasEnabledAutofillServices();
+    }
+
+    /**
      * 打开自动填充设置
      */
     private void openAutofillSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AutofillManager autofillManager = requireContext().getSystemService(AutofillManager.class);
 
-            if (autofillManager != null && autofillManager.hasEnabledAutofillServices()) {
+            if (autofillManager != null && isOurAutofillServiceEnabled(autofillManager)) {
                 // 已启用，显示信息对话框
                 new MaterialAlertDialogBuilder(requireContext())
                     .setTitle(R.string.autofill_service)

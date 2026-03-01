@@ -19,6 +19,7 @@ import javax.crypto.SecretKey;
  * - DataKey 是"已通过主密码验证"的唯一凭证
  * - 不是字符串、不是 hash、不是 token
  * - 而是能否访问 DataKey
+ * - 会话超时时间从 SecurityConfig 读取，与用户配置的自动锁定时间保持一致
  *
  * 会话生命周期：
  * ┌─────────────────────────────────────────┐
@@ -32,6 +33,7 @@ import javax.crypto.SecretKey;
  * └─────────────────────────────────────────┘
  *
  * @since SafeVault 3.3.0 (会话管理层)
+ * @since SafeVault 3.6.0 (会话超时与自动锁定时间同步)
  */
 public class CryptoSession {
     private static final String TAG = "CryptoSession";
@@ -49,8 +51,8 @@ public class CryptoSession {
     /** 会话创建时间（用于超时检查） */
     private long sessionStartTime;
 
-    /** 会话超时时间（毫秒，默认 5 分钟） */
-    private static final long SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+    /** 默认会话超时时间（毫秒）- 仅在无法获取配置时使用 */
+    private static final long DEFAULT_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
     private CryptoSession() {
         this.dataKey = null;
@@ -111,7 +113,8 @@ public class CryptoSession {
         // 检查会话是否超时
         if (isSessionExpired()) {
             long elapsed = System.currentTimeMillis() - sessionStartTime;
-            Log.w(TAG, "会话已超时，自动锁定 - 已过去: " + (elapsed / 1000) + " 秒，超时阈值: " + (SESSION_TIMEOUT_MS / 1000) + " 秒");
+            long timeoutMs = getSessionTimeoutMs();
+            Log.w(TAG, "会话已超时，自动锁定 - 已过去: " + (elapsed / 1000) + " 秒，超时阈值: " + (timeoutMs / 1000) + " 秒");
             clear();
             return false;
         }
@@ -236,7 +239,32 @@ public class CryptoSession {
         }
 
         long elapsed = System.currentTimeMillis() - sessionStartTime;
-        return elapsed > SESSION_TIMEOUT_MS;
+        return elapsed > getSessionTimeoutMs();
+    }
+
+    /**
+     * 获取会话超时时间（毫秒）
+     *
+     * 从 SecurityConfig 读取用户配置的自动锁定时间，与用户设置保持一致。
+     * 如果无法获取配置（如 Context 不可用），则使用默认值 5 分钟。
+     *
+     * @return 超时时间（毫秒）
+     */
+    private long getSessionTimeoutMs() {
+        try {
+            // 尝试通过 ServiceLocator 获取 SecurityConfig
+            com.ttt.safevault.ServiceLocator serviceLocator = com.ttt.safevault.ServiceLocator.getInstance();
+            if (serviceLocator != null) {
+                com.ttt.safevault.security.SecurityConfig securityConfig = serviceLocator.getSecurityConfig();
+                if (securityConfig != null) {
+                    return securityConfig.getAutoLockTimeoutMillisForMode();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "无法从 SecurityConfig 获取超时时间，使用默认值: " + e.getMessage());
+        }
+        // 返回默认值（5 分钟）
+        return DEFAULT_SESSION_TIMEOUT_MS;
     }
 
     /**
@@ -250,7 +278,7 @@ public class CryptoSession {
         }
 
         long elapsed = System.currentTimeMillis() - sessionStartTime;
-        long remaining = SESSION_TIMEOUT_MS - elapsed;
+        long remaining = getSessionTimeoutMs() - elapsed;
 
         return Math.max(0, remaining / 1000);
     }

@@ -8,14 +8,15 @@ import androidx.annotation.NonNull;
 /**
  * 应用生命周期监听器（内存安全强化）
  *
- * 监听 Android 应用生命周期事件，在应用进入后台或系统内存压力时主动清除敏感数据：
- * - onTrimMemory(): 系统内存压力回调，清除敏感数据
- * - onBackground(): 应用进入后台回调，清除敏感数据
+ * 监听 Android 应用生命周期事件，在系统内存压力时主动清除敏感数据：
+ * - onTrimMemory(): 系统内存压力回调，仅在内存紧张时清除敏感数据
+ * - onBackground(): 应用进入后台回调，仅记录日志，不立即清除敏感数据
+ * - onLowMemory(): 系统整体内存不足回调，清除敏感数据
  *
  * 设计原则：
- * - 最小化敏感数据在内存中的驻留时间
- * - 主动响应系统内存压力事件
- * - 应用后台时立即清除敏感数据
+ * - 应用进入后台时，不立即清除敏感数据，由 MainActivity 根据配置的超时时间决定是否锁定
+ * - 仅在系统内存压力大时才主动清除敏感数据
+ * - 优化用户体验，避免跳转系统设置等临时后台操作导致会话锁定
  *
  * 使用方式：
  * <pre>
@@ -24,6 +25,7 @@ import androidx.annotation.NonNull;
  * </pre>
  *
  * @since SafeVault 3.5.0 (内存安全强化)
+ * @since SafeVault 3.6.0 (优化后台锁定逻辑)
  */
 public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
     private static final String TAG = "ApplicationLifecycleWatcher";
@@ -106,9 +108,9 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
      * 系统内存压力回调（ComponentCallbacks2）
      *
      * 当系统内存紧张时，Android 会调用此方法通知应用释放资源。
-     * 我们利用这个机会主动清除敏感数据。
+     * 我们仅在内存压力较大时才清除敏感数据，避免普通的后台切换导致锁定。
      *
-     * TRIM_MEMORY_UI_HIDDEN 及以上级别表示应用 UI 已不可见（进入后台）。
+     * TRIM_MEMORY_UI_HIDDEN 不再触发清除，由 MainActivity 根据配置的超时时间决定是否锁定
      *
      * @param level 内存压力级别
      */
@@ -117,14 +119,13 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
         String levelName = getTrimLevelName(level);
         Log.d(TAG, "onTrimMemory() 被调用 - level=" + level + " (" + levelName + ")");
 
-        // TRIM_MEMORY_UI_HIDDEN 表示应用 UI 已不可见（进入后台）
-        // 这是我们清除敏感数据的最佳时机
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            Log.i(TAG, "应用进入后台（UI 隐藏），清除敏感数据");
-            clearSensitiveData("onTrimMemory(" + levelName + ")");
+        // TRIM_MEMORY_UI_HIDDEN 不再触发清除，由 MainActivity 处理
+        if (level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            Log.d(TAG, "应用进入后台（UI 隐藏），由 MainActivity 根据超时设置处理锁定");
+            return;
         }
 
-        // 更高级别的内存压力也触发清零
+        // 仅在内存压力较大时才清除敏感数据
         if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
             Log.i(TAG, "系统内存紧张，清除敏感数据");
             clearSensitiveData("onTrimMemory(" + levelName + ")");
@@ -166,11 +167,13 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
      * 应用进入后台回调（手动触发）
      *
      * 此方法由 SafeVaultApplication 在检测到应用进入后台时调用。
-     * 与 onTrimMemory() 配合使用，提供双重保障。
+     * 不再立即清除敏感数据，由 MainActivity 根据配置的超时时间决定是否锁定。
+     *
+     * 这样可以避免跳转系统设置等临时后台操作导致会话锁定，
+     * 提升用户体验。真正的锁定由 checkAutoLock() 在前台恢复时判断。
      */
     public void onBackground() {
-        Log.i(TAG, "onBackground() 被调用 - 应用进入后台");
-        clearSensitiveData("onBackground()");
+        Log.i(TAG, "onBackground() 被调用 - 应用进入后台（不立即清除敏感数据，由 MainActivity 根据超时设置处理）");
     }
 
     /**
