@@ -11,6 +11,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.ttt.safevault.BuildConfig;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentAboutBinding;
 
@@ -37,7 +38,7 @@ public class AboutFragment extends BaseFragment {
     }
 
     private void loadVersionInfo() {
-        String versionText = "版本 1.0.0";
+        String versionText = "版本 " + BuildConfig.VERSION_NAME;
         binding.tvVersion.setText(versionText);
     }
 
