@@ -1,0 +1,42 @@
+# 密码强度算法技能元数据
+name: "password-strength-algorithms"
+version: "1.0.0"
+description: "实现密码强度计算、密码生成、安全评估等功能"
+
+# 触发关键词
+triggers:
+  - "密码强度"
+  - "强度计算"
+  - "密码生成"
+  - "安全评估"
+  - "强度检测"
+  - "生成密码"
+  - "密码质量"
+  - "强度指示器"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "**/*Generator*"
+  - "**/*Strength*"
+  - "**/utils/**/*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+
+# 适用场景
+scenarios:
+  - "实现密码强度计算"
+  - "创建密码生成器"
+  - "评估密码安全性"
+  - "实现强度指示器"
+  - "生成强密码"

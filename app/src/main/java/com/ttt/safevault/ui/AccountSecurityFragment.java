@@ -49,6 +49,13 @@ public class AccountSecurityFragment extends BaseFragment {
         loadSettings();
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        // 每次进入 Fragment 时刷新密钥状态
+        updateKeyVersionStatus();
+    }
+
     private void loadSettings() {
         // 显示当前自动锁定选项
         SecurityConfig.AutoLockMode autoLockMode = securityConfig.getAutoLockMode();
@@ -66,6 +73,9 @@ public class AccountSecurityFragment extends BaseFragment {
         } else {
             binding.tvPinStatus.setText("未启用");
         }
+
+        // 密钥版本状态
+        updateKeyVersionStatus();
     }
 
     private void setupClickListeners() {
@@ -196,6 +206,12 @@ public class AccountSecurityFragment extends BaseFragment {
         // 删除账户
         binding.cardDeleteAccount.setOnClickListener(v -> {
             showDeleteAccountDialog();
+        });
+
+        // 密钥迁移
+        binding.cardKeyMigration.setOnClickListener(v -> {
+            android.util.Log.d("AccountSecurity", "密钥迁移卡片被点击");
+            startKeyMigration();
         });
     }
 
@@ -1354,5 +1370,194 @@ public class AccountSecurityFragment extends BaseFragment {
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
+    }
+
+    /**
+     * 更新密钥版本状态显示
+     */
+    private void updateKeyVersionStatus() {
+        try {
+            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
+
+            String keyVersion = secureStorage.getKeyVersion();
+            boolean hasMigratedToV3 = secureStorage.hasMigratedToV3();
+
+            if (keyVersion != null) {
+                String versionText;
+                String summaryText;
+                int statusColor;
+
+                if ("v3".equals(keyVersion)) {
+                    // v3.0 版本
+                    if (hasMigratedToV3) {
+                        // 真正的迁移用户
+                        versionText = "v3.0 (X25519)";
+                        summaryText = "已从 RSA 迁移到 X25519";
+                        statusColor = android.graphics.Color.parseColor("#4CAF50"); // 绿色
+                    } else {
+                        // 新用户，直接使用 v3.0
+                        versionText = "v3.0 (X25519)";
+                        summaryText = "已使用最新加密算法";
+                        statusColor = android.graphics.Color.parseColor("#4CAF50"); // 绿色
+                    }
+                } else {
+                    // v2.0 版本，未迁移
+                    versionText = "v2.0 (RSA)";
+                    summaryText = "建议迁移到 X25519 以获得更好的性能和安全性";
+                    statusColor = android.graphics.Color.parseColor("#FF9800"); // 橙色
+                }
+
+                binding.tvKeyVersionValue.setText(versionText);
+                binding.tvKeyVersionValue.setTextColor(statusColor);
+                binding.tvKeyVersionSummary.setText(summaryText);
+            } else {
+                binding.tvKeyVersionValue.setText("未知");
+                binding.tvKeyVersionSummary.setText("密钥信息未找到");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("AccountSecurity", "获取密钥版本失败", e);
+            binding.tvKeyVersionValue.setText("错误");
+            binding.tvKeyVersionSummary.setText("无法获取密钥信息");
+        }
+    }
+
+    /**
+     * 显示密钥迁移信息对话框
+     */
+    private void showKeyMigrationInfo() {
+        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
+                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
+
+        boolean hasMigratedToV3 = secureStorage.hasMigratedToV3();
+        String keyVersion = secureStorage.getKeyVersion();
+
+        String title, message, positiveButton, negativeButton;
+
+        if (hasMigratedToV3) {
+            // 已迁移到 v3.0
+            title = "加密算法已是最新版本";
+            message = "您当前使用的是 X25519/Ed25519 (v3.0) 加密算法，这是目前最先进的密码分享加密方案。\n\n" +
+                     "优势：\n" +
+                     "• 比 RSA 快 10-100 倍\n" +
+                     "• 密钥体积更小（32 字节 vs 256 字节）\n" +
+                     "• 支持前向保密\n" +
+                     "• 行业标准算法（Signal、WhatsApp 使用）";
+            positiveButton = "确定";
+            negativeButton = null;
+        } else {
+            // 未迁移，需要引导迁移
+            title = "升级加密算法";
+            message = "检测到您当前使用 RSA (v2.0) 加密算法。\n\n" +
+                     "升级到 X25519/Ed25519 (v3.0) 可以获得：\n" +
+                     "• 更快的加密速度（快 10-100 倍）\n" +
+                     "• 更小的密钥体积（节省存储空间）\n" +
+                     "• 更高的安全性（前向保密）\n" +
+                     "• 更好的兼容性（行业标准算法）\n\n" +
+                     "迁移过程安全可靠，您的 RSA 密钥将被保留以确保与旧版本的兼容性。";
+            positiveButton = "开始迁移";
+            negativeButton = "稍后";
+        }
+
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton(positiveButton, (dialog, which) -> {
+                    if (!hasMigratedToV3) {
+                        // 启动迁移 Activity
+                        startKeyMigration();
+                    }
+                });
+
+        if (negativeButton != null) {
+            builder.setNegativeButton(negativeButton, null);
+        }
+
+        builder.show();
+    }
+
+    /**
+     * 启动密钥迁移 Activity
+     */
+    private void startKeyMigration() {
+        android.util.Log.d("AccountSecurity", "=== startKeyMigration() 开始 ===");
+        try {
+            // 获取会话信息（如果已登录）
+            CryptoSession cryptoSession = CryptoSession.getInstance();
+            android.util.Log.d("AccountSecurity", "CryptoSession.isUnlocked() = " + cryptoSession.isUnlocked());
+
+            if (!cryptoSession.isUnlocked()) {
+                // 未登录，需要先验证密码
+                android.util.Log.d("AccountSecurity", "会话未解锁，显示密码验证对话框");
+                showPasswordVerificationForMigration();
+                return;
+            }
+
+            // 已登录，直接启动迁移
+            android.util.Log.d("AccountSecurity", "会话已解锁，准备启动 KeyMigrationActivity");
+            android.content.Intent intent = new android.content.Intent(
+                    requireContext(), KeyMigrationActivity.class);
+            android.util.Log.d("AccountSecurity", "Intent 已创建: " + intent);
+
+            // 从会话获取主密码和盐值（如果可用）
+            // 注意：出于安全考虑，主密码不应该在会话中明文存储
+            // 这里需要实现更安全的方式来传递认证信息
+
+            // 暂时使用简化版本，实际应该通过其他方式传递认证信息
+            android.util.Log.d("AccountSecurity", "准备调用 startActivity");
+            requireContext().startActivity(intent);
+            android.util.Log.d("AccountSecurity", "startActivity 调用成功");
+
+        } catch (Exception e) {
+            android.util.Log.e("AccountSecurity", "启动密钥迁移失败", e);
+            Toast.makeText(requireContext(), "启动迁移失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 显示密码验证对话框（用于密钥迁移）
+     */
+    private void showPasswordVerificationForMigration() {
+        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
+        com.google.android.material.textfield.TextInputLayout passwordLayout =
+                dialogView.findViewById(R.id.passwordLayout);
+        com.google.android.material.textfield.TextInputEditText passwordInput =
+                dialogView.findViewById(R.id.passwordInput);
+
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("验证身份")
+                .setMessage("迁移加密算法需要验证您的身份，请输入主密码。")
+                .setView(dialogView)
+                .setPositiveButton("验证", (dialog, which) -> {
+                    String password = passwordInput.getText().toString();
+                    if (password.isEmpty()) {
+                        Toast.makeText(requireContext(), "密码不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    // 验证密码
+                    com.ttt.safevault.model.BackendService backendService =
+                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+
+                    try {
+                        boolean authenticated = backendService.unlock(password);
+                        if (authenticated) {
+                            // 密码验证成功，启动迁移
+                            android.content.Intent intent = new android.content.Intent(
+                                    requireContext(), KeyMigrationActivity.class);
+                            intent.putExtra("master_password", password);
+                            // 获取盐值
+                            String salt = getSaltFromPrefs();
+                            intent.putExtra("salt_base64", salt);
+                            requireContext().startActivity(intent);
+                        } else {
+                            Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        Toast.makeText(requireContext(), "验证时发生错误: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 }

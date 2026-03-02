@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 加密算法迁移通知文案 -->
+
+    <!-- 工具栏标题 -->
+    <string name="crypto_key_migration">加密密钥迁移</string>
+    <string name="crypto_key_status">密钥状态</string>
+
+    <!-- 通用对话框字符串 -->
+    <string name="yes">是</string>
+    <string name="no">否</string>
+
+    <!-- 迁移说明卡片 -->
+    <string name="what_is_migration">什么是加密算法迁移？</string>
+    <string name="migration_description">我们将把您的加密密钥从 RSA-2048 升级到 X25519/Ed25519。这会带来显著的性能提升和更强的安全性。</string>
+    <string name="current_version">当前版本</string>
+    <string name="new_version">新版本</string>
+
+    <!-- 迁移优势列表 -->
+    <string name="migration_benefits">迁移优势</string>
+    <string name="benefit_faster">性能提升 50-100 倍</string>
+    <string name="benefit_smaller_keys">密钥尺寸减少 8 倍</string>
+    <string name="benefit_forward_secrecy">前向保密保护</string>
+    <string name="benefit_industry_standard">行业安全标准</string>
+
+    <!-- 重要提示 -->
+    <string name="migration_note">迁移过程需要网络连接，请确保设备已连接网络。旧密钥将保留以保持兼容性。</string>
+
+    <!-- 迁移进度 -->
+    <string name="migration_in_progress">正在迁移加密密钥，请稍候…</string>
+
+    <!-- 按钮 -->
+    <string name="later">稍后再说</string>
+    <string name="start_migration">开始迁移</string>
+
+    <!-- 通知标题 -->
+    <string name="migration_notification_title">有新的加密算法可用</string>
+    <string name="migration_notification_title_urgent">升级加密算法以获得更好体验</string>
+
+    <!-- 通知内容 -->
+    <string name="migration_notification_content">SafeVault v3.6.0 引入新加密算法，性能提升 50-100 倍</string>
+    <string name="migration_notification_content_urgent">新加密算法现已可用，建议立即迁移以获得最佳性能</string>
+
+    <!-- 设置页面 -->
+    <string name="crypto_algorithm_section">加密算法</string>
+    <string name="crypto_algorithm_version">密钥版本</string>
+    <string name="crypto_algorithm_status_v2">RSA-2048 (旧版本)</string>
+    <string name="crypto_algorithm_status_v3">X25519/Ed25519 (最新版本)</string>
+    <string name="crypto_algorithm_migrate_now">迁移到新加密算法</string>
+    <string name="crypto_algorithm_migrate_now_desc">性能提升 50-100 倍，更强的安全性</string>
+    <string name="crypto_algorithm_learn_more">了解更多</string>
+
+    <!-- 迁移界面 -->
+    <string name="migration_activity_title">迁移加密算法</string>
+    <string name="migration_title">迁移到新加密算法</string>
+    <string name="migration_subtitle">SafeVault v3.6.0 引入了现代椭圆曲线加密算法</string>
+
+    <!-- 迁移说明 -->
+    <string name="migration_feature_title">为什么要迁移？</string>
+    <string name="migration_feature_speed">⚡ 性能提升 50-100 倍</string>
+    <string name="migration_feature_security">🔒 更强的安全性（前向保密）</string>
+    <string name="migration_feature_compat">✅ 完全兼容旧版本</string>
+    <string name="migration_feature_size">📦 密钥尺寸减少 8 倍</string>
+
+    <string name="migration_comparison_title">性能对比</string>
+    <string name="migration_comparison_speed">密钥生成/加密速度</string>
+    <string name="migration_comparison_v2">旧版本 (RSA)</string>
+    <string name="migration_comparison_v3">新版本 (X25519)</string>
+    <string name="migration_comparison_improvement">提升 50-100 倍</string>
+
+    <!-- 迁移进度 -->
+    <string name="migration_progress_title">正在迁移...</string>
+    <string name="migration_progress_generating_keys">生成新密钥对...</string>
+    <string name="migration_progress_encrypting_keys">加密存储新密钥...</string>
+    <string name="migration_progress_uploading_keys">上传公钥到服务器...</string>
+    <string name="migration_progress_finalizing">正在完成...</string>
+
+    <!-- 迁移成功 -->
+    <string name="migration_success_title">迁移成功！</string>
+    <string name="migration_success_message">您的加密算法已升级到最新版本</string>
+    <string name="migration_success_benefits">现在您可以享受：</string>
+    <string name="migration_success_benefit_1">• 密码分享速度提升 50-100 倍</string>
+    <string name="migration_success_benefit_2">• 前向保密保护（长期私钥泄露不影响历史分享）</string>
+    <string name="migration_success_benefit_3">• 更小的密钥尺寸（更快同步）</string>
+    <string name="migration_success_button">完成</string>
+
+    <!-- 迁移失败 -->
+    <string name="migration_error_title">迁移失败</string>
+    <string name="migration_failed_title">迁移失败</string>
+    <string name="migration_failed_message">迁移过程中出现错误：%s</string>
+    <string name="migration_error_network">网络连接失败，请检查网络后重试</string>
+    <string name="migration_error_server">服务器错误，请稍后重试</string>
+    <string name="migration_error_invalid_key">密钥验证失败</string>
+    <string name="migration_error_unknown">未知错误，请稍后重试</string>
+
+    <!-- 稍后迁移对话框 -->
+    <string name="migrate_later_title">稍后再说</string>
+    <string name="migrate_later_message">确定要稍后再迁移吗？您可以随时从设置页面重新开始迁移。</string>
+
+    <!-- 取消迁移对话框 -->
+    <string name="cancel_migration_title">取消迁移</string>
+    <string name="cancel_migration_message">迁移正在进行中，确定要取消吗？已生成的密钥将被丢弃。</string>
+
+    <!-- 验证密码 -->
+    <string name="verify_password">验证身份</string>
+
+    <!-- 迁移确认 -->
+    <string name="migration_confirm_title">确认迁移</string>
+    <string name="migration_confirm_message">迁移将生成新的加密密钥对，这需要：</string>
+    <string name="migration_confirm_requirement_1">1. 输入主密码验证身份</string>
+    <string name="migration_confirm_requirement_2">2. 连接网络上传公钥</string>
+    <string name="migration_confirm_requirement_3">3. 旧密钥将保留以保持兼容性</string>
+    <string name="migration_confirm_warning">⚠️ 迁移过程可能需要数秒钟，请勿关闭应用</string>
+    <string name="migration_confirm_button">开始迁移</string>
+    <string name="migration_confirm_cancel">稍后再说</string>
+
+    <!-- 迁移警告 -->
+    <string name="migration_warning_title">重要提示</string>
+    <string name="migration_warning_message">迁移过程中请：</string>
+    <string name="migration_warning_1">• 保持网络连接</string>
+    <string name="migration_warning_2">• 不要关闭应用</string>
+    <string name="migration_warning_3">• 记住主密码（用于验证）</string>
+    <string name="migration_warning_button">我已了解</string>
+
+    <!-- 已迁移状态 -->
+    <string name="migration_already_migrated_title">已完成迁移</string>
+    <string name="migration_already_migrated_message">您已使用最新的加密算法 (v3.0)</string>
+    <string name="migration_already_migrated_details">版本: X25519/Ed25519</string>
+    <string name="migration_already_migrated_button">返回</string>
+
+    <!-- 迁移详情 -->
+    <string name="migration_details_title">关于新加密算法</string>
+    <string name="migration_details_description">SafeVault v3.6.0 引入了现代椭圆曲线加密算法 X25519 和 Ed25519，这是业界领先的安全标准。</string>
+
+    <string name="migration_details_x25519_title">X25519 密钥交换</string>
+    <string name="migration_details_x25519_desc">用于安全地交换密钥，支持前向保密。每次分享使用新的临时密钥，确保即使长期私钥泄露，历史分享仍安全。</string>
+
+    <string name="migration_details_ed25519_title">Ed25519 数字签名</string>
+    <string name="migration_details_ed25519_desc">用于验证发送方身份。比传统 RSA 签名快 100 倍，同时提供更强的安全性。</string>
+
+    <string name="migration_details_hkdf_title">HKDF 密钥派生</string>
+    <string name="migration_details_hkdf_desc">从 ECDH 共享密钥派生 AES 密钥，同时混合双方身份，防止密钥混淆攻击。</string>
+
+    <!-- 权限提示 -->
+    <string name="migration_permission_title">需要网络权限</string>
+    <string name="migration_permission_message">迁移需要上传公钥到服务器，请授予网络权限。</string>
+    <string name="migration_permission_grant">授予权限</string>
+    <string name="migration_permission_deny">取消</string>
+
+    <!-- 教育提示 -->
+    <string name="migration_education_title">什么是加密算法？</string>
+    <string name="migration_education_intro">加密算法是保护您数据安全的核心技术。SafeVault 使用端到端加密，意味着只有您和接收方可以解密数据，服务器无法访问。</string>
+
+    <string name="migration_education_rsa_title">RSA-2048 (旧版本)</string>
+    <string name="migration_education_rsa_desc">传统但安全的算法，被广泛使用。缺点是密钥尺寸大，速度较慢。</string>
+
+    <string name="migration_education_x25519_title">X25519/Ed25519 (新版本)</string>
+    <string name="migration_education_x25519_desc">现代椭圆曲线算法，行业标准（Signal、WhatsApp 等使用）。速度更快，密钥更小，安全性更强。</string>
+
+    <!-- 兼容性说明 -->
+    <string name="migration_compatibility_title">兼容性说明</string>
+    <string name="migration_compatibility_desc">迁移后您仍然可以与使用旧版本的用户分享密码。系统会自动选择双方都支持的协议版本。</string>
+    <string name="migration_compatibility_both_v3">双方都是 v3.0 → 使用 X25519/Ed25519（最优）</string>
+    <string name="migration_compatibility_mixed_v2">一方是 v2.0 → 使用 RSA（兼容）</string>
+
+    <!-- 常见问题 -->
+    <string name="migration_faq_title">常见问题</string>
+
+    <string name="migration_faq_q1">迁移会删除我的密码吗？</string>
+    <string name="migration_faq_a1">不会。迁移只是生成新的加密密钥对，所有密码数据保持不变。</string>
+
+    <string name="migration_faq_q2">迁移需要多长时间？</string>
+    <string name="migration_faq_a2">通常需要 1 秒。迁移只是生成密钥并上传，不需要加密/解密现有数据。</string>
+
+    <string name="migration_faq_q3">迁移失败怎么办？</string>
+    <string name="migration_faq_a3">迁移是幂等的，失败后可以重试。旧密钥不会被删除，可以安全回滚。</string>
+
+    <string name="migration_faq_q4">必须迁移吗？</string>
+    <string name="migration_faq_a4">不是必须的。旧版本将继续正常工作，但无法享受新算法的性能优势。</string>
+
+    <string name="migration_faq_q5">迁移后还能和旧版本用户分享吗？</string>
+    <string name="migration_faq_a5">可以。系统会自动检测对方的加密算法版本，使用双方都支持的协议。</string>
+
+    <!-- 迁移推广 -->
+    <string name="migration_promo_title">🚀 升级到更好的加密体验</string>
+    <string name="migration_promo_message">SafeVault v3.6.0 现已可用，升级到最新加密算法获得 50-100 倍性能提升！</string>
+    <string name="migration_promo_button">立即升级</string>
+    <string name="migration_promo_later">稍后再说</string>
+
+    <!-- 状态徽章 -->
+    <string name="migration_badge_new">新功能</string>
+    <string name="migration_badge_recommended">推荐</string>
+    <string name="migration_badge_updated">已升级</string>
+</resources>

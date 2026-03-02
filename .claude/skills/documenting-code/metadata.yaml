@@ -1,0 +1,41 @@
+# 代码文档技能元数据
+name: "documenting-code"
+version: "1.0.0"
+description: "为代码编写文档，包括 API 文档、用户指南、语法指南等"
+
+# 触发关键词
+triggers:
+  - "写文档"
+  - "更新文档"
+  - "API.*文档"
+  - "用户指南"
+  - "文档.*编写"
+  - "添加.*注释"
+  - "生成文档"
+  - "文档化"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "**/*.md"
+  - "**/docs/**/*"
+  - "README.md"
+
+# 优先级 (high/medium/low)
+priority: "low"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "refactoring-code"
+
+# 适用场景
+scenarios:
+  - "编写 API 文档"
+  - "更新用户指南"
+  - "添加代码注释"
+  - "生成技术文档"

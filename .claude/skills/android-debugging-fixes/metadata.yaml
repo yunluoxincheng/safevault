@@ -1,0 +1,53 @@
+# Android 调试修复技能元数据
+name: "android-debugging-fixes"
+version: "1.0.0"
+description: "诊断和修复 Android 应用崩溃、ANR、异常行为等调试相关问题"
+
+# 触发关键词
+triggers:
+  - "修复.*bug"
+  - "崩溃"
+  - "ANR"
+  - "异常处理"
+  - "NullPointerException"
+  - "应用闪退"
+  - "功能异常"
+  - "错误诊断"
+  - "调试.*问题"
+
+# 错误模式
+error_patterns:
+  - "NullPointerException"
+  - "IndexOutOfBoundsException"
+  - "ClassCastException"
+  - "IllegalStateException"
+  - "ActivityNotFoundException"
+  - "SecurityException"
+  - "RuntimeException"
+  - "Fatal Exception"
+
+# 文件模式
+file_patterns:
+  - "**/*Activity*"
+  - "**/*Fragment*"
+  - "**/ui/**/*"
+  - "**/viewmodel/**/*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "refactoring-code"
+  - "android-security-practices"
+
+# 适用场景
+scenarios:
+  - "修复应用崩溃问题"
+  - "诊断 ANR 问题"
+  - "修复空指针异常"
+  - "修复数组越界异常"
+  - "调试功能异常行为"

@@ -1,0 +1,52 @@
+# Android 加密修复技能元数据
+name: "android-encryption-fixes"
+version: "1.0.0"
+description: "修复 Android 加密/解密相关错误，处理 KeyStore 和密钥管理问题"
+
+# 触发关键词
+triggers:
+  - "加密.*失败"
+  - "解密.*失败"
+  - "密钥.*错误"
+  - "KeyStore.*错误"
+  - "加密.*问题"
+  - "解密.*问题"
+
+# 错误模式
+error_patterns:
+  - "BadPaddingException"
+  - "IllegalBlockSizeException"
+  - "InvalidKeyException"
+  - "KeyPermanentlyInvalidatedException"
+  - "InvalidAlgorithmParameterException"
+  - "NoSuchAlgorithmException"
+  - "NoSuchProviderException"
+  - "NoSuchPaddingException"
+  - "javax.crypto.*"
+
+# 文件模式
+file_patterns:
+  - "security/**/*"
+  - "crypto/**/*"
+  - "**/*KeyStore*"
+  - "**/*Crypto*"
+  - "**/*Encryption*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: true
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+  - "android-debugging-fixes"
+  - "android-security-architecture-upgrade"
+
+# 适用场景
+scenarios:
+  - "修复加密解密操作异常"
+  - "处理 KeyStore 密钥失效"
+  - "修复密钥派生问题"
+  - "处理加密参数错误"

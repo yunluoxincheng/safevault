@@ -20,7 +20,10 @@
 |---------|------|----------|
 | **Argon2id** | 密钥派生 (KDF) | 输出256位，盐值128位，前端自适应，云端固定高配 |
 | **AES-256-GCM** | 数据加密 | IV 96位，GCM Tag 128位 |
-| **RSA-2048** | 密钥交换和签名 | OAEP填充，SHA256withRSA |
+| **X25519** | ECDH 密钥交换 (v3.0 主力) | Curve25519，32字节密钥，性能快10-100倍 |
+| **Ed25519** | 数字签名 (v3.0 主力) | Curve25519 EdDSA，32字节密钥，签名快100倍 |
+| **RSA-2048** | 密钥交换和签名 (v2.0 兼容) | OAEP填充，SHA256withRSA，保留用于向后兼容 |
+| **HKDF** | 密钥派生 (ECDH后) | SHA-256，输出32字节共享密钥 |
 | **SHA-256** | 哈希计算 | - |
 
 ### Argon2id 配置详解
@@ -49,7 +52,10 @@
 
 ```
 ┌─────────────────────────────────────────┐
-│ Level 3: RSA 私钥层（被 DataKey 加密）   │
+│ Level 3: 非对称密钥层（被 DataKey 加密） │
+│ - X25519 私钥 (v3.0 主力)               │
+│ - Ed25519 私钥 (v3.0 主力)              │
+│ - RSA-2048 私钥 (v2.0 兼容)             │
 └──────────────────▲──────────────────────┘
                        │ DataKey
 ┌──────────────────┴──────────────────────┐
@@ -90,6 +96,7 @@
 - **用途**: 加密 DataKey（本机快速解锁版本）
 - **有效期**: 30秒（每次生物识别后重新获取）
 - **特点**: 绑定设备，支持生物识别
+- **注意**: DeviceKey 不影响私钥的存在，只影响生物识别解锁路径
 
 #### Level 2: DataKey 层
 
@@ -99,16 +106,41 @@
   - 用 PasswordKey 加密 → 存储在 SharedPreferences（可云端备份）
   - 用 DeviceKey 加密 → 存储在 SharedPreferences（仅本地）
 - **缓存**: CryptoSession（内存，5分钟超时）
-- **用途**: 加密所有用户数据和 RSA 私钥
+- **用途**: 加密所有用户数据和非对称私钥
 
-#### Level 3: RSA 私钥层
+#### Level 3: 非对称密钥层
 
-**RSA 密钥对**
+**X25519 密钥对（v3.0 主力算法）**
+- **算法**: Curve25519 ECDH
+- **用途**: ECDH 密钥交换、前向保密
+- **存储**:
+  - 私钥: 被 DataKey 加密后存储（32字节）
+  - 公钥: 明文存储（32字节）
+- **优势**: 性能快10-100倍，密钥小8倍
+- **实现**:
+  - API 33+: 优先使用系统 API (SystemX25519KeyManager)
+  - API 29-32: 回退到 Bouncy Castle (BouncyCastleX25519KeyManager)
+  - API 36+: 如果系统 API 不可用，自动回退到 Bouncy Castle
+
+**Ed25519 密钥对（v3.0 主力算法）**
+- **算法**: Curve25519 EdDSA
+- **用途**: 数字签名、身份验证
+- **存储**:
+  - 私钥: 被 DataKey 加密后存储（32字节）
+  - 公钥: 明文存储（32字节）
+- **优势**: 签名快100倍，签名小4倍
+- **实现**:
+  - API 34+: 优先使用系统 API (SystemEd25519Signer)
+  - API 29-33: 回退到 Bouncy Castle (BouncyCastleEd25519Signer)
+  - API 36+: 如果系统 API 不可用，自动回退到 Bouncy Castle
+
+**RSA-2048 密钥对（v2.0 兼容保留）**
 - **算法**: RSA-2048
-- **用途**: 密码分享、数字签名
+- **用途**: 密码分享（兼容旧版本）、数字签名
 - **存储**:
   - 私钥: 被 DataKey 加密后存储
   - 公钥: 明文存储（用于分享加密）
+- **状态**: 保留用于向后兼容，新用户默认使用 X25519/Ed25519
 
 ## 四、注册/登录/解锁流程
 
@@ -123,7 +155,10 @@
    ↓
 4. 生成随机 DataKey (256位)
    ↓
-5. 生成 RSA-2048 密钥对
+5. 生成非对称密钥对
+   - X25519 密钥对（v3.0 主力）
+   - Ed25519 密钥对（v3.0 主力）
+   - RSA-2048 密钥对（v2.0 兼容，可选）
    ↓
 6. 获取/创建 DeviceKey (AndroidKeyStore)
    ↓
@@ -131,7 +166,10 @@
    • 用 PasswordKey 加密（云端备份）
    • 用 DeviceKey 加密（本地快速解锁）
    ↓
-8. 用 DataKey 加密 RSA 私钥并保存
+8. 用 DataKey 加密所有私钥并保存
+   - X25519 私钥（v3.0）
+   - Ed25519 私钥（v3.0）
+   - RSA 私钥（v2.0，如生成）
    ↓
 9. 缓存 DataKey 到 CryptoSession
 ```
@@ -435,7 +473,11 @@ encrypted_title: "v2:On/5cO6S12VohUiVWGmxEs:U2FsdGVkX1tJR3Z..."
                             ↓
                         DataKey (随机256位)
                             ↓
-                    加密 RSA-2048 私钥
+        ┌───────────────────┼───────────────────┐
+        ↓                   ↓                   ↓
+    X25519 私钥         Ed25519 私钥        RSA-2048 私钥
+    (v3.0 主力)         (v3.0 主力)        (v2.0 兼容)
+    ECDH 密钥交换        EdDSA 签名          分享/签名
 ```
 
 ### 密钥存储位置
@@ -448,8 +490,26 @@ encrypted_title: "v2:On/5cO6S12VohUiVWGmxEs:U2FsdGVkX1tJR3Z..."
 | **DataKey (PasswordKey加密)** | SharedPreferences | AES-256-GCM + Argon2id |
 | **DataKey (DeviceKey加密)** | SharedPreferences | AES-256-GCM + AndroidKeyStore |
 | **DataKey (内存)** | CryptoSession | SensitiveData + 自动清零 |
-| **RSA 私钥** | SharedPreferences | AES-256-GCM |
-| **RSA 公钥** | SharedPreferences | 明文存储 |
+| **X25519 私钥** | SharedPreferences | AES-256-GCM (32字节) |
+| **X25519 公钥** | SharedPreferences | 明文存储 (32字节) |
+| **Ed25519 私钥** | SharedPreferences | AES-256-GCM (32字节) |
+| **Ed25519 公钥** | SharedPreferences | 明文存储 (32字节) |
+| **RSA 私钥** | SharedPreferences | AES-256-GCM (可选) |
+| **RSA 公钥** | SharedPreferences | 明文存储 (可选) |
+
+### 生物识别可用性说明
+
+**重要**: 生物识别是否可用与私钥（X25519/Ed25519/RSA）无关，只取决于：
+1. DeviceKey 是否存在于 AndroidKeyStore
+2. DeviceKey 加密的 DataKey 是否存在于 SharedPreferences
+
+```java
+// 生物识别可用性检查
+boolean canUseBiometric = hasDeviceKey() && hasDeviceEncryptedDataKey();
+
+// 私钥状态不影响生物识别
+X25519/Ed25519/RSA 私钥 → 不影响生物识别可用性
+```
 
 ## 九、核心安全类
 
@@ -464,6 +524,15 @@ encrypted_title: "v2:On/5cO6S12VohUiVWGmxEs:U2FsdGVkX1tJR3Z..."
 | **ShareEncryptionManager** | crypto/ | 分享加密（混合加密） |
 | **PasswordManager** | service/manager/ | 密码加密/解密 |
 | **BackupEncryptionManager** | security/ | 备份加密管理 |
+| **X25519KeyManagerFactory** | crypto/ | X25519 密钥管理器工厂（自动选择实现） |
+| **SystemX25519KeyManager** | crypto/ | X25519 系统API实现（API 33+） |
+| **BouncyCastleX25519KeyManager** | crypto/ | X25519 Bouncy Castle实现（API 29-32） |
+| **Ed25519SignerFactory** | crypto/ | Ed25519 签名器工厂（自动选择实现） |
+| **SystemEd25519Signer** | crypto/ | Ed25519 系统API实现（API 34+） |
+| **BouncyCastleEd25519Signer** | crypto/ | Ed25519 Bouncy Castle实现（API 29-33） |
+| **HKDFManager** | crypto/ | HKDF 密钥派生（ECDH后） |
+| **CryptoConstants** | crypto/ | 加密算法常量定义 |
+| **BiometricAuthManager** | security/biometric/ | 生物识别认证管理器 |
 
 ### Spring Boot 后端
 
@@ -530,6 +599,7 @@ encrypted_title: "v2:On/5cO6S12VohUiVWGmxEs:U2FsdGVkX1tJR3Z..."
 
 | 版本 | 日期 | 变更说明 |
 |------|------|---------|
+| 3.6 | 2026-03-03 | 密码学算法升级：X25519/Ed25519 成为主力算法，RSA-2048 保留兼容；新增自动回退机制应对系统 API 不可用；新增生物识别可用性说明 |
 | 3.0 | 2026-02-28 | 添加 Level 0 会话管理层、云端登录流程、分享加密协议、安全随机填充详解、数据流程示例 |
 | 2.0 | 2026-02-28 | 全面更新：三层安全架构、详细流程说明、云端同步机制 |
 | 1.0 | 2026-02-08 | 初始版本，五层安全架构 |

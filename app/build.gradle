@@ -108,6 +108,10 @@ dependencies {
     // argon2kt 是专为 Android 设计的 Argon2 JNI 绑定，解决了 argon2-jvm 在 Android 上的兼容性问题
     implementation 'com.lambdapioneer.argon2kt:argon2kt:1.6.0'
 
+    // Bouncy Castle for X25519/Ed25519 support (API < 33)
+    // 密钥对生成和 ECDH 密钥交换，用于协议版本 3.0
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+
     testImplementation libs.junit
     testImplementation 'org.robolectric:robolectric:4.11.1'
     androidTestImplementation libs.ext.junit

@@ -319,4 +319,46 @@ public class CloudAuthManager {
             return "";
         }
     }
+
+    /**
+     * 上传 X25519/Ed25519 公钥到服务器
+     *
+     * 用于密钥迁移后或新用户初始化
+     *
+     * @param x25519PublicKey X25519 公钥（Base64 编码）
+     * @param ed25519PublicKey Ed25519 公钥（Base64 编码）
+     * @param keyVersion 密钥版本（"v3"）
+     * @return 上传成功返回 true
+     */
+    public boolean uploadEccPublicKey(String x25519PublicKey, String ed25519PublicKey, String keyVersion) {
+        try {
+            if (x25519PublicKey == null || ed25519PublicKey == null || keyVersion == null) {
+                Log.e(TAG, "ECC 公钥参数不能为空");
+                return false;
+            }
+
+            com.ttt.safevault.dto.request.UploadEccPublicKeyRequest request =
+                new com.ttt.safevault.dto.request.UploadEccPublicKeyRequest(
+                    x25519PublicKey,
+                    ed25519PublicKey,
+                    keyVersion
+                );
+
+            com.ttt.safevault.dto.response.UploadEccPublicKeyResponse response =
+                retrofitClient.getAuthServiceApi()
+                    .uploadEccPublicKey(request)
+                    .blockingFirst();
+
+            if (response != null && response.isSuccess()) {
+                Log.d(TAG, "ECC 公钥上传成功");
+                return true;
+            } else {
+                Log.e(TAG, "ECC 公钥上传失败: " + (response != null ? response.getMessage() : "未知错误"));
+                return false;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "ECC 公钥上传异常", e);
+            return false;
+        }
+    }
 }

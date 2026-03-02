@@ -1,5 +1,6 @@
 package com.ttt.safevault.ui;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
@@ -54,7 +55,12 @@ public abstract class BaseActivity extends AppCompatActivity {
         IntentFilter filter = new IntentFilter(AuthInterceptor.ACTION_TOKEN_EXPIRED);
         // 使用LocalBroadcastManager确保应用内广播
         try {
-            registerReceiver(authReceiver, filter);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ 需要 RECEIVER_NOT_EXPORTED 标志
+                registerReceiver(authReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(authReceiver, filter);
+            }
         } catch (Exception e) {
             // 防止重复注册
             android.util.Log.e("BaseActivity", "Failed to register auth receiver", e);

@@ -1,0 +1,41 @@
+# OpenSpec 完成情况审查技能元数据
+name: "openspec-completion"
+version: "1.0.0"
+description: "审查 OpenSpec 提案实现后的代码质量、文档符合性和安全性"
+
+# 触发关键词
+triggers:
+  - "审查.*实现"
+  - "检查.*完成情况"
+  - "验证.*实现"
+  - "openspec.*completion"
+  - "完成.*审查"
+  - "验收.*提案"
+  - "检查.*代码质量"
+  - "验证.*是否符合文档"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "openspec/changes/**/*"
+  - "**/openspec/**/*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "openspec-review"
+  - "code-review:code-review"
+
+# 适用场景
+scenarios:
+  - "审查提案实现完成度"
+  - "验证代码符合文档"
+  - "检查测试覆盖率"
+  - "审查安全性实现"

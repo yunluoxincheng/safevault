@@ -72,8 +72,16 @@ public class SecurityManager {
         // 防止截图
         preventScreenshots(activity);
 
+        // 在调试模式下跳过开发者选项和root检查
+        // 避免影响开发和测试
+        if (isDebugMode()) {
+            android.util.Log.d(TAG, "调试模式：跳过安全检查");
+            return;
+        }
+
         // 检查开发者选项
         if (isDeveloperOptionsEnabled()) {
+            android.util.Log.w(TAG, "开发者选项已开启，关闭应用");
             activity.finish();
             return;
         }

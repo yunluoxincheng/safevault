@@ -1,0 +1,50 @@
+# Android Retrofit 网络层技能元数据
+name: "android-retrofit-network"
+version: "1.0.0"
+description: "使用 Retrofit、OkHttp 实现 Android 网络层，包括 API 接口、拦截器、错误处理等"
+
+# 触发关键词
+triggers:
+  - "Retrofit.*实现"
+  - "API接口"
+  - "OkHttp.*配置"
+  - "网络层"
+  - "REST.*API"
+  - "HTTP.*请求"
+  - "拦截器"
+  - "API.*封装"
+
+# 错误模式
+error_patterns:
+  - "Retrofit.*Exception"
+  - "OkHttp.*Exception"
+  - "UnknownHostException"
+  - "SocketTimeoutException"
+  - "ConnectTimeoutException"
+
+# 文件模式
+file_patterns:
+  - "network/**/*"
+  - "**/*Retrofit*"
+  - "**/*OkHttp*"
+  - "**/api/**/*"
+  - "**/dto/**/*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-network-sync-fixes"
+  - "android-security-practices"
+
+# 适用场景
+scenarios:
+  - "创建 Retrofit API 接口"
+  - "配置 OkHttp 客户端"
+  - "实现请求拦截器"
+  - "处理网络错误"
+  - "添加 SSL/TLS 配置"

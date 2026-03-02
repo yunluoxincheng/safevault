@@ -1,0 +1,41 @@
+# 代码重构技能元数据
+name: "refactoring-code"
+version: "1.0.0"
+description: "重构代码以提高质量、可维护性、性能，同时保持功能不变"
+
+# 触发关键词
+triggers:
+  - "重构代码"
+  - "优化代码"
+  - "清理.*代码"
+  - "代码.*改进"
+  - "提高.*质量"
+  - "简化.*代码"
+  - "消除.*冗余"
+  - "重构.*架构"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式:
+  - "**/*.java"
+  - "**/*.kt"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "documenting-code"
+  - "android-debugging-fixes"
+
+# 适用场景
+scenarios:
+  - "清理无用代码"
+  - "简化复杂逻辑"
+  - "提取重复代码"
+  - "优化性能"
+  - "改进代码结构"

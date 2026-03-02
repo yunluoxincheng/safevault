@@ -466,4 +466,17 @@ public interface BackendService {
             this.version = version;
         }
     }
+
+    // ========== 新增：ECC 公钥上传接口 ==========
+
+    /**
+     * 上传 X25519/Ed25519 公钥到服务器
+     * 用于密钥迁移后或新用户初始化
+     *
+     * @param x25519PublicKey X25519 公钥（Base64 编码）
+     * @param ed25519PublicKey Ed25519 公钥（Base64 编码）
+     * @param keyVersion 密钥版本（"v3"）
+     * @return true 表示上传成功，false 表示上传失败
+     */
+    boolean uploadEccPublicKey(String x25519PublicKey, String ed25519PublicKey, String keyVersion);
 }

@@ -164,9 +164,23 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public boolean isInitialized() {
-        // 检查是否已初始化（盐值存在）
-        return cryptoPrefs.contains(KEY_MASTER_SALT) &&
-               cryptoPrefs.getBoolean(KEY_INITIALIZED, false);
+        // 检查是否已初始化（盐值存在且 DataKey 存在）
+        boolean hasSalt = cryptoPrefs.contains(KEY_MASTER_SALT);
+        boolean initializedFlag = cryptoPrefs.getBoolean(KEY_INITIALIZED, false);
+        boolean hasDataKey = secureKeyStorage.hasPasswordEncryptedDataKey();
+
+        // 如果盐值和初始化标志存在，但 DataKey 不存在，说明是卸载重装后的异常状态
+        // 需要返回 false，让系统走 initialize 流程（从云端恢复）
+        boolean isInit = hasSalt && initializedFlag && hasDataKey;
+
+        if (!isInit && (hasSalt || initializedFlag)) {
+            Log.w(TAG, "检测到不完整的初始化状态：hasSalt=" + hasSalt +
+                      ", initializedFlag=" + initializedFlag +
+                      ", hasDataKey=" + hasDataKey +
+                      "（可能是卸载重装后，需要从云端恢复）");
+        }
+
+        return isInit;
     }
 
     @Override
@@ -721,5 +735,13 @@ public class BackendServiceImpl implements BackendService {
     public List<PasswordItem> getAllPasswords() {
         Log.d(TAG, "Getting all passwords");
         return passwordManager.getAllItems();
+    }
+
+    // ==================== ECC 公钥上传 ====================
+
+    @Override
+    public boolean uploadEccPublicKey(String x25519PublicKey, String ed25519PublicKey, String keyVersion) {
+        Log.d(TAG, "Uploading ECC public keys (X25519: " + x25519PublicKey.substring(0, Math.min(20, x25519PublicKey.length())) + "...)");
+        return cloudAuthManager.uploadEccPublicKey(x25519PublicKey, ed25519PublicKey, keyVersion);
     }
 }

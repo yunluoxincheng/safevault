@@ -222,3 +222,42 @@
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# ========================================
+# Bouncy Castle 加密库规则 (X25519/Ed25519 支持)
+# ========================================
+
+# 保留 X25519/Ed25519 相关的核心类
+-keep class org.bouncycastle.crypto.ec.** { *; }
+-keep class org.bouncycastle.crypto.params.** { *; }
+-keep class org.bouncycastle.crypto.signers.** { *; }
+-keep class org.bouncycastle.math.ec.** { *; }
+-keep class org.bouncycastle.util.BigIntegers { *; }
+
+# 保留 Curve25519 相关类
+-keep class org.bouncycastle.crypto.digests.XofUtils { *; }
+-keep class org.bouncycastle.crypto.digests.SHAKEDigest { *; }
+
+# 避免警告
+-dontwarn org.bouncycastle.**
+
+# 精简 Bouncy Castle：移除未使用的算法
+# 仅保留 X25519/Ed25519 所需的最小集合
+-keep class org.bouncycastle.crypto.params.X25519Parameters { *; }
+-keep class org.bouncycastle.crypto.params.Ed25519Parameters { *; }
+-keep class org.bouncycastle.crypto.params.X25519PublicKeyParameters { *; }
+-keep class org.bouncycastle.crypto.params.X25519PrivateKeyParameters { *; }
+-keep class org.bouncycastle.crypto.params.Ed25519PublicKeyParameters { *; }
+-keep class org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters { *; }
+-keep class org.bouncycastle.crypto.signers.X25519Signer { *; }
+-keep class org.bouncycastle.crypto.signers.Ed25519Signer { *; }
+
+# ========================================
+# Argon2 密码哈希规则
+# ========================================
+
+# 保留 Argon2 相关的 JNI 方法
+-keepclassmembers class com.lambdapioneer.argon2kt.** {
+    native <methods>;
+}
+-dontwarn com.lambdapioneer.argon2kt.**

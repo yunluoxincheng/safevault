@@ -262,6 +262,13 @@
             </intent-filter>
         </receiver>
 
+        <!-- 密钥迁移页面 -->
+        <activity
+            android:name=".ui.KeyMigrationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
     </application>
 
 </manifest>

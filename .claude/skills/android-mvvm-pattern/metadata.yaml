@@ -1,0 +1,47 @@
+# Android MVVM 模式技能元数据
+name: "android-mvvm-pattern"
+version: "1.0.0"
+description: "使用 MVVM 架构模式实现 Android 应用，包含 ViewModel、LiveData、Repository 等组件"
+
+# 触发关键词
+triggers:
+  - "MVVM.*架构"
+  - "ViewModel"
+  - "LiveData"
+  - "Repository.*模式"
+  - "数据绑定"
+  - "观察者模式"
+  - "生命周期.*感知"
+  - "ViewModel.*实现"
+  - "Repository.*实现"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "viewmodel/**/*"
+  - "model/**/*"
+  - "repository/**/*"
+  - "**/*ViewModel*"
+  - "**/*Repository*"
+  - "**/*LiveData*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+  - "android-retrofit-network"
+
+# 适用场景
+scenarios:
+  - "实现 MVVM 架构组件"
+  - "创建 ViewModel 类"
+  - "实现 Repository 层"
+  - "使用 LiveData 观察数据"
+  - "处理生命周期问题"

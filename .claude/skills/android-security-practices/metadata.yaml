@@ -1,0 +1,45 @@
+# Android 安全实践技能元数据
+name: "android-security-practices"
+version: "1.0.0"
+description: "实现 Android 安全最佳实践，包括 FLAG_SECURE、防截屏、生物识别等安全功能"
+
+# 触发关键词
+triggers:
+  - "安全.*实现"
+  - "防截屏"
+  - "FLAG_SECURE"
+  - "安全检查"
+  - "生物识别.*实现"
+  - "密钥保护"
+  - "数据安全"
+  - "权限管理"
+  - "安全加固"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "security/**/*"
+  - "**/*Security*"
+  - "**/utils/**/*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: true
+
+# 相关技能
+related_skills:
+  - "android-biometric-fixes"
+  - "android-encryption-fixes"
+  - "android-security-architecture-upgrade"
+
+# 适用场景
+scenarios:
+  - "实现防截屏功能"
+  - "添加安全检查逻辑"
+  - "实现自动锁定功能"
+  - "处理敏感数据"
+  - "实现权限管理"

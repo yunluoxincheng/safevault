@@ -288,6 +288,100 @@ Authorization: Bearer {token}
 
 ---
 
+## 加密协议版本
+
+### v2.0 (RSA-2048)
+
+**混合加密协议**:
+- **AES-256-GCM**: 加密实际的分享数据
+- **RSA-OAEP**: 加密 AES 密钥（接收方公钥）
+- **SHA256withRSA**: 数字签名验证发送方身份
+
+**数据包格式**:
+```json
+{
+  "version": "2.0",
+  "encryptedAESKey": "base64(RSA-OAEP encrypted AES key)",
+  "iv": "base64(AES IV, 12 bytes)",
+  "encryptedData": "base64(AES-GCM encrypted data)",
+  "signature": "base64(RSA-SHA256 signature)"
+}
+```
+
+### v3.0 (X25519/Ed25519)
+
+**现代椭圆曲线协议**:
+- **X25519 ECDH**: 密钥交换，支持 ephemeral key（前向保密）
+- **HKDF-SHA256**: 从 ECDH 共享密钥派生 AES 密钥（身份绑定）
+- **Ed25519 EdDSA**: 数字签名
+- **AES-256-GCM**: 加密数据
+
+**数据包格式**:
+```json
+{
+  "version": "3.0",
+  "ephemeralPublicKey": "base64(X25519 ephemeral public key, 32 bytes)",
+  "iv": "base64(AES IV, 12 bytes)",
+  "encryptedData": "base64(AES-GCM encrypted data)",
+  "signature": "base64(Ed25519 signature, 64 bytes)",
+  "createdAt": 1234567890000,
+  "expireAt": 1234567990000,
+  "senderId": "user123"
+}
+```
+
+**优势**:
+- 性能提升 10-100 倍
+- 密钥尺寸减少 8 倍
+- 支持前向保密（ephemeral key）
+- 抗侧信道攻击（常数时间实现）
+
+### 版本协商
+
+系统会根据接收方的密钥信息自动选择协议版本：
+
+| 发送方 | 接收方 | 使用协议 |
+|--------|--------|----------|
+| v2.0 RSA | v2.0 RSA | v2.0 |
+| v3.0 X25519 | v2.0 RSA | v2.0 (回退) |
+| v2.0 RSA | v3.0 X25519 | v2.0 (发送方限制) |
+| v3.0 X25519 | v3.0 X25519 | v3.0 (最优) |
+
+**查询用户密钥信息**:
+```http
+GET /v1/users/{userId}/keys
+Authorization: Bearer {token}
+```
+
+**响应**:
+```json
+{
+  "userId": "user123",
+  "rsaPublicKey": "MIIBIjANBgkqhki...",
+  "x25519PublicKey": "JBFzNz8GnZ2F1Q3B5cWx5a3Zhc2l3ZXJ0eXVpb3Bhcw==",
+  "ed25519PublicKey": "LoJw5p9W2XyP8Q7rN3k5m2J9h8G4f1C6d3E5a2B1c8F7A9d2C4e6G0",
+  "keyVersion": "v2"
+}
+```
+
+**上传 ECC 公钥（迁移时）**:
+```http
+POST /v1/users/me/ecc-public-keys
+Authorization: Bearer {token}
+Content-Type: application/json
+```
+
+**请求体**:
+```json
+{
+  "x25519PublicKey": "JBFzNz8GnZ2F1Q3B5cWx5a3Zhc2l3ZXJ0eXVpb3Bhcw==",
+  "ed25519PublicKey": "LoJw5p9W2XyP8Q7rN3k5m2J9h8G4f1C6d3E5a2B1c8F7A9d2C4e6G0",
+  "keyVersion": "v2"
+}
+```
+
+---
+
 ## 安全说明
 
 1. **好友验证**: 分享前会验证双方是否为好友关系（状态为 ACCEPTED）
@@ -295,6 +389,11 @@ Authorization: Bearer {token}
 3. **过期机制**: 所有分享都有过期时间，默认24小时
 4. **加密传输**: 密码数据始终以加密形式传输和存储
 5. **撤销保护**: 不可撤销的分享不能被撤销
+6. **版本协商**: 自动选择最优加密协议（v3.0 优先，v2.0 回退）
+7. **前向保密**: v3.0 协议使用 ephemeral key，长期私钥泄露不影响历史分享
+8. **身份绑定**: HKDF 派生密钥时混合双方身份，防止密钥混淆攻击
+9. **防重放攻击**: v3.0 包含时间戳验证，过期检查
+10. **Invalid Curve 防护**: 验证 ephemeral public key 有效性
 
 ---
 

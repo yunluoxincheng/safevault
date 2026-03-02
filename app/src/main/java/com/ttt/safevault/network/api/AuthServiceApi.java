@@ -10,6 +10,7 @@ import com.ttt.safevault.dto.response.EmailRegistrationResponse;
 import com.ttt.safevault.dto.response.LoginPrecheckResponse;
 import com.ttt.safevault.dto.response.LogoutResponse;
 import com.ttt.safevault.dto.response.RemoveDeviceResponse;
+import com.ttt.safevault.dto.response.UploadEccPublicKeyResponse;
 import com.ttt.safevault.dto.response.VerifyEmailResponse;
 import com.ttt.safevault.dto.response.VerificationStatusResponse;
 
@@ -80,4 +81,16 @@ public interface AuthServiceApi {
             @Header("X-User-Id") String userId,
             @Path("deviceId") String deviceId
     );
+
+    // ========== ECC 公钥管理 API ==========
+
+    /**
+     * 上传 X25519/Ed25519 公钥
+     * 用于密钥迁移后或新用户初始化
+     *
+     * @param request 上传请求
+     * @return 上传响应
+     */
+    @POST("v1/users/me/ecc-public-keys")
+    Observable<UploadEccPublicKeyResponse> uploadEccPublicKey(@Body UploadEccPublicKeyRequest request);
 }

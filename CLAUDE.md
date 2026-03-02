@@ -116,35 +116,89 @@ com.ttt.safevault/
 
 **在执行任何任务之前，必须先检查是否有可用的 skill！**
 
-### 必须遵守的流程：
-1. **第一步**：查看可用技能列表，确认是否有匹配的 skill
-2. **第二步**：如果有适用的 skill，**必须使用 Skill 工具调用该 skill**
-3. **第三步**：只有当没有匹配的 skill 时，才直接执行任务
+### 自动 Skill 匹配规则（内部使用）
 
-### 必须使用 Skill 的情况（包括但不限于）：
-- ✅ 修改/添加/删除代码
-- ✅ 实现/修复功能
-- ✅ UI 现代化更新
-- ✅ 架构设计
-- ✅ 代码审查
-- ✅ 调试问题
-- ✅ 重构代码
+每次收到用户请求时，**自动执行**以下检查：
 
-### 可用 Skills 列表：
-- `android-ui-modernization` - UI 现代化
-- `android-mvvm-pattern` - MVVM 架构
-- `android-security-practices` - 安全实践
-- `android-network-sync-fixes` - 网络同步修复
-- `android-biometric-fixes` - 生物识别修复
-- `android-email-verification-fixes` - 邮箱验证修复
-- `android-encryption-fixes` - 加密修复
-- `android-debugging-fixes` - 调试修复
-- `password-sharing-implementation` - 密码分享实现
-- `password-strength-algorithms` - 密码强度算法
-- `android-retrofit-network` - Retrofit 网络层
-- `documenting-code` - 代码文档
-- `refactoring-code` - 代码重构
-- `feature-design-advisor` - 功能设计顾问
+```python
+# AI 内部执行逻辑
+def auto_match_skill(user_request, context):
+    # 1. 关键词匹配
+    keywords = extract_keywords(user_request)
+
+    # 2. 错误模式匹配（如果有错误堆栈）
+    error_patterns = extract_error_patterns(context)
+
+    # 3. 文件模式匹配（如果有相关文件）
+    file_patterns = extract_file_patterns(context)
+
+    # 4. 匹配优先级规则
+    for rule in SKILL_MATCHING_RULES:
+        if matches_any(keywords, error_patterns, file_patterns, rule):
+            return rule.skill_name
+
+    return None  # 无匹配
+```
+
+### 强制 Skill 调用映射表
+
+**当检测到以下关键词/模式时，必须调用对应 skill：**
+
+| 检测关键词/错误/文件 | 必须调用 Skill |
+|---------------------|---------------|
+| 更新界面, UI美化, Material Design 3, 改UI | `android-ui-modernization` |
+| 加密失败, 解密失败, BadPaddingException, IllegalBlockSizeException, KeyPermanentlyInvalidatedException, javax.crypto | `android-encryption-fixes` |
+| API调用失败, WebSocket断开, 同步失败, 401/403错误, Token刷新 | `android-network-sync-fixes` |
+| 生物识别失败, 指纹, 面容, BiometricPrompt | `android-biometric-fixes` |
+| 邮箱验证, 验证码错误, OTP | `android-email-verification-fixes` |
+| 修复bug, 崩溃, ANR, NullPointerException, 异常 | `android-debugging-fixes` |
+| MVVM, ViewModel, LiveData, Repository | `android-mvvm-pattern` |
+| FLAG_SECURE, 防截屏, 安全检查 | `android-security-practices` |
+| 安全架构升级, SecureKeyStorage, KeyManager迁移 | `android-security-architecture-upgrade` |
+| 密码分享, 二维码, 蓝牙, NFC分享 | `password-sharing-implementation` |
+| 密码强度, 生成密码 | `password-strength-algorithms` |
+| 创建提案, OpenSpec 提案 | `openspec:proposal` |
+| 审查提案, 检查提案文档 | `openspec-review` |
+| 完成审查, 验证实现 | `openspec-completion` |
+| 写文档, 更新文档, API文档 | `documenting-code` |
+| 重构代码, 优化代码, 清理代码 | `refactoring-code` |
+| 如何实现, 设计方案 | `feature-design-advisor` |
+
+### 用户调用方式
+
+如果用户想手动指定 skill，可用以下方式：
+
+```
+# 方式 1: 中文简写别名
+/加密-fix          # android-encryption-fixes
+/UI-modern         # android-ui-modernization
+/网络-sync         # android-network-sync-fixes
+/生物-fix          # android-biometric-fixes
+/邮箱-fix          # android-email-verification-fixes
+/调试-fix          # android-debugging-fixes
+/MVVM-pattern      # android-mvvm-pattern
+/安全-practices    # android-security-practices
+/Retrofit-net      # android-retrofit-network
+/安全架构-upgrade  # android-security-architecture-upgrade
+/密码分享          # password-sharing-implementation
+/密码强度          # password-strength-algorithms
+/文档              # documenting-code
+/重构              # refactoring-code
+/设计顾问          # feature-design-advisor
+/openspec-review   # openspec-review
+/openspec-complete # openspec-completion
+
+# 方式 2: 完整 skill 名称
+/skill android-encryption-fixes
+/skill android-ui-modernization
+```
+
+### 多匹配处理
+
+如果检测到多个匹配的 skill：
+1. **高优先级优先** - encryption-fixes > debugging-fixes
+2. **询问用户** - 同优先级时，使用 AskUserQuestion 让用户选择
+3. **智能推荐** - 根据上下文推荐最合适的
 
 **⚠️ 违反此规则将被视为严重的执行错误！**
 

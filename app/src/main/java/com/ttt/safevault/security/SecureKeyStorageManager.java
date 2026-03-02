@@ -121,6 +121,18 @@ public class SecureKeyStorageManager {
     private static final String KEY_VERSION = "key_version";
     /** 密钥版本值（三层架构） */
     private static final String KEY_VERSION_V3 = "v3";
+    /** 密钥版本值（旧版本） */
+    private static final String KEY_VERSION_V2 = "v2";
+
+    /** X25519 公钥（Base64编码） */
+    private static final String X25519_PUBLIC_KEY = "x25519_public_key";
+    /** 加密的 X25519 私钥 */
+    private static final String ENCRYPTED_X25519_PRIVATE_KEY = "encrypted_x25519_private_key";
+
+    /** Ed25519 公钥（Base64编码） */
+    private static final String ED25519_PUBLIC_KEY = "ed25519_public_key";
+    /** 加密的 Ed25519 私钥 */
+    private static final String ENCRYPTED_ED25519_PRIVATE_KEY = "encrypted_ed25519_private_key";
 
     /** 迁移状态键 */
     private static final String MIGRATION_STATUS = "migration_status";
@@ -128,6 +140,8 @@ public class SecureKeyStorageManager {
     private static final String MIGRATION_TIMESTAMP = "migration_timestamp";
     /** 迁移错误消息键 */
     private static final String MIGRATION_ERROR = "migration_error";
+    /** 迁移标记键（用于区分新用户和迁移用户） */
+    private static final String MIGRATION_COMPLETED_FLAG = "migration_completed_flag";
 
     private static volatile SecureKeyStorageManager INSTANCE;
     private final Context context;
@@ -627,10 +641,10 @@ public class SecureKeyStorageManager {
             );
 
             // 4. 使用commit()同步保存（原子性）
+            // 注意：这里不设置 KEY_VERSION，版本应由调用者控制
             boolean saved = prefs.edit()
                     .putString(ENCRYPTED_RSA_PRIVATE_KEY, encryptedPrivateKey)
                     .putString(RSA_PUBLIC_KEY, publicKeyBase64)
-                    .putString(KEY_VERSION, KEY_VERSION_V3)
                     .commit();
 
             if (!saved) {
@@ -730,6 +744,16 @@ public class SecureKeyStorageManager {
             Log.e(TAG, "RSA公钥解析失败", e);
             return null;
         }
+    }
+
+    /**
+     * 获取RSA公钥（Base64编码）
+     *
+     * @return RSA公钥（Base64），未找到返回null
+     */
+    @Nullable
+    public String getRsaPublicKeyBase64() {
+        return prefs.getString(RSA_PUBLIC_KEY, null);
     }
 
     // ========== 云端备份 ==========
@@ -942,8 +966,9 @@ public class SecureKeyStorageManager {
             return false;
         }
 
-        if (!KEY_VERSION_V3.equals(version)) {
-            Log.w(TAG, "密钥版本不正确: " + version);
+        // 支持 v2 和 v3 版本（向后兼容）
+        if (!KEY_VERSION_V2.equals(version) && !KEY_VERSION_V3.equals(version)) {
+            Log.w(TAG, "密钥版本不正确: " + version + " (预期 v2 或 v3)");
             return false;
         }
 
@@ -1475,6 +1500,11 @@ public class SecureKeyStorageManager {
                 .remove(MIGRATION_STATUS)
                 .remove(MIGRATION_TIMESTAMP)
                 .remove(MIGRATION_ERROR)
+                .remove(MIGRATION_COMPLETED_FLAG)
+                .remove(X25519_PUBLIC_KEY)
+                .remove(ENCRYPTED_X25519_PRIVATE_KEY)
+                .remove(ED25519_PUBLIC_KEY)
+                .remove(ENCRYPTED_ED25519_PRIVATE_KEY)
                 .commit();
 
         // 清除AndroidKeyStore中的DeviceKey
@@ -1490,5 +1520,339 @@ public class SecureKeyStorageManager {
         }
 
         Log.w(TAG, "所有安全存储数据已清除");
+    }
+
+    // ========== v3.0 密钥管理：X25519/Ed25519 ==========
+
+    /**
+     * 检查是否已迁移到 v3.0（X25519/Ed25519）
+     *
+     * 迁移标记由 KeyMigrationService 在执行迁移后设置。
+     * 新用户初始化时不会设置此标记，只有从 v2.0 迁移到 v3.0 的用户才会设置。
+     *
+     * @return 已迁移返回 true
+     */
+    public boolean hasMigratedToV3() {
+        // 检查迁移完成标记（区分新用户和迁移用户）
+        return prefs.getBoolean(MIGRATION_COMPLETED_FLAG, false);
+    }
+
+    /**
+     * 获取当前密钥版本（基于实际存在的密钥判断）
+     *
+     * 优先级：
+     * 1. 如果 X25519/Ed25519 存在 → v3（新用户或已迁移）
+     * 2. 如果只有 RSA 存在 → v2（未迁移）
+     * 3. 否则 → null（未初始化）
+     *
+     * @return 密钥版本（"v2" 或 "v3"），未初始化返回 null
+     */
+    @Nullable
+    public String getKeyVersion() {
+        // 检查 v3.0 密钥是否存在
+        if (getX25519PublicKeyBase64() != null && getEd25519PublicKeyBase64() != null) {
+            return KEY_VERSION_V3;
+        }
+        // 检查 v2.0 密钥是否存在
+        if (getRsaPublicKey() != null) {
+            return KEY_VERSION_V2;
+        }
+        // 没有任何密钥
+        return null;
+    }
+
+    /**
+     * 设置密钥版本（仅用于回滚操作）
+     *
+     * 注意：正常情况下 getVersion() 会根据实际密钥判断版本，
+     * 此方法仅用于回滚时将版本设为 v2。
+     *
+     * @param version 密钥版本
+     */
+    public void setKeyVersion(@NonNull String version) {
+        prefs.edit().putString(KEY_VERSION, version).commit();
+        Log.i(TAG, "密钥版本手动设置为: " + version);
+    }
+
+    /**
+     * 设置迁移完成标记
+     *
+     * 只在真正执行迁移后调用，新用户初始化不调用此方法
+     */
+    public void setMigrationCompletedFlag(boolean completed) {
+        prefs.edit().putBoolean(MIGRATION_COMPLETED_FLAG, completed).commit();
+        Log.i(TAG, "迁移完成标记: " + (completed ? "已设置" : "已清除"));
+    }
+
+    /**
+     * 加密并保存 X25519 私钥（v3.0）
+     *
+     * 使用 DataKey 加密 X25519 私钥，公钥明文存储
+     *
+     * @param privateKey X25519 私钥
+     * @param dataKey DataKey
+     * @param publicKey X25519 公钥
+     * @return 成功返回 true，失败返回 false
+     */
+    public boolean encryptAndSaveX25519PrivateKey(@NonNull PrivateKey privateKey,
+                                                 @NonNull SecretKey dataKey,
+                                                 @NonNull PublicKey publicKey) {
+        try {
+            // 1. 使用 DataKey 加密私钥
+            String encryptedPrivateKey = encryptKeyWithAES(
+                    new SecretKeySpec(privateKey.getEncoded(), "AES"),
+                    dataKey
+            );
+            if (encryptedPrivateKey == null) {
+                Log.e(TAG, "X25519 私钥加密失败");
+                return false;
+            }
+
+            // 2. 编码公钥为 Base64
+            String publicKeyBase64 = android.util.Base64.encodeToString(
+                    publicKey.getEncoded(),
+                    android.util.Base64.NO_WRAP
+            );
+
+            // 3. 使用 commit() 同步保存（原子性）
+            boolean saved = prefs.edit()
+                    .putString(ENCRYPTED_X25519_PRIVATE_KEY, encryptedPrivateKey)
+                    .putString(X25519_PUBLIC_KEY, publicKeyBase64)
+                    .commit();
+
+            if (!saved) {
+                Log.e(TAG, "X25519 密钥对保存失败（commit返回false）");
+                return false;
+            }
+
+            Log.i(TAG, "X25519 私钥加密保存成功（v3.0）");
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "X25519 私钥加密存储失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 加密并保存 Ed25519 私钥（v3.0）
+     *
+     * 使用 DataKey 加密 Ed25519 私钥，公钥明文存储
+     *
+     * @param privateKey Ed25519 私钥
+     * @param dataKey DataKey
+     * @param publicKey Ed25519 公钥
+     * @return 成功返回 true，失败返回 false
+     */
+    public boolean encryptAndSaveEd25519PrivateKey(@NonNull PrivateKey privateKey,
+                                                  @NonNull SecretKey dataKey,
+                                                  @NonNull PublicKey publicKey) {
+        try {
+            // 1. 使用 DataKey 加密私钥
+            String encryptedPrivateKey = encryptKeyWithAES(
+                    new SecretKeySpec(privateKey.getEncoded(), "AES"),
+                    dataKey
+            );
+            if (encryptedPrivateKey == null) {
+                Log.e(TAG, "Ed25519 私钥加密失败");
+                return false;
+            }
+
+            // 2. 编码公钥为 Base64
+            String publicKeyBase64 = android.util.Base64.encodeToString(
+                    publicKey.getEncoded(),
+                    android.util.Base64.NO_WRAP
+            );
+
+            // 3. 使用 commit() 同步保存（原子性）
+            boolean saved = prefs.edit()
+                    .putString(ENCRYPTED_ED25519_PRIVATE_KEY, encryptedPrivateKey)
+                    .putString(ED25519_PUBLIC_KEY, publicKeyBase64)
+                    .commit();
+
+            if (!saved) {
+                Log.e(TAG, "Ed25519 密钥对保存失败（commit返回false）");
+                return false;
+            }
+
+            Log.i(TAG, "Ed25519 私钥加密保存成功（v3.0）");
+            return true;
+
+        } catch (Exception e) {
+            Log.e(TAG, "Ed25519 私钥加密存储失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 验证 X25519 密钥对完整性
+     *
+     * @return 完整返回 true，否则返回 false
+     */
+    public boolean validateX25519KeyPair() {
+        String pubKey = prefs.getString(X25519_PUBLIC_KEY, null);
+        String privKey = prefs.getString(ENCRYPTED_X25519_PRIVATE_KEY, null);
+
+        if (pubKey == null || privKey == null) {
+            Log.w(TAG, "X25519 密钥对不完整");
+            return false;
+        }
+
+        // 验证公钥格式（X25519 公钥应该是 32 字节）
+        byte[] pubKeyBytes = android.util.Base64.decode(pubKey, android.util.Base64.NO_WRAP);
+        if (pubKeyBytes.length != 32) {
+            Log.w(TAG, "X25519 公钥长度不正确: " + pubKeyBytes.length);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 验证 Ed25519 密钥对完整性
+     *
+     * @return 完整返回 true，否则返回 false
+     */
+    public boolean validateEd25519KeyPair() {
+        String pubKey = prefs.getString(ED25519_PUBLIC_KEY, null);
+        String privKey = prefs.getString(ENCRYPTED_ED25519_PRIVATE_KEY, null);
+
+        if (pubKey == null || privKey == null) {
+            Log.w(TAG, "Ed25519 密钥对不完整");
+            return false;
+        }
+
+        // 验证公钥格式（Ed25519 公钥应该是 32 字节）
+        byte[] pubKeyBytes = android.util.Base64.decode(pubKey, android.util.Base64.NO_WRAP);
+        if (pubKeyBytes.length != 32) {
+            Log.w(TAG, "Ed25519 公钥长度不正确: " + pubKeyBytes.length);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 获取 X25519 公钥（Base64 编码）
+     *
+     * @return X25519 公钥（Base64），未找到返回 null
+     */
+    @Nullable
+    public String getX25519PublicKeyBase64() {
+        return prefs.getString(X25519_PUBLIC_KEY, null);
+    }
+
+    /**
+     * 获取 Ed25519 公钥（Base64 编码）
+     *
+     * @return Ed25519 公钥（Base64），未找到返回 null
+     */
+    @Nullable
+    public String getEd25519PublicKeyBase64() {
+        return prefs.getString(ED25519_PUBLIC_KEY, null);
+    }
+
+    /**
+     * 解密 X25519 私钥
+     *
+     * @param dataKey DataKey
+     * @return X25519 私钥
+     * @throws SecurityException 解密失败时抛出
+     */
+    @NonNull
+    public PrivateKey decryptX25519PrivateKey(@NonNull SecretKey dataKey) {
+        byte[] privateKeyBytes = null;
+        try {
+            String encrypted = prefs.getString(ENCRYPTED_X25519_PRIVATE_KEY, null);
+            if (encrypted == null) {
+                throw new IllegalStateException("未找到加密的 X25519 私钥");
+            }
+
+            // 解析并解密
+            String[] parts = encrypted.split("\\.");
+            byte[] iv = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP);
+            byte[] encryptedData = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP);
+
+            Cipher cipher = Cipher.getInstance(DATA_KEY_ENCRYPTION_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.DECRYPT_MODE, dataKey, spec);
+
+            privateKeyBytes = cipher.doFinal(encryptedData);
+
+            // 使用 KeyFactory 创建 X25519 私钥
+            KeyFactory keyFactory = KeyFactory.getInstance("XDH");
+            java.security.spec.NamedParameterSpec paramSpec =
+                    new java.security.spec.NamedParameterSpec("X25519");
+            java.security.spec.PKCS8EncodedKeySpec keySpec =
+                    new java.security.spec.PKCS8EncodedKeySpec(privateKeyBytes);
+            PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+
+            Log.d(TAG, "X25519 私钥解密成功");
+            return privateKey;
+
+        } catch (javax.crypto.AEADBadTagException e) {
+            Log.e(TAG, "X25519 私钥解密失败：认证标签不匹配", e);
+            throw new SecurityException("X25519 private key decryption failed: AEAD tag mismatch", e);
+        } catch (Exception e) {
+            Log.e(TAG, "X25519 私钥解密失败", e);
+            throw new SecurityException("Failed to decrypt X25519 private key", e);
+        } finally {
+            // 立即擦除内存中的私钥字节
+            if (privateKeyBytes != null) {
+                Arrays.fill(privateKeyBytes, (byte) 0);
+            }
+        }
+    }
+
+    /**
+     * 解密 Ed25519 私钥
+     *
+     * @param dataKey DataKey
+     * @return Ed25519 私钥
+     * @throws SecurityException 解密失败时抛出
+     */
+    @NonNull
+    public PrivateKey decryptEd25519PrivateKey(@NonNull SecretKey dataKey) {
+        byte[] privateKeyBytes = null;
+        try {
+            String encrypted = prefs.getString(ENCRYPTED_ED25519_PRIVATE_KEY, null);
+            if (encrypted == null) {
+                throw new IllegalStateException("未找到加密的 Ed25519 私钥");
+            }
+
+            // 解析并解密
+            String[] parts = encrypted.split("\\.");
+            byte[] iv = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP);
+            byte[] encryptedData = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP);
+
+            Cipher cipher = Cipher.getInstance(DATA_KEY_ENCRYPTION_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.DECRYPT_MODE, dataKey, spec);
+
+            privateKeyBytes = cipher.doFinal(encryptedData);
+
+            // 使用 KeyFactory 创建 Ed25519 私钥
+            KeyFactory keyFactory = KeyFactory.getInstance("EdDSA");
+            java.security.spec.NamedParameterSpec paramSpec =
+                    new java.security.spec.NamedParameterSpec("Ed25519");
+            java.security.spec.PKCS8EncodedKeySpec keySpec =
+                    new java.security.spec.PKCS8EncodedKeySpec(privateKeyBytes);
+            PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+
+            Log.d(TAG, "Ed25519 私钥解密成功");
+            return privateKey;
+
+        } catch (javax.crypto.AEADBadTagException e) {
+            Log.e(TAG, "Ed25519 私钥解密失败：认证标签不匹配", e);
+            throw new SecurityException("Ed25519 private key decryption failed: AEAD tag mismatch", e);
+        } catch (Exception e) {
+            Log.e(TAG, "Ed25519 私钥解密失败", e);
+            throw new SecurityException("Failed to decrypt Ed25519 private key", e);
+        } finally {
+            // 立即擦除内存中的私钥字节
+            if (privateKeyBytes != null) {
+                Arrays.fill(privateKeyBytes, (byte) 0);
+            }
+        }
     }
 }
