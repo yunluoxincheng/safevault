@@ -439,7 +439,7 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
                 // 需要在后台线程执行密钥操作
                 executor.execute(() -> {
                     try {
-                        // 获取 DataKey 并设置到 CryptoSession（用于会话恢复）
+                        // 获取 DataKey 并设置到 SessionGuard（用于会话恢复）
                         com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
                                 com.ttt.safevault.security.SecureKeyStorageManager.getInstance(AutofillCredentialSelectorActivity.this);
                         javax.crypto.SecretKey dataKey = secureStorage.unlockDataKeyWithBiometric();
@@ -453,10 +453,10 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
                             return;
                         }
 
-                        // 设置 DataKey 到 CryptoSession
-                        com.ttt.safevault.security.CryptoSession cryptoSession =
-                                com.ttt.safevault.security.CryptoSession.getInstance();
-                        cryptoSession.unlockWithDataKey(dataKey);
+                        // 设置 DataKey 到 SessionGuard
+                        com.ttt.safevault.security.SessionGuard sessionGuard =
+                                com.ttt.safevault.security.SessionGuard.getInstance();
+                        sessionGuard.unlockWithDataKey(dataKey);
 
                         android.util.Log.d(TAG, "生物识别验证成功，会话已设置");
 

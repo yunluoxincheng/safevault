@@ -356,11 +356,11 @@ public class FriendRequestListActivity extends AppCompatActivity {
             // 获取发送方公钥
             com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
                 com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
 
-            if (!cryptoSession.isUnlocked()) {
-                android.util.Log.w(TAG, "CryptoSession 未锁定，跳过安全码验证");
+            if (!sessionGuard.isUnlocked()) {
+                android.util.Log.w(TAG, "SessionGuard 未锁定，跳过安全码验证");
                 return;
             }
 

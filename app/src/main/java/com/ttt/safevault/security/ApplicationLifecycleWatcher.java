@@ -36,14 +36,14 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
     /** 是否已注册 */
     private volatile boolean registered;
 
-    /** CryptoSession 引用 */
-    private final CryptoSession cryptoSession;
+    /** SessionGuard 引用 */
+    private final SessionGuard sessionGuard;
 
     /**
      * 私有构造函数
      */
     private ApplicationLifecycleWatcher() {
-        this.cryptoSession = CryptoSession.getInstance();
+        this.sessionGuard = SessionGuard.getInstance();
         this.registered = false;
         Log.i(TAG, "ApplicationLifecycleWatcher 初始化");
     }
@@ -190,18 +190,18 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
     /**
      * 清除敏感数据
      *
-     * 调用 CryptoSession.clear() 清除内存中的 DataKey。
+     * 调用 SessionGuard.clear() 清除内存中的 DataKey。
      *
      * @param reason 清除原因（用于日志）
      */
     private void clearSensitiveData(@NonNull String reason) {
         try {
-            if (cryptoSession.isUnlocked()) {
+            if (sessionGuard.isUnlocked()) {
                 Log.i(TAG, "清除敏感数据 - 原因: " + reason);
-                cryptoSession.clear();
-                Log.i(TAG, "敏感数据已清除（CryptoSession 已锁定）");
+                sessionGuard.clear();
+                Log.i(TAG, "敏感数据已清除（SessionGuard 已锁定）");
             } else {
-                Log.d(TAG, "CryptoSession 已锁定，无需清除");
+                Log.d(TAG, "SessionGuard 已锁定，无需清除");
             }
         } catch (Exception e) {
             Log.e(TAG, "清除敏感数据时出现异常", e);
@@ -246,7 +246,7 @@ public class ApplicationLifecycleWatcher implements ComponentCallbacks2 {
     public String toString() {
         return "ApplicationLifecycleWatcher{" +
                 "registered=" + registered +
-                ", cryptoSession.unlocked=" + cryptoSession.isUnlocked() +
+                ", sessionGuard.unlocked=" + sessionGuard.isUnlocked() +
                 '}';
     }
 }

@@ -12,7 +12,7 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.SharePermission;
-import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.service.manager.*;
@@ -45,7 +45,7 @@ public class BackendServiceImpl implements BackendService {
     private final SharedPreferences cryptoPrefs;
 
     // 三层安全架构组件
-    private final CryptoSession cryptoSession;
+    private final SessionGuard sessionGuard;
     private final SecureKeyStorageManager secureKeyStorage;
 
     // 各功能模块的Manager
@@ -64,7 +64,7 @@ public class BackendServiceImpl implements BackendService {
         this.cryptoPrefs = context.getSharedPreferences(CRYPTO_PREFS_NAME, Context.MODE_PRIVATE);
 
         // 初始化三层安全架构组件
-        this.cryptoSession = CryptoSession.getInstance();
+        this.sessionGuard = SessionGuard.getInstance();
         this.secureKeyStorage = SecureKeyStorageManager.getInstance(context);
 
         // 初始化数据库访问层
@@ -115,10 +115,10 @@ public class BackendServiceImpl implements BackendService {
             }
             Log.d(TAG, "DataKey 解密成功");
 
-            // 缓存到 CryptoSession（会话解锁态）
-            Log.d(TAG, "调用 cryptoSession.unlockWithDataKey()");
-            cryptoSession.unlockWithDataKey(dataKey);
-            Log.d(TAG, "cryptoSession.unlockWithDataKey() 完成");
+            // 缓存到 SessionGuard（会话解锁态）
+            Log.d(TAG, "调用 sessionGuard.unlockWithDataKey()");
+            sessionGuard.unlockWithDataKey(dataKey);
+            Log.d(TAG, "sessionGuard.unlockWithDataKey() 完成");
 
             // 保存主密码到内存（用于云端认证等）
             accountManager.setSessionMasterPassword(masterPassword);
@@ -139,15 +139,15 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public void lock() {
-        // 清除 CryptoSession 中的 DataKey（会话锁定态）
-        cryptoSession.clear();
-        Log.d(TAG, "已锁定（CryptoSession 已清除）");
+        // 清除 SessionGuard 中的 DataKey（会话锁定态）
+        sessionGuard.clear();
+        Log.d(TAG, "已锁定（SessionGuard 已清除）");
     }
 
     @Override
     public boolean isUnlocked() {
-        // 使用 CryptoSession 检查会话状态
-        return cryptoSession.isUnlocked();
+        // 使用 SessionGuard 检查会话状态
+        return sessionGuard.isUnlocked();
     }
 
     @Override
@@ -226,8 +226,8 @@ public class BackendServiceImpl implements BackendService {
                     .putBoolean(KEY_INITIALIZED, true)
                     .commit();
 
-            // 缓存到 CryptoSession（会话解锁态）
-            cryptoSession.unlockWithDataKey(dataKey);
+            // 缓存到 SessionGuard（会话解锁态）
+            sessionGuard.unlockWithDataKey(dataKey);
 
             // 保存主密码到内存
             accountManager.setSessionMasterPassword(masterPassword);
@@ -440,7 +440,7 @@ public class BackendServiceImpl implements BackendService {
             Log.d(TAG, "Local password data deleted");
 
             // 2. 清除会话
-            cryptoSession.clear();
+            sessionGuard.clear();
 
             // 3. 清除生物识别数据
             secureKeyStorage.clearBiometricData();

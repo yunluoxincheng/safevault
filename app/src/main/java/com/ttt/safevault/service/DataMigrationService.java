@@ -10,7 +10,6 @@ import com.ttt.safevault.data.EncryptedPasswordEntity;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.service.manager.PasswordManager;
-import com.ttt.safevault.security.CryptoSession;
 import com.ttt.safevault.security.SessionLockedException;
 
 import java.util.List;

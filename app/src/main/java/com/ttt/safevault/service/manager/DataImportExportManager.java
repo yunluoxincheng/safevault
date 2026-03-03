@@ -6,7 +6,7 @@ import android.util.Log;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.security.BackupEncryptionManager;
-import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.utils.BackupJsonUtil;
 import com.ttt.safevault.utils.BackupValidationUtil;
 
@@ -42,7 +42,7 @@ public class DataImportExportManager {
     /**
      * 导出数据到指定路径（本地备份模式）
      *
-     * 使用 CryptoSession.DataKey 进行加密，无需密码
+     * 使用 SessionGuard.DataKey 进行加密，无需密码
      */
     public boolean exportData(String exportPath) {
         try {
@@ -98,7 +98,7 @@ public class DataImportExportManager {
     /**
      * 从指定路径导入数据（本地备份模式）
      *
-     * 使用 CryptoSession.DataKey 进行解密
+     * 使用 SessionGuard.DataKey 进行解密
      */
     public boolean importData(String importPath) {
         try {

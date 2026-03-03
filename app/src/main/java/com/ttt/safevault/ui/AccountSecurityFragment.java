@@ -16,7 +16,7 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentAccountSecurityBinding;
 import com.ttt.safevault.security.SecurityConfig;
-import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
@@ -589,7 +589,7 @@ public class AccountSecurityFragment extends BaseFragment {
      * 启用生物识别认证（使用会话管理优化）
      *
      * 流程：
-     * 1. 检查会话状态（CryptoSession.isUnlocked()）
+     * 1. 检查会话状态（SessionGuard.isUnlocked()）
      * 2. 如果已解锁：直接进行生物识别认证（无需重复输入主密码）
      * 3. 如果未解锁：先要求用户验证主密码
      * 4. 使用会话中的 DataKey 完成生物识别注册
@@ -600,10 +600,10 @@ public class AccountSecurityFragment extends BaseFragment {
      * - 生物识别只是把信任从主密码迁移到设备
      */
     private void enableBiometricAuthentication(@NonNull BiometricAuthManager authManager) {
-        CryptoSession cryptoSession = CryptoSession.getInstance();
+        SessionGuard sessionGuard = SessionGuard.getInstance();
 
         // 🧠 检查会话状态：用户是否已通过主密码验证
-        if (cryptoSession.isUnlocked()) {
+        if (sessionGuard.isUnlocked()) {
             // 用户已通过主密码验证（哪怕是 5 分钟前）
             // DataKey 在内存中，可以直接进行生物识别认证
             android.util.Log.d("AccountSecurity",
@@ -882,8 +882,8 @@ public class AccountSecurityFragment extends BaseFragment {
      * @param authManager 生物识别管理器
      */
     private void completeDeviceKeyEnrollmentWithDataKey(@NonNull BiometricAuthManager authManager) {
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+        SessionGuard sessionGuard = SessionGuard.getInstance();
+        javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
 
         if (dataKey == null) {
             android.util.Log.e("AccountSecurity", "会话中的 DataKey 不可用，无法完成 DeviceKey 注册");
@@ -1483,10 +1483,10 @@ public class AccountSecurityFragment extends BaseFragment {
         android.util.Log.d("AccountSecurity", "=== startKeyMigration() 开始 ===");
         try {
             // 获取会话信息（如果已登录）
-            CryptoSession cryptoSession = CryptoSession.getInstance();
-            android.util.Log.d("AccountSecurity", "CryptoSession.isUnlocked() = " + cryptoSession.isUnlocked());
+            SessionGuard sessionGuard = SessionGuard.getInstance();
+            android.util.Log.d("AccountSecurity", "SessionGuard.isUnlocked() = " + sessionGuard.isUnlocked());
 
-            if (!cryptoSession.isUnlocked()) {
+            if (!sessionGuard.isUnlocked()) {
                 // 未登录，需要先验证密码
                 android.util.Log.d("AccountSecurity", "会话未解锁，显示密码验证对话框");
                 showPasswordVerificationForMigration();

@@ -247,10 +247,10 @@ public class ReceiveShareActivity extends AppCompatActivity {
             // 获取自己的密钥对（接收方）- SafeVault 3.4.0：使用 SecureKeyStorageManager
             com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
                 com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
 
-            if (!cryptoSession.isUnlocked()) {
+            if (!sessionGuard.isUnlocked()) {
                 runOnUiThread(() -> {
                     binding.progressBar.setVisibility(View.GONE);
                     binding.scrollView.setVisibility(View.VISIBLE);
@@ -259,7 +259,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 return;
             }
 
-            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
             java.security.PrivateKey privateKey = secureStorage.decryptRsaPrivateKey(dataKey);
             java.security.PublicKey publicKey = secureStorage.getRsaPublicKey();
 

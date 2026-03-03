@@ -566,9 +566,9 @@ public class EncryptionSyncManager {
                 com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
 
             // 2. 检查应用是否已解锁
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
-            if (!cryptoSession.isUnlocked()) {
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
+            if (!sessionGuard.isUnlocked()) {
                 Log.e(TAG, "Cannot upload vault: app is locked");
                 return SyncResult.failure("应用已锁定，请先解锁");
             }
@@ -681,9 +681,9 @@ public class EncryptionSyncManager {
                 com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
 
             // 2. 检查应用是否已解锁
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
-            if (!cryptoSession.isUnlocked()) {
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
+            if (!sessionGuard.isUnlocked()) {
                 Log.e(TAG, "Cannot import vault: app is locked");
                 return SyncResult.failure("应用已锁定，请先解锁");
             }

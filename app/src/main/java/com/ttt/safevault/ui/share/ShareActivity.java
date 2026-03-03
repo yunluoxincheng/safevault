@@ -424,15 +424,15 @@ public class ShareActivity extends AppCompatActivity {
                 // 获取发送方密钥对
                 com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
                     com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-                com.ttt.safevault.security.CryptoSession cryptoSession =
-                    com.ttt.safevault.security.CryptoSession.getInstance();
+                com.ttt.safevault.security.SessionGuard sessionGuard =
+                    com.ttt.safevault.security.SessionGuard.getInstance();
 
-                if (!cryptoSession.isUnlocked()) {
+                if (!sessionGuard.isUnlocked()) {
                     runOnUiThread(() -> Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show());
                     return;
                 }
 
-                javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+                javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
                 java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
                 java.security.PublicKey senderPublicKey = secureKeyStorage.getRsaPublicKey();
 
@@ -502,10 +502,10 @@ public class ShareActivity extends AppCompatActivity {
                 // SafeVault 3.4.0：使用 SecureKeyStorageManager 替代 KeyDerivationManager
                 com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
                     com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-                com.ttt.safevault.security.CryptoSession cryptoSession =
-                    com.ttt.safevault.security.CryptoSession.getInstance();
+                com.ttt.safevault.security.SessionGuard sessionGuard =
+                    com.ttt.safevault.security.SessionGuard.getInstance();
 
-                if (!cryptoSession.isUnlocked()) {
+                if (!sessionGuard.isUnlocked()) {
                     runOnUiThread(() -> {
                         hideLoading();
                         Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show();
@@ -518,7 +518,7 @@ public class ShareActivity extends AppCompatActivity {
                 PublicKey receiverPublicKey = parsePublicKey(receiverPublicKeyBase64);
 
                 // 2. 获取发送方密钥对（从 SecureKeyStorageManager）
-                javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+                javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
                 java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
                 java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
 

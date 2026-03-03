@@ -1214,9 +1214,9 @@ public class SecureKeyStorageManager {
      * 解锁流程：
      * 1. 获取DeviceKey（需要生物识别认证，30秒有效期）
      * 2. 使用DeviceKey解密DataKey
-     * 3. 返回DataKey供CryptoSession缓存
+     * 3. 返回DataKey供SessionGuard缓存
      *
-     * 此方法用于生物识别登录后的会话恢复，将 DataKey 缓存到 CryptoSession 中，
+     * 此方法用于生物识别登录后的会话恢复，将 DataKey 缓存到 SessionGuard 中，
      * 使得后续的加密解密操作可以正常进行。
      *
      * 注意：调用此方法前，用户必须已经通过生物识别UI认证（由 BiometricAuthManager 触发）

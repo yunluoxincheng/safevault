@@ -399,7 +399,8 @@ com.ttt.safevault/
 │       ├── CloudAuthManager.java    # 云端认证管理
 │       ├── AccountManager.java      # 账户管理
 │       ├── ContactManager.java      # 联系人管理
-│       └── ShareRecordManager.java  # 分享记录管理
+│       ├── DataImportExportManager.java # 数据导入导出
+│       └── PinCodeManager.java      # PIN码管理
 ├── crypto/                          # 加密管理
 │   ├── Argon2KeyDerivationManager.java # Argon2密钥派生
 │   ├── ShareEncryptionManager.java  # 分享加密管理
@@ -414,17 +415,23 @@ com.ttt.safevault/
 │   ├── HKDFManager.java             # HKDF 密钥派生
 │   └── CryptoConstants.java         # 安全常量配置
 ├── security/                        # 安全组件
+│   ├── SessionGuard.java            # 会话管理器（v3.8.0 合并 CryptoSession）
 │   ├── SecureKeyStorageManager.java # 三层安全架构核心
 │   ├── BiometricAuthHelper.java     # 生物识别帮助类
-│   ├── CryptoSession.java           # 加密会话
-│   ├── SessionGuard.java            # 会话守卫
 │   ├── BackupEncryptionManager.java # 备份加密管理
+│   ├── SecurityConfig.java           # 安全配置管理
+│   ├── SensitiveData.java            # 敏感数据包装（内存安全）
+│   ├── SessionLockedException.java    # 会话锁定异常
 │   └── biometric/                   # 生物识别组件
+│       ├── BiometricAuthManager.java # 生物识别认证管理
+│       ├── BiometricAuthHelper.java  # 生物识别帮助类
+│       └── AuthCallback.java          # 认证回调
 ├── network/                         # 网络层
 │   ├── RetrofitClient.java          # Retrofit客户端
 │   ├── TokenManager.java            # Token管理
 │   ├── TokenRefreshInterceptor.java # Token刷新拦截器
 │   ├── WebSocketManager.java        # WebSocket管理
+│   ├── AuthInterceptor.java         # 认证拦截器
 │   ├── DebugSslProvider.java        # 调试SSL提供者
 │   └── api/                         # API接口
 │       ├── AuthApi.java             # 认证API
@@ -440,19 +447,29 @@ com.ttt.safevault/
 │   │   └── UploadEccPublicKeyRequest.java # ECC公钥上传
 │   └── response/                    # 响应对象
 │       ├── AuthResponse.java
+│       ├── EmailLoginResponse.java  # 邮箱登录响应
 │       ├── ShareResponse.java
 │       ├── PasswordListResponse.java
 │       └── UploadEccPublicKeyResponse.java # ECC公钥响应
 ├── autofill/                        # 自动填充服务
-│   └── SafeVaultAutofillService.java # 自动填充服务
+│   ├── SafeVaultAutofillService.java # 自动填充服务
+│   ├── matcher/                     # 自动填充匹配
+│   └── builder/                     # 填充响应构建
 ├── adapter/                         # 适配器
 │   ├── PasswordListAdapter.java     # 密码列表适配器
 │   ├── ContactListAdapter.java      # 联系人列表适配器
 │   └── ShareHistoryAdapter.java     # 分享历史适配器
+├── data/                            # 数据层
+│   ├── AppDatabase.java            # Room数据库
+│   ├── PasswordDao.java             # 密码数据访问
+│   ├── EncryptedPasswordEntity.java # 加密密码实体
+│   ├── PasswordShareEntity.java      # 分享记录实体
+│   └── FriendRequestEntity.java     # 好友请求实体
 └── utils/                           # 工具类
     ├── PasswordStrengthCalculator.java # 密码强度计算
     ├── ClipboardManager.java        # 剪贴板管理
-    └── QRCodeGenerator.java         # 二维码生成
+    ├── QRCodeGenerator.java         # 二维码生成
+    └── SecurePaddingUtil.java       # 安全随机填充
 ```
 
 ---

@@ -212,13 +212,13 @@ public class CloudAuthManager {
             }
 
             // 4. 获取私钥并加密
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
-            if (!cryptoSession.isUnlocked()) {
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
+            if (!sessionGuard.isUnlocked()) {
                 throw new RuntimeException("会话未解锁，无法完成注册");
             }
 
-            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
             if (dataKey == null) {
                 throw new RuntimeException("无法获取 DataKey");
             }

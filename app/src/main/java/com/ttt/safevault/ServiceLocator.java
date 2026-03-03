@@ -6,10 +6,10 @@ import androidx.annotation.NonNull;
 
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.security.CryptoSession;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.security.SecurityManager;
+import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.service.BackendServiceImpl;
 
@@ -96,12 +96,12 @@ public class ServiceLocator {
     // ========== 三层安全架构组件 ==========
 
     /**
-     * 获取加密会话（CryptoSession）
+     * 获取会话管理器（SessionGuard）
      *
-     * @return CryptoSession 单例
+     * @return SessionGuard 单例
      */
-    public CryptoSession getCryptoSession() {
-        return CryptoSession.getInstance();
+    public SessionGuard getSessionGuard() {
+        return SessionGuard.getInstance();
     }
 
     /**

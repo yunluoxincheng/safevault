@@ -28,7 +28,10 @@ import java.util.List;
  *
  * SafeVault 3.4.0 更新：
  * - 完全移除 CryptoManager 和 KeyManager 依赖
- * - 使用 CryptoSession 和 SecureKeyStorageManager
+ * - 使用 SessionGuard 和 SecureKeyStorageManager
+ *
+ * SafeVault 3.8.0 更新：
+ * - 合并 CryptoSession 到 SessionGuard
  */
 public class AccountManager {
     private static final String TAG = "AccountManager";
@@ -98,8 +101,8 @@ public class AccountManager {
             }
             Log.d(TAG, "Local password data deleted");
 
-            // 3. 清除加密密钥和生物识别数据（使用 CryptoSession）
-            com.ttt.safevault.security.CryptoSession.getInstance().lock();
+            // 3. 清除加密密钥和生物识别数据（使用 SessionGuard）
+            com.ttt.safevault.security.SessionGuard.getInstance().lock();
             clearBiometricData();
             Log.d(TAG, "Encryption keys cleared");
 
@@ -130,8 +133,8 @@ public class AccountManager {
      * 登出
      */
     public void logout() {
-        // 锁定会话（使用 CryptoSession）
-        com.ttt.safevault.security.CryptoSession.getInstance().lock();
+        // 锁定会话（使用 SessionGuard）
+        com.ttt.safevault.security.SessionGuard.getInstance().lock();
         // 清除内存中的敏感数据
     }
 
@@ -240,13 +243,13 @@ public class AccountManager {
             java.security.KeyFactory keyFactory = java.security.KeyFactory.getInstance("RSA");
 
             // 获取 DataKey 来解密私钥
-            com.ttt.safevault.security.CryptoSession cryptoSession =
-                com.ttt.safevault.security.CryptoSession.getInstance();
-            if (!cryptoSession.isUnlocked()) {
+            com.ttt.safevault.security.SessionGuard sessionGuard =
+                com.ttt.safevault.security.SessionGuard.getInstance();
+            if (!sessionGuard.isUnlocked()) {
                 return DeviceRecoveryResult.failure("会话未锁定", DeviceRecoveryResult.Stage.IMPORT_KEY);
             }
 
-            javax.crypto.SecretKey dataKey = cryptoSession.getDataKey();
+            javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
             if (dataKey == null) {
                 return DeviceRecoveryResult.failure("无法获取 DataKey", DeviceRecoveryResult.Stage.IMPORT_KEY);
             }

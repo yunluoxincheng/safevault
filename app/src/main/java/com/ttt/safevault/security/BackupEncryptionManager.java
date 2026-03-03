@@ -23,10 +23,11 @@ import javax.crypto.spec.SecretKeySpec;
  * 使用 Argon2id + AES-256-GCM 加密备份数据
  *
  * 两种模式：
- * 1. 本地备份：使用 CryptoSession.DataKey（会话中已有）
+ * 1. 本地备份：使用 SessionGuard.DataKey（会话中已有）
  * 2. 云端同步：使用 Argon2id + 固定 salt（基于用户邮箱）
  *
  * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
+ * @since SafeVault 3.8.0 (合并 CryptoSession 到 SessionGuard)
  */
 public class BackupEncryptionManager {
     private static final String TAG = "BackupEncryptionManager";
@@ -38,12 +39,12 @@ public class BackupEncryptionManager {
 
     private static volatile BackupEncryptionManager INSTANCE;
     private final Context context;
-    private final CryptoSession cryptoSession;
+    private final SessionGuard sessionGuard;
     private final Argon2KeyDerivationManager argon2Manager;
 
     private BackupEncryptionManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
-        this.cryptoSession = CryptoSession.getInstance();
+        this.sessionGuard = SessionGuard.getInstance();
         this.argon2Manager = Argon2KeyDerivationManager.getInstance(context);
         Log.i(TAG, "BackupEncryptionManager 初始化成功（使用 Argon2id）");
     }
@@ -75,7 +76,7 @@ public class BackupEncryptionManager {
      */
     @NonNull
     public LocalBackupResult encryptForLocalBackup(@NonNull String plaintext) {
-        SecretKey dataKey = cryptoSession.getDataKey();
+        SecretKey dataKey = sessionGuard.getDataKey();
         if (dataKey == null) {
             throw new IllegalStateException("会话未解锁，无法进行本地备份");
         }
@@ -132,7 +133,7 @@ public class BackupEncryptionManager {
     public String decryptLocalBackup(@NonNull String encryptedData,
                                      @NonNull String iv,
                                      @NonNull String authTag) {
-        SecretKey dataKey = cryptoSession.getDataKey();
+        SecretKey dataKey = sessionGuard.getDataKey();
         if (dataKey == null) {
             throw new IllegalStateException("会话未解锁，无法解密本地备份");
         }

@@ -11,7 +11,6 @@ import com.ttt.safevault.crypto.SecurePaddingUtil;
 import com.ttt.safevault.data.EncryptedPasswordEntity;
 import com.ttt.safevault.data.PasswordDao;
 import com.ttt.safevault.model.PasswordItem;
-import com.ttt.safevault.security.CryptoSession;
 import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.SessionLockedException;
 
@@ -30,11 +29,12 @@ import javax.crypto.spec.GCMParameterSpec;
  * 密码管理器
  * 负责密码的加密、解密、保存、删除和搜索
  *
- * 三层安全架构：使用 CryptoSession 的 DataKey 进行所有加密操作
+ * 三层安全架构：使用 SessionGuard 的 DataKey 进行所有加密操作
  * Guarded Execution 模式：所有敏感操作通过 SessionGuard 门控
  *
  * @since SafeVault 3.4.0 (移除旧安全架构，完全迁移到三层架构)
  * @since SafeVault 3.4.1 (引入 Guarded Execution 模式)
+ * @since SafeVault 3.8.0 (合并 CryptoSession 到 SessionGuard)
  */
 public class PasswordManager {
     private static final String TAG = "PasswordManager";
@@ -48,18 +48,16 @@ public class PasswordManager {
     private static final String CURRENT_VERSION = ENCRYPTION_VERSION_V2; // 当前使用的版本
 
     private final PasswordDao passwordDao;
-    private final CryptoSession cryptoSession;
     private final SessionGuard sessionGuard;
 
     /**
      * 构造函数（三层架构 + Guarded Execution）
      *
      * @param passwordDao 密码数据访问对象
-     * @param context 上下文（用于获取 CryptoSession）
+     * @param context 上下文（用于获取 SessionGuard）
      */
     public PasswordManager(@NonNull PasswordDao passwordDao, @NonNull Context context) {
         this.passwordDao = passwordDao;
-        this.cryptoSession = CryptoSession.getInstance();
         this.sessionGuard = SessionGuard.getInstance();
         Log.i(TAG, "PasswordManager 初始化（三层架构 + Guarded Execution）");
     }
@@ -72,7 +70,6 @@ public class PasswordManager {
     @Deprecated
     public PasswordManager(@NonNull Object deprecatedCryptoManager, @NonNull PasswordDao passwordDao) {
         this.passwordDao = passwordDao;
-        this.cryptoSession = CryptoSession.getInstance();
         this.sessionGuard = SessionGuard.getInstance();
         Log.w(TAG, "PasswordManager 使用旧构造函数（第一个参数已忽略）");
     }
@@ -218,19 +215,19 @@ public class PasswordManager {
      */
     @NonNull
     private SecretKey getEncryptionKey() {
-        return cryptoSession.requireDataKey();
+        return sessionGuard.requireDataKey();
     }
 
     /**
      * 检查是否已解锁（三层架构）
      */
     private boolean isUnlocked() {
-        return cryptoSession.isUnlocked();
+        return sessionGuard.isUnlocked();
     }
 
     /**
      * 加密单个字段，返回格式: version:iv:ciphertext
-     * 使用 CryptoSession 的 DataKey 进行加密（三层架构）
+     * 使用 SessionGuard 的 DataKey 进行加密（三层架构）
      * 版本 2.0：使用安全随机填充防止元数据泄露
      */
     @Nullable
@@ -305,7 +302,7 @@ public class PasswordManager {
 
     /**
      * 解密单个字段，输入格式: version:iv:ciphertext 或 iv:ciphertext（旧格式）
-     * 使用 CryptoSession.DataKey 解密（三层架构）
+     * 使用 SessionGuard.DataKey 解密（三层架构）
      * 版本 2.0：解密后去除安全随机填充
      * 版本 1.0：直接解密（向后兼容）
      */

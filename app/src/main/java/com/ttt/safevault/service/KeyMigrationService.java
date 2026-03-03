@@ -13,7 +13,7 @@ import com.ttt.safevault.crypto.X25519KeyManager;
 import com.ttt.safevault.crypto.X25519KeyManagerFactory;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.SecureKeyStorageManager;
-import com.ttt.safevault.security.CryptoSession;
+import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.analytics.AnalyticsManager;
 
 import java.security.KeyPair;
@@ -171,8 +171,8 @@ public class KeyMigrationService {
      * @return true 表示会话已解锁，可以直接迁移；false 表示需要输入主密码
      */
     public boolean isSessionUnlocked() {
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        return cryptoSession.isUnlocked();
+        SessionGuard sessionGuard = SessionGuard.getInstance();
+        return sessionGuard.isUnlocked();
     }
 
     /**
@@ -197,7 +197,7 @@ public class KeyMigrationService {
     /**
      * 迁移到 X25519/Ed25519 (v3.0) - 使用会话中的 DataKey
      *
-     * 同步执行迁移，使用 CryptoSession 中缓存的 DataKey
+     * 同步执行迁移，使用 SessionGuard 中缓存的 DataKey
      *
      * @param backendService 后端服务（用于上传公钥）
      * @return 迁移结果
@@ -215,13 +215,13 @@ public class KeyMigrationService {
         }
 
         // 2. 从会话获取 DataKey
-        CryptoSession cryptoSession = CryptoSession.getInstance();
-        if (!cryptoSession.isUnlocked()) {
+        SessionGuard sessionGuard = SessionGuard.getInstance();
+        if (!sessionGuard.isUnlocked()) {
             Log.e(TAG, "会话未解锁，无法获取 DataKey");
             return MigrationResult.failed("会话未解锁，请先登录");
         }
 
-        SecretKey dataKey = cryptoSession.getDataKey();
+        SecretKey dataKey = sessionGuard.getDataKey();
         if (dataKey == null) {
             Log.e(TAG, "无法从会话获取 DataKey");
             return MigrationResult.failed("无法获取加密密钥");

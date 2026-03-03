@@ -550,7 +550,7 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void onKeyAccessGranted() {
-                // Keystore 授权成功，需要恢复 DataKey 到 CryptoSession
+                // Keystore 授权成功，需要恢复 DataKey 到 SessionGuard
                 runOnUiThread(() -> {
                     try {
                         // 1. 使用生物识别恢复 DataKey
@@ -565,10 +565,10 @@ public class LoginActivity extends AppCompatActivity {
                             return;
                         }
 
-                        // 2. 缓存 DataKey 到 CryptoSession（解锁会话）
-                        com.ttt.safevault.security.CryptoSession.getInstance()
+                        // 2. 缓存 DataKey 到 SessionGuard（解锁会话）
+                        com.ttt.safevault.security.SessionGuard.getInstance()
                                 .unlockWithDataKey(dataKey);
-                        android.util.Log.i(TAG, "CryptoSession 已通过生物识别解锁");
+                        android.util.Log.i(TAG, "SessionGuard 已通过生物识别解锁");
 
                         // 3. 导航到主界面
                         hideError();
