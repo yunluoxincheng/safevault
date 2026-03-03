@@ -63,7 +63,7 @@
 
     <!-- Settings -->
     <string name="security_settings">安全设置</string>
-    <string name="app_version">版本 1.0</string>
+    <string name="app_version">版本 3.7.0</string>
 
     <!-- Colors -->
     <string name="loading_overlay_background">#80000000</string>
