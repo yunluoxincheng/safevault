@@ -45,15 +45,14 @@ public class ContactManager {
     /**
      * 生成我的身份QR码内容
      *
+     * 注意：此方法不依赖主密码，因为身份码只需要公钥
+     * 公钥已存储在 SecureKeyStorageManager 中，任何解锁态会话都可以访问
+     *
      * @param userEmail 用户邮箱
-     * @param masterPassword 主密码
      * @return QR码内容（safevault://identity/{base64(json)}）
      */
     @Nullable
-    public String generateMyIdentityQR(
-            @NonNull String userEmail,
-            @NonNull String masterPassword
-    ) {
+    public String generateMyIdentityQR(@NonNull String userEmail) {
         try {
             // 1. 获取我的公钥（从 SecureKeyStorageManager）
             java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();

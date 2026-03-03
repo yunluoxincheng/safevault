@@ -179,15 +179,9 @@ public class MyIdentityActivity extends AppCompatActivity {
                         MyIdentityActivity.this)
                         .getTokenManager().getLastLoginEmail();
 
-                // 从 BackendService 获取主密码（SafeVault 3.4.0）
-                String masterPassword = null;
-                try {
-                    masterPassword = com.ttt.safevault.ServiceLocator.getInstance()
-                            .getBackendService()
-                            .getMasterPassword();
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to get master password from BackendService", e);
-                }
+                // 从 BackendService 获取 DataKey（用于解密私钥）
+                // 注意：生成身份码只需要公钥，不需要主密码
+                // 公钥已经存储在 SecureKeyStorageManager 中
 
                 // 检查邮箱
                 if (userEmail == null || userEmail.isEmpty()) {
@@ -207,19 +201,10 @@ public class MyIdentityActivity extends AppCompatActivity {
                     return;
                 }
 
-                // 检查主密码
-                if (masterPassword == null || masterPassword.isEmpty()) {
-                    runOnUiThread(() -> {
-                        showError("无法获取主密码");
-                        Log.e(TAG, "生成身份码失败：无法获取主密码");
-                    });
-                    return;
-                }
-
                 Log.d(TAG, "开始生成身份码，用户邮箱: " + userEmail);
 
-                // 生成身份QR码内容
-                currentQRContent = contactManager.generateMyIdentityQR(userEmail, masterPassword);
+                // 生成身份QR码内容（不依赖主密码）
+                currentQRContent = contactManager.generateMyIdentityQR(userEmail);
 
                 if (currentQRContent == null) {
                     Log.e(TAG, "生成身份码失败：密钥派生错误");
@@ -326,16 +311,12 @@ public class MyIdentityActivity extends AppCompatActivity {
             @Override
             public void onSuccess() {
                 Log.d(TAG, "生物识别验证成功");
-                // 使用会话中保存的主密码解锁
-                String sessionPassword = accountManager.getCurrentMasterPassword();
-                boolean success = false;
-                if (sessionPassword != null && !sessionPassword.isEmpty()) {
-                    com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
-                    success = backendService.unlock(sessionPassword);
-                }
+                // 生物识别成功后，SessionGuard 应该已经解锁
+                // 生成身份码只需要公钥，不需要主密码
+                com.ttt.safevault.model.BackendService backendService =
+                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
 
-                if (success) {
+                if (backendService.isUnlocked()) {
                     runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
                         generateQRCode();
@@ -343,7 +324,7 @@ public class MyIdentityActivity extends AppCompatActivity {
                 } else {
                     runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
-                        showError("生物识别解锁失败，请重试");
+                        showError("会话未解锁，请重试");
                     });
                 }
             }
