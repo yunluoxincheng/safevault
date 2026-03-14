@@ -56,6 +56,7 @@ public class BackendServiceImpl implements BackendService {
     private final AccountManager accountManager;
     private final CloudAuthManager cloudAuthManager;
     private final EncryptionSyncManager encryptionSyncManager;
+    private final ShareManager shareManager;
 
     public BackendServiceImpl(@NonNull Context context) {
         this.context = context.getApplicationContext();
@@ -76,6 +77,7 @@ public class BackendServiceImpl implements BackendService {
 
         // 初始化各功能模块的Manager
         this.passwordManager = new PasswordManager(passwordDao, context);
+        this.shareManager = new ShareManager(context, retrofitClient, this.passwordManager);
         this.passwordGenerator = new PasswordGenerator();
         this.dataImportExportManager = new DataImportExportManager(context, passwordManager);
         this.pinCodeManager = new PinCodeManager(context, securityConfig);
@@ -555,99 +557,52 @@ public class BackendServiceImpl implements BackendService {
     @Override
     public com.ttt.safevault.dto.response.ShareResponse createCloudShare(int passwordId, String toUserId,
                                                                           int expireInMinutes, SharePermission permission) {
-        // 创建云端分享（仅支持用户对用户端到端加密）
         Log.d(TAG, "Creating cloud share for password ID: " + passwordId + ", to user: " + toUserId);
-        // 简化实现：返回ShareResponse
-        com.ttt.safevault.dto.response.ShareResponse response =
-            new com.ttt.safevault.dto.response.ShareResponse();
-        response.setShareId("cloud_share_" + System.currentTimeMillis());
-        response.setShareToken("token_" + System.currentTimeMillis());
-        return response;
+        return shareManager.createCloudShare(passwordId, toUserId, expireInMinutes, permission);
     }
 
     @Override
     public com.ttt.safevault.dto.response.ReceivedShareResponse receiveCloudShare(String shareId) {
-        // 接收云端分享
         Log.d(TAG, "Receiving cloud share: " + shareId);
-        // 简化实现：返回ReceivedShareResponse
-        com.ttt.safevault.dto.response.ReceivedShareResponse response =
-            new com.ttt.safevault.dto.response.ReceivedShareResponse();
-        response.setShareId(shareId);
-
-        // 使用PasswordData对象设置密码数据
-        com.ttt.safevault.dto.PasswordData passwordData = new com.ttt.safevault.dto.PasswordData();
-        passwordData.setTitle("云端分享密码");
-        passwordData.setUsername("shared_user");
-        passwordData.setPassword("shared_password");
-        passwordData.setUrl("");
-        passwordData.setNotes("");
-        response.setPasswordData(passwordData);
-
-        response.setFromUserId("unknown_user");
-        response.setFromDisplayName("Unknown User");
-        response.setPermission(new SharePermission(true, true, true));
-        response.setExpiresAt(0L);
-        return response;
+        return shareManager.receiveCloudShare(shareId);
     }
 
     @Override
     public void revokeCloudShare(String shareId) {
-        // 撤销云端分享
         Log.d(TAG, "Revoking cloud share: " + shareId);
-        // 简化实现：空方法
+        shareManager.revokeCloudShare(shareId);
     }
 
     @Override
     public void saveCloudShare(String shareId) {
-        // 保存云端分享到本地
         Log.d(TAG, "Saving cloud share: " + shareId);
-        // 简化实现：空方法
+        shareManager.saveCloudShare(shareId);
     }
 
     @Override
     public java.util.List<com.ttt.safevault.dto.response.ReceivedShareResponse> getMyCloudShares() {
-        // 获取我创建的云端分享列表
         Log.d(TAG, "Getting my cloud shares");
-        // 简化实现：返回空列表
-        return java.util.Collections.emptyList();
+        return shareManager.getMyCloudShares();
     }
 
     @Override
     public java.util.List<com.ttt.safevault.dto.response.ReceivedShareResponse> getReceivedCloudShares() {
-        // 获取我接收的云端分享列表
         Log.d(TAG, "Getting received cloud shares");
-        // 简化实现：返回空列表
-        return java.util.Collections.emptyList();
+        return shareManager.getReceivedCloudShares();
     }
 
     // ==================== 离线分享相关 ====================
 
     @Override
     public String createOfflineShare(int passwordId, int expireInMinutes, SharePermission permission) {
-        // 创建离线分享（版本2：密钥已嵌入）
         Log.d(TAG, "Creating offline share for password ID: " + passwordId);
-        // 简化实现：返回QR码内容
-        PasswordItem item = passwordManager.decryptItem(passwordId);
-        if (item == null) {
-            return null;
-        }
-        // 这里应该加密数据并返回Base64编码的QR码内容
-        // 简化实现：直接返回JSON
-        return "offline_share_" + passwordId;
+        return shareManager.createOfflineShare(passwordId, expireInMinutes, permission);
     }
 
     @Override
     public PasswordItem receiveOfflineShare(String encryptedData) {
-        // 接收离线分享（返回密码条目）
         Log.d(TAG, "Receiving offline share");
-        // 简化实现：返回一个示例密码项
-        PasswordItem item = new PasswordItem();
-        item.setTitle("离线分享密码");
-        item.setUsername("shared_user");
-        item.setPassword("shared_password");
-        item.setUrl("");
-        item.setNotes("");
-        return item;
+        return shareManager.receiveOfflineShare(encryptedData);
     }
 
     @Override

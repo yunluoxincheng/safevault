@@ -1,6 +1,8 @@
 package com.ttt.safevault.network.api;
 
+import com.ttt.safevault.dto.request.AcceptShareRequest;
 import com.ttt.safevault.dto.request.CreateShareRequest;
+import com.ttt.safevault.dto.request.RejectShareRequest;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;
 import com.ttt.safevault.dto.response.ShareResponse;
 
@@ -34,4 +36,22 @@ public interface ShareServiceApi {
     
     @GET("v1/shares/received")
     Observable<List<ReceivedShareResponse>> getReceivedShares();
+
+    /**
+     * 接受分享
+     * @param shareId 分享 ID
+     * @param request 接受请求（可选备注）
+     * @return 无返回数据
+     */
+    @POST("v1/shares/{shareId}/accept")
+    Observable<Void> acceptShare(@Path("shareId") String shareId, @Body AcceptShareRequest request);
+
+    /**
+     * 拒绝分享
+     * @param shareId 分享 ID
+     * @param request 拒绝请求（可选原因）
+     * @return 无返回数据
+     */
+    @POST("v1/shares/{shareId}/reject")
+    Observable<Void> rejectShare(@Path("shareId") String shareId, @Body RejectShareRequest request);
 }

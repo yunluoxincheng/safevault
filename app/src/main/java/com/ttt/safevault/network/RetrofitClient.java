@@ -9,6 +9,7 @@ import com.ttt.safevault.BuildConfig;
 import com.ttt.safevault.network.api.AuthServiceApi;
 import com.ttt.safevault.network.api.FriendServiceApi;
 import com.ttt.safevault.network.api.ShareServiceApi;
+import com.ttt.safevault.network.api.UserServiceApi;
 import com.ttt.safevault.network.api.VaultServiceApi;
 
 import java.util.concurrent.TimeUnit;
@@ -34,6 +35,7 @@ public class RetrofitClient {
     private ShareServiceApi shareServiceApi;
     private VaultServiceApi vaultServiceApi;
     private FriendServiceApi friendServiceApi;
+    private UserServiceApi userServiceApi;
 
     private RetrofitClient(Context context) {
         tokenManager = TokenManager.getInstance(context);
@@ -99,7 +101,8 @@ public class RetrofitClient {
         shareServiceApi = retrofit.create(ShareServiceApi.class);
         vaultServiceApi = retrofit.create(VaultServiceApi.class);
         friendServiceApi = retrofit.create(FriendServiceApi.class);
-        
+        userServiceApi = retrofit.create(UserServiceApi.class);
+
         // 设置TokenManager的authApi
         tokenManager.setAuthApi(authServiceApi);
     }
@@ -145,6 +148,10 @@ public class RetrofitClient {
 
     public FriendServiceApi getFriendServiceApi() {
         return friendServiceApi;
+    }
+
+    public UserServiceApi getUserServiceApi() {
+        return userServiceApi;
     }
 
     public TokenManager getTokenManager() {
