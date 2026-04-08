@@ -15,7 +15,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.databinding.ActivityAutofillSaveBinding;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;

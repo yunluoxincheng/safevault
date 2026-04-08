@@ -12,7 +12,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 
-import com.ttt.safevault.SafeVaultApplication;
+import com.ttt.safevault.core.SafeVaultApplication;
 import com.ttt.safevault.sync.VaultSyncManager;
 
 import java.util.List;
@@ -78,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 获取BackendService实例
-        backendService = com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         // 初始化TokenManager
         tokenManager = TokenManager.getInstance(this);

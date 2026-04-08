@@ -26,7 +26,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.gson.Gson;
 import com.ttt.safevault.R;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.SharePermission;

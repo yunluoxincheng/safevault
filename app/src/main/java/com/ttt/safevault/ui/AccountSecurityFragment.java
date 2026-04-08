@@ -291,7 +291,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 调用后端服务设置PIN码
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     boolean success = backendService.setPinCode(pin);
 
                     if (success) {
@@ -332,7 +332,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 验证旧PIN码
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     if (!backendService.verifyPinCode(oldPin)) {
                         Toast.makeText(requireContext(), "当前PIN码错误", Toast.LENGTH_SHORT).show();
@@ -364,7 +364,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 .setMessage("确定要移除PIN码吗？")
                 .setPositiveButton(R.string.confirm, (dialog, which) -> {
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     backendService.clearPinCode();
                     binding.tvPinStatus.setText("未启用");
                     Toast.makeText(requireContext(), R.string.pin_removed, Toast.LENGTH_SHORT).show();
@@ -402,7 +402,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 验证旧密码
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     if (!backendService.isUnlocked()) {
                         // 先尝试用旧密码解锁
@@ -491,7 +491,7 @@ public class AccountSecurityFragment extends BaseFragment {
      */
     private void performDeleteAccount() {
         com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         boolean success = backendService.deleteAccount();
 
@@ -520,7 +520,7 @@ public class AccountSecurityFragment extends BaseFragment {
      */
     private void performLogout() {
         com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         // 显示现代化加载对话框
         com.ttt.safevault.utils.LoadingDialog loadingDialog =
@@ -569,7 +569,7 @@ public class AccountSecurityFragment extends BaseFragment {
     private void forceLogout() {
         try {
             com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
             // 只清除本地令牌，不调用后端 API
             com.ttt.safevault.network.TokenManager tokenManager =
@@ -791,7 +791,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 验证密码
                     com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     try {
                         boolean authenticated = backendService.unlock(password);
@@ -1081,7 +1081,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 调用后端服务验证密码
                     com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     try {
                         boolean authenticated = backendService.unlock(password);
                         if (authenticated) {
@@ -1162,7 +1162,7 @@ public class AccountSecurityFragment extends BaseFragment {
         new android.os.Handler().post(() -> {
             try {
                 com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 // 生成导出文件路径
                 String fileName = "safevault_backup_" +
@@ -1328,7 +1328,7 @@ public class AccountSecurityFragment extends BaseFragment {
         new android.os.Handler().post(() -> {
             try {
                 com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 boolean success = backendService.importData(filePath);
 
@@ -1537,7 +1537,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
                     // 验证密码
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     try {
                         boolean authenticated = backendService.unlock(password);

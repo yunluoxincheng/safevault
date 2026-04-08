@@ -357,7 +357,7 @@ public class LoginActivity extends AppCompatActivity {
 
             // 保存当前用户邮箱到 AccountManager（通过 BackendService）
             com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
             // 检查用户是否已初始化（老用户使用 unlock，新用户使用 initialize）
             boolean isInitialized = backendService.isInitialized();
@@ -389,7 +389,7 @@ public class LoginActivity extends AppCompatActivity {
 
             // 保存会话密码到 AccountManager（通过 BackendServiceImpl）
             // 注意：SafeVault 3.4.0 不再保存密码到生物识别存储
-            com.ttt.safevault.ServiceLocator.getInstance().getBackendService()
+            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService()
                     .setSessionMasterPassword(password);
             android.util.Log.d(TAG, "会话密码已保存到 AccountManager（仅内存）");
 
@@ -422,7 +422,7 @@ public class LoginActivity extends AppCompatActivity {
             protected com.ttt.safevault.dto.DeviceRecoveryResult doInBackground(Void... voids) {
                 try {
                     com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     // SafeVault 3.4.0：通过反射获取 BackendServiceImpl 的 AccountManager
                     try {
@@ -448,7 +448,7 @@ public class LoginActivity extends AppCompatActivity {
                 if (result.isSuccess()) {
                     android.util.Log.d(TAG, "设备数据恢复成功");
                     // 保存会话密码到内存（通过 BackendService）
-                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService()
+                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService()
                             .setSessionMasterPassword(masterPassword);
                     // 恢复成功后，继续执行数据同步
                     handleCloudDataSync();
@@ -700,7 +700,7 @@ public class LoginActivity extends AppCompatActivity {
         com.ttt.safevault.security.SecurityConfig securityConfig =
                 new com.ttt.safevault.security.SecurityConfig(this);
         com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
         com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
                 com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
 

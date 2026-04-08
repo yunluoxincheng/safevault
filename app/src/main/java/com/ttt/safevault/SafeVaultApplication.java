@@ -1,4 +1,4 @@
-package com.ttt.safevault;
+package com.ttt.safevault.core;
 
 import android.app.Application;
 import android.os.Bundle;

@@ -6,7 +6,7 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.model.BackendService;
 
 /**

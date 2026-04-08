@@ -59,7 +59,7 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
         super.onCreate(savedInstanceState);
 
         // 获取BackendService实例
-        backendService = com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
     }
 
     @Nullable

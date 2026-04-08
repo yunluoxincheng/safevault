@@ -9,7 +9,7 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.GeneratedPassword;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;

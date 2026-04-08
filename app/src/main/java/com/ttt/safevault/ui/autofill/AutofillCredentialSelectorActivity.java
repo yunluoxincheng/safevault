@@ -17,7 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.ttt.safevault.R;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.autofill.matcher.AutofillMatcher;
 import com.ttt.safevault.autofill.model.AutofillRequest;
 import com.ttt.safevault.model.BackendService;

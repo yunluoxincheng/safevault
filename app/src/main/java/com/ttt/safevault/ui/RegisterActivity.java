@@ -522,7 +522,7 @@ public class RegisterActivity extends AppCompatActivity {
 
         // 先检查本地保险库是否已存在
         BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         if (backendService.isInitialized()) {
             // 本地保险库已存在，显示对话框让用户选择
@@ -546,7 +546,7 @@ public class RegisterActivity extends AppCompatActivity {
             .setPositiveButton("重置并继续", (dialog, which) -> {
                 // 重置本地保险库
                 BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                 boolean reset = backendService.resetLocalVault();
                 if (reset) {
                     // 重置成功，继续注册
@@ -580,7 +580,7 @@ public class RegisterActivity extends AppCompatActivity {
             try {
                 // 调用后端服务完成注册
                 BackendService backendService =
-                        com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
                         backendService.completeRegistration(registeredEmail, registeredUsername, password);

@@ -61,7 +61,7 @@ public class AuthViewModel extends AndroidViewModel {
 
     public AuthViewModel(@NonNull Application application) {
         super(application);
-        this.backendService = com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+        this.backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
         this.retrofitClient = RetrofitClient.getInstance(application);
         this.tokenManager = retrofitClient.getTokenManager();
         this.secureKeyStorage = SecureKeyStorageManager.getInstance(application);

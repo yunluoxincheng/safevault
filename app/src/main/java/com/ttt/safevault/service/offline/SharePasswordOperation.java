@@ -3,7 +3,7 @@ package com.ttt.safevault.service.offline;
 import android.content.Context;
 import android.util.Log;
 
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.dto.request.CreateShareRequest;
 import com.ttt.safevault.dto.response.ShareResponse;
 import com.ttt.safevault.model.BackendService;

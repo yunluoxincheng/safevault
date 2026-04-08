@@ -43,7 +43,7 @@
     <!-- 注意：NFC 功能已移除，因为 Android 10+ 不支持点对点传输 -->
 
     <application
-        android:name=".SafeVaultApplication"
+        android:name=".core.SafeVaultApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"

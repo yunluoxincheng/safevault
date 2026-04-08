@@ -16,7 +16,7 @@ import android.service.autofill.SaveRequest;
 import android.util.Log;
 import android.view.autofill.AutofillId;
 
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.autofill.builder.FillResponseBuilder;
 import com.ttt.safevault.autofill.matcher.AutofillMatcher;
 import com.ttt.safevault.autofill.model.AutofillField;

@@ -9,7 +9,7 @@ import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

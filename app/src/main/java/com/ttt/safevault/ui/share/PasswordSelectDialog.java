@@ -23,7 +23,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.ttt.safevault.R;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.adapter.PasswordSelectAdapter;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;

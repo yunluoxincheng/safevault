@@ -20,6 +20,7 @@
 - [快速开始](#快速开始)
 - [功能详解](#功能详解)
 - [项目结构](#项目结构)
+- [目录规范](#目录规范)
 - [开发指南](#开发指南)
 - [版本历史](#版本历史)
 
@@ -350,6 +351,9 @@ X25519/Ed25519 相比 RSA-2048 的优势：
 
 ## 项目结构
 
+结构重构与边界约定文档见：`docs/project-structure-reorganization.md`。
+目录职责与依赖方向规范见：`docs/directory-standards.md`。
+
 ```
 com.ttt.safevault/
 ├── ui/                              # UI组件
@@ -471,6 +475,18 @@ com.ttt.safevault/
     ├── QRCodeGenerator.java         # 二维码生成
     └── SecurePaddingUtil.java       # 安全随机填充
 ```
+
+---
+
+## 目录规范
+
+项目目录规范文档：`docs/directory-standards.md`
+
+该文档定义了：
+- Android 与后端各目录职责边界
+- 允许的依赖方向
+- 禁止的跨层调用模式
+- 结构重构的变更管理约束
 
 ---
 

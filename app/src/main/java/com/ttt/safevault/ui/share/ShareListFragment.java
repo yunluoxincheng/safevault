@@ -91,7 +91,7 @@ public class ShareListFragment extends Fragment {
     private void initViewModel() {
         ViewModelFactory factory = new ViewModelFactory(
             requireActivity().getApplication(),
-            com.ttt.safevault.ServiceLocator.getInstance().getBackendService()
+            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService()
         );
         viewModel = new ViewModelProvider(this, factory).get(ShareHistoryViewModel.class);
     }

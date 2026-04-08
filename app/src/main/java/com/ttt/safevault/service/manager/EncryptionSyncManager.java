@@ -576,7 +576,7 @@ public class EncryptionSyncManager {
             // 3. 获取主密码（用于加密备份数据）
             // 从 BackendService 获取内存中的主密码
             com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
             String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
                 Log.e(TAG, "Cannot upload vault: master password not available");
@@ -691,7 +691,7 @@ public class EncryptionSyncManager {
             // 3. 获取主密码
             // 从 BackendService 获取内存中的主密码
             com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
             String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
                 Log.e(TAG, "Cannot import vault: master password not available");

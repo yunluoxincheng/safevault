@@ -15,7 +15,7 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.gson.Gson;
 import com.ttt.safevault.R;
-import com.ttt.safevault.ServiceLocator;
+import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.databinding.ActivityReceiveShareBinding;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;

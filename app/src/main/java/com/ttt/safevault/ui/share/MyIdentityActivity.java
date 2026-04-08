@@ -55,7 +55,7 @@ public class MyIdentityActivity extends AppCompatActivity {
 
         // 使用正确的构造函数创建 AccountManager
         com.ttt.safevault.model.BackendService backendService =
-            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
         com.ttt.safevault.data.PasswordDao passwordDao =
             com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao();
         com.ttt.safevault.service.manager.PasswordManager passwordManager =
@@ -144,7 +144,7 @@ public class MyIdentityActivity extends AppCompatActivity {
     private void checkAndVerifyIdentity() {
         // 检查CryptoManager是否已解锁（即是否有主密码）
         com.ttt.safevault.model.BackendService backendService =
-            com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         if (backendService.isUnlocked()) {
             // 已解锁，直接生成QR码
@@ -314,7 +314,7 @@ public class MyIdentityActivity extends AppCompatActivity {
                 // 生物识别成功后，SessionGuard 应该已经解锁
                 // 生成身份码只需要公钥，不需要主密码
                 com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 if (backendService.isUnlocked()) {
                     runOnUiThread(() -> {
@@ -412,7 +412,7 @@ public class MyIdentityActivity extends AppCompatActivity {
         try {
             // 尝试使用密码解锁 CryptoManager
             com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
             return backendService.unlock(password);
         } catch (Exception e) {
             Log.e(TAG, "验证主密码时发生异常", e);

@@ -546,6 +546,6 @@ public class KeyMigrationActivity extends BaseActivity {
      * 获取后端服务
      */
     private BackendService getBackendService() {
-        return com.ttt.safevault.ServiceLocator.getInstance().getBackendService();
+        return com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
     }
 }
