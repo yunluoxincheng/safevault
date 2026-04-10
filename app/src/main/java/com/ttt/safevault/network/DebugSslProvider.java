@@ -31,6 +31,7 @@ public class DebugSslProvider {
 
     // 允许使用自签证书的域名列表
     private static final List<String> SELF_CERT_DOMAINS = Arrays.asList(
+        "server.safevaultapp.top",
         "frp-hat.com",
         "frp-ski.com",
         "172.17.176.22",
