@@ -1,0 +1,40 @@
+# 功能设计顾问技能元数据
+name: "feature-design-advisor"
+version: "1.0.0"
+description: "为新功能提供设计建议和实现方案"
+
+# 触发关键词
+triggers:
+  - "如何实现"
+  - "设计方案"
+  - "功能.*设计"
+  - "实现.*方案"
+  - "最佳实践"
+  - "设计.*建议"
+  - "架构.*选择"
+  - "实现.*方式"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "**/openspec/**/*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-mvvm-pattern"
+  - "android-security-practices"
+
+# 适用场景
+scenarios:
+  - "设计新功能架构"
+  - "选择技术方案"
+  - "评估实现方式"
+  - "提供最佳实践建议"

@@ -1,0 +1,46 @@
+# Android 生物识别修复技能元数据
+name: "android-biometric-fixes"
+version: "1.0.0"
+description: "修复 Android 生物识别（指纹、面部识别）相关问题"
+
+# 触发关键词
+triggers:
+  - "生物识别.*失败"
+  - "指纹.*失败"
+  - "面部.*识别.*失败"
+  - "BiometricPrompt.*错误"
+  - "生物认证.*问题"
+  - "指纹解锁.*问题"
+
+# 错误模式
+error_patterns:
+  - "BiometricPrompt.*Exception"
+  - "BiometricManager.*Error"
+  - "FingerprintManager.*Exception"
+  - "HardwareUnavailableException"
+  - "NoBiometricEnrollmentException"
+  - "SecurityException.*biometric"
+
+# 文件模式
+file_patterns:
+  - "**/*Biometric*"
+  - "**/*Fingerprint*"
+  - "security/**/*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+  - "android-debugging-fixes"
+
+# 适用场景
+scenarios:
+  - "修复生物识别认证失败"
+  - "处理 BiometricPrompt 回调问题"
+  - "修复设备不支持生物识别的问题"
+  - "处理生物识别回调未调用"

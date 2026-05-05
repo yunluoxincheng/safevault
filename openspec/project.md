@@ -1,5 +1,81 @@
 # Project Context
 
+> Current authoritative context updated on 2026-05-06. Treat this section as the first source of truth for new OpenSpec work; older notes lower in this file may be historical.
+
+## Current Purpose
+
+SafeVault is a course final project for an Android password manager. The repository contains two runtime parts:
+
+- `app/`: native Android client for password management, account/security UI, autofill, vault sync, contact/friend flows, QR/Bluetooth/cloud password sharing, and local security controls.
+- `safevault-backend/`: Spring Boot backend for account/auth, email verification, vault sync metadata, contact sharing, WebSocket notifications, PostgreSQL persistence, Redis-backed transient state, token revocation, and API documentation.
+
+Security-sensitive work must assume password entries, master passwords, tokens, verification codes, private keys, vault payloads, share packets, and crypto salts/tags are sensitive.
+
+## Current Tech Stack
+
+- Android: Java 17, Gradle/Android Gradle Plugin, minSdk 29, targetSdk/compileSdk 36, XML layouts, ViewBinding, Material Components, ConstraintLayout, Navigation Component, LiveData/ViewModel, Retrofit/OkHttp, RxJava 3, Room, WorkManager, AndroidX Biometric, ZXing, Glide, Bouncy Castle, Argon2Kt.
+- Backend: Java 17, Spring Boot 3.5.9, Maven, Spring Web/Security/Validation/JPA/WebSocket/Data Redis/Mail/Thymeleaf, PostgreSQL with Flyway migrations, H2 for development/testing, JWT RS256, SpringDoc OpenAPI, Bucket4j, Bouncy Castle, Argon2-JVM, Docker Compose.
+
+## Current Repository Topology
+
+- `app/src/main/java/com/ttt/safevault/`: Android source. Top-level packages currently include `ui`, `viewmodel`, `model`, `service`, `service/manager`, `network`, `security`, `crypto`, `data`, `sync`, `autofill`, `adapter`, `dto`, `core`, and helpers.
+- `app/src/main/res/`: XML layouts, drawables, navigation graph, menus, values, raw certs, and autofill/security XML resources.
+- `safevault-backend/src/main/java/org/ttt/safevaultbackend/`: backend source. Main packages include `controller`, `service`, `repository`, `entity`, `security`, `dto`, `config`, `websocket`, `annotation`, `aspect`, `exception`, `modules`, and `util`.
+- `safevault-backend/src/main/resources/db/migration/`: Flyway migrations, currently V1 through V26 with gaps from removed/legacy versions.
+- `docs/`: main project documentation.
+- `safevault-backend/docs/`: backend-specific deployment and modularization documentation.
+- `openspec/specs/`: current behavior/spec truth.
+- `openspec/changes/`: proposed or historical changes.
+
+`safevault-backend/` has its own nested `.git` directory. Check both root and backend Git status before interpreting changes.
+
+## Current Architecture Conventions
+
+Android dependency direction:
+
+`ui -> viewmodel -> model/service -> (network|security|crypto|data)`
+
+- `ui` should render screens and wire user interactions.
+- `viewmodel` should coordinate UI state and user intents.
+- `service` and `service/manager` should hold capability-level orchestration.
+- `network` should stay transport/API focused.
+- `security` and `crypto` should stay UI-independent where possible and preserve existing key lifecycle rules.
+- Do not introduce Compose, Hilt, Kotlin, or StateFlow as a casual cleanup; those are architecture migrations and need an OpenSpec proposal.
+
+Backend dependency direction:
+
+`controller -> service -> repository/entity`
+
+- Controllers should use DTOs and validation, not expose entities.
+- Services own business workflows, transactions, security decisions, and WebSocket notification orchestration.
+- Repositories and entities stay persistence-focused.
+- Flyway migration files are append-only once used; prefer new migrations over editing old ones.
+
+## Current Refactor Governance
+
+- Large structure changes, package migrations, security architecture changes, API/schema changes, and behavior-altering performance work require a new OpenSpec change.
+- Use the current OpenSpec skill entrypoints under `.codex/skills/openspec-*`, then read this file, active changes, and relevant specs before authoring proposals.
+- Keep functional changes separate from structural cleanup when practical.
+- Existing change `openspec/changes/refactor-project-structure/` documents a completed package-boundary/structure-documentation effort. Do not extend it for a new whole-repository reorganization.
+- `docs/directory-standards.md` and package-level `package-info.java` files describe the intended boundaries, but verify against code because some historical docs may be stale.
+
+## Verification Expectations
+
+- Android: `.\gradlew.bat test` and, for compile-sensitive changes, `.\gradlew.bat :app:assembleDebug`.
+- Backend: from `safevault-backend/`, run `.\mvnw.cmd test`.
+- OpenSpec: validate new changes with `openspec validate <change-id> --strict`.
+- Documentation-only changes usually do not require full builds, but must keep `task.md` updated.
+
+## Current Known Cleanup Targets
+
+- Root documentation is scattered and partly duplicated across `README.md`, Chinese development docs, `docs/`, backend docs, and tool-specific memory files.
+- Some legacy docs describe older assumptions, such as frontend-only crypto or Java 8. Inspect current code before relying on those statements.
+- `Android_rules.md` previously referenced Compose/Hilt/StateFlow, but the current app is Java/XML/ViewBinding without Hilt.
+- `SafeVaultApplication` declares package `com.ttt.safevault.core` while its file path appears under the root package directory; verify before package/file moves.
+- Android UI classes still contain some direct network/security calls; future refactors can gradually move those toward ViewModel/service/manager boundaries.
+
+## Legacy Notes
+
 ## Purpose
 SafeVault 是一个原生 Android 密码管理器应用，旨在为用户提供安全、便捷的密码存储和管理功能。
 - 前端只负责 UI 和用户交互

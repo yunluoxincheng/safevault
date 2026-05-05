@@ -640,11 +640,12 @@ public class SecureKeyStorageManager {
                     android.util.Base64.NO_WRAP
             );
 
-            // 4. 使用commit()同步保存（原子性）
-            // 注意：这里不设置 KEY_VERSION，版本应由调用者控制
+            // 4. 使用 commit() 同步保存（原子性）
+            // validateKeyPair() 要求 KEY_VERSION 为 v2/v3；三层架构初始化路径此前未写入导致验证失败
             boolean saved = prefs.edit()
                     .putString(ENCRYPTED_RSA_PRIVATE_KEY, encryptedPrivateKey)
                     .putString(RSA_PUBLIC_KEY, publicKeyBase64)
+                    .putString(KEY_VERSION, KEY_VERSION_V3)
                     .commit();
 
             if (!saved) {

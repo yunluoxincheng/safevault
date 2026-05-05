@@ -1,0 +1,45 @@
+# 密码分享实现技能元数据
+name: "password-sharing-implementation"
+version: "1.0.0"
+description: "实现密码分享功能，包括离线分享（二维码、蓝牙、NFC）和云端分享"
+
+# 触发关键词
+triggers:
+  - "密码分享"
+  - "分享功能"
+  - "二维码.*分享"
+  - "蓝牙.*分享"
+  - "NFC.*分享"
+  - "云端.*分享"
+  - "分享.*密码"
+  - "接收.*分享"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "ui/share/**/*"
+  - "**/*Share*"
+  - "**/*Nearby*"
+  - "**/dto/*Share*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+  - "android-network-sync-fixes"
+  - "password-strength-algorithms"
+
+# 适用场景
+scenarios:
+  - "实现离线密码分享"
+  - "实现云端密码分享"
+  - "创建分享二维码"
+  - "实现蓝牙传输"
+  - "实现 NFC 分享"

@@ -1,0 +1,48 @@
+# Android 安全架构升级技能元数据
+name: "android-security-architecture-upgrade"
+version: "1.0.0"
+description: "升级 SafeVault 安全存储架构，从旧版迁移到三层架构（SecureKeyStorageManager）"
+
+# 触发关键词
+triggers:
+  - "安全架构升级"
+  - "SecureKeyStorage"
+  - "迁移.*架构"
+  - "升级.*版本"
+  - "KeyManager.*迁移"
+  - "CryptoManager.*迁移"
+  - "安全存储.*重构"
+  - "三层架构"
+
+# 错误模式
+error_patterns:
+  - "KeyManager.*deprecated"
+  - "CryptoManager.*deprecated"
+  - "BackupCryptoUtil.*deprecated"
+
+# 文件模式
+file_patterns:
+  - "security/**/*KeyManager*"
+  - "security/**/*CryptoManager*"
+  - "**/*SecureKeyStorage*"
+  - "**/*Migration*"
+  - "**/security/**/*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: true
+
+# 相关技能
+related_skills:
+  - "android-encryption-fixes"
+  - "android-security-practices"
+
+# 适用场景
+scenarios:
+  - "迁移到 SecureKeyStorageManager"
+  - "重构旧的 KeyManager/CryptoManager"
+  - "分析现有安全架构"
+  - "实现安全架构迁移"
+  - "升级加密存储机制"

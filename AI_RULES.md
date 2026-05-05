@@ -1,74 +1,42 @@
-\# Java Project Rules
+# SafeVault AI Rules
 
+This file is a short companion to `AGENTS.md`. If rules conflict, prefer `AGENTS.md` and `openspec/project.md`.
 
+## General
 
-\## Framework
+- Use Java 17 across Android and backend.
+- Keep documentation in sync with behavior; update `task.md` after meaningful work.
+- Do not batch-delete files or directories.
+- Do not revert user changes that are unrelated to the task.
+- For architecture, API/schema, security, or large refactor work, use OpenSpec before implementation.
 
-\- Use Spring Boot 3
+## Android
 
-\- Use Maven for dependency management
+- Current app is native Android Java + XML + ViewBinding, not Compose.
+- Current DI style is manual `ServiceLocator`; do not introduce Hilt without an approved proposal.
+- Follow MVVM direction: `ui -> viewmodel -> model/service -> (network|security|crypto|data)`.
+- Prefer existing managers/services over adding new global singletons.
+- Keep UI code out of cryptographic key lifecycle, persistence, and network retry policy where practical.
 
+## Backend
 
+- Framework: Spring Boot 3.5.9, Maven, Java 17.
+- Follow layered direction: `controller -> service -> repository/entity`.
+- Controllers handle HTTP boundary, validation, and DTO mapping only.
+- Services contain business logic, transactions, auth/security decisions, and notification orchestration.
+- Repositories access persistence only.
+- Use DTOs for API input/output; never expose JPA entities directly from controllers.
+- Use global exception handling consistently.
 
-\## Architecture
+## Security
 
-Follow layered architecture:
+- Treat passwords, master passwords, tokens, private keys, verification codes, salts, auth tags, and share payloads as sensitive.
+- Do not log or document real secrets.
+- Preserve TLS/JWT/KeyStore/biometric/FLAG_SECURE/clipboard protections unless an approved security proposal changes them.
 
+## Testing
 
-
-Controller -> Service -> Repository
-
-
-
-Rules:
-
-\- Controllers handle HTTP requests only
-
-\- Services contain business logic
-
-\- Repositories access the database
-
-
-
-\## DTO
-
-\- Always use DTO for API input/output
-
-\- Never expose entity objects in controllers
-
-
-
-\## Entities
-
-\- Use JPA / Hibernate
-
-\- Use Lombok for boilerplate code
-
-
-
-\## Naming conventions
-
-Controllers: \*Controller
-
-Services: \*Service
-
-Repositories: \*Repository
-
-DTO: \*DTO
-
-
-
-\## Error handling
-
-\- Use global exception handler
-
-\- Use ResponseEntity for API responses
-
-
-
-\## Testing
-
-\- Use JUnit 5
-
-\- Write unit tests for service layer
+- Android: `.\gradlew.bat test`; compile-sensitive changes: `.\gradlew.bat :app:assembleDebug`.
+- Backend: run `.\mvnw.cmd test` from `safevault-backend/`.
+- OpenSpec changes: `openspec validate <change-id> --strict`.
 

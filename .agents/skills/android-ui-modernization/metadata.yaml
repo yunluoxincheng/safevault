@@ -1,0 +1,45 @@
+# Android UI 现代化技能元数据
+name: "android-ui-modernization"
+version: "1.0.0"
+description: "Android UI 现代化更新，使用 Material Design 3 和现代 Android 设计规范"
+
+# 触发关键词
+triggers:
+  - "更新界面"
+  - "改UI"
+  - "界面美化"
+  - "UI.*更新"
+  - "Material Design 3"
+  - "M3.*设计"
+  - "现代化界面"
+  - "改善.*界面"
+  - "优化.*UI"
+  - "设计风格"
+
+# 错误模式
+error_patterns: []
+
+# 文件模式
+file_patterns:
+  - "ui/**/*"
+  - "res/layout/*"
+  - "res/values/styles.xml"
+  - "**/*Material*"
+
+# 优先级 (high/medium/low)
+priority: "high"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-security-practices"
+  - "android-mvvm-pattern"
+
+# 适用场景
+scenarios:
+  - "更新旧界面使用 Material Design 3"
+  - "统一应用设计风格"
+  - "添加现代化动画效果"
+  - "替换旧版 UI 组件"

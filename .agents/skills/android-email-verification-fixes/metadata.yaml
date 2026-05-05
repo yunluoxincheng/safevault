@@ -1,0 +1,49 @@
+# Android 邮箱验证修复技能元数据
+name: "android-email-verification-fixes"
+version: "1.0.0"
+description: "修复 Android 邮箱格式验证、验证码发送、邮箱确认相关问题"
+
+# 触发关键词
+triggers:
+  - "邮箱.*验证.*失败"
+  - "验证码.*错误"
+  - "OTP.*错误"
+  - "邮件.*发送失败"
+  - "邮箱格式.*错误"
+  - "验证码.*收不到"
+  - "邮箱.*确认.*失败"
+
+# 错误模式
+error_patterns:
+  - "email.*invalid"
+  - "email.*format.*error"
+  - "verification.*code.*invalid"
+  - "OTP.*error"
+  - "send.*email.*fail"
+  - "PatternSyntaxException.*email"
+
+# 文件模式
+file_patterns:
+  - "**/*Email*"
+  - "**/*Verification*"
+  - "**/*OTP*"
+  - "util/**/*"
+
+# 优先级 (high/medium/low)
+priority: "medium"
+
+# 是否为必须技能
+is_mandatory: false
+
+# 相关技能
+related_skills:
+  - "android-debugging-fixes"
+  - "android-network-sync-fixes"
+
+# 适用场景
+scenarios:
+  - "修复邮箱格式验证逻辑"
+  - "修复验证码验证失败"
+  - "处理验证码发送失败"
+  - "修复邮箱确认流程"
+  - "处理验证码过期问题"
