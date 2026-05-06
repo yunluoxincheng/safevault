@@ -6,6 +6,37 @@ Last updated: 2026-05-06
 
 Prepare this course final project for a whole-project cleanup/refactor. The user feels the structure and documentation are messy and wants future conversations to have reliable project memory before coding. The current step is to create OpenSpec proposals before starting implementation.
 
+## Latest Session Update (normalize-repository-layout completion review)
+
+- Reviewed the actual completion state of `openspec/changes/normalize-repository-layout/` against its proposal, design, tasks, spec delta, and repository contents.
+- Confirmed the documented deliverables are present:
+  - `docs/documentation-layout.md`
+  - `docs/README.md`
+  - `docs/backend/README.md`
+  - `docs/operations/generated-artifacts-policy.md`
+  - `docs/plans/legacy-root-docs/`
+  - root pointer replacements for the moved historical docs
+- Confirmed backend repository policy is reflected in both OpenSpec artifacts and repository state:
+  - root tracks `safevault-backend` as gitlink mode `160000`
+  - backend-local docs remain under `safevault-backend/docs/`
+- Confirmed verification expectations that can be checked from the current workspace:
+  - root Git working tree is clean
+  - backend Git working tree is clean when checked with a local `safe.directory` override
+  - `git diff --name-only HEAD -- . ":(exclude)safevault-backend"` returned no runtime-file changes in root
+- Conclusion: the proposal appears materially complete as implemented. No blocking mismatch was found between the checked task list and current repository state.
+
+Residual notes:
+
+- `openspec` CLI is still unavailable in PATH, so strict `openspec validate normalize-repository-layout --strict` was not rerun in this review.
+- Historical Chinese docs remain intentionally preserved as legacy files; their encoding cleanup is still separate follow-up debt, not a blocker for this proposal's completion.
+
+## Latest Session Update (normalize-repository-layout archive)
+
+- Synced the `normalize-repository-layout` delta spec into `openspec/specs/project-structure/spec.md` before archival.
+- Confirmed all checklist items in `openspec/changes/normalize-repository-layout/tasks.md` are complete.
+- Archived the change to `openspec/changes/archive/2026-05-06-normalize-repository-layout/`.
+- This archival flow is being performed manually because `openspec` CLI is not available in PATH in the current environment.
+
 ## Latest Session Update (normalize-repository-layout apply)
 
 - Implemented OpenSpec change tasks for `normalize-repository-layout` by directly using change artifacts because `openspec` CLI is not available in PATH in this environment.
