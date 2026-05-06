@@ -72,18 +72,24 @@ consistent without changing runtime behavior.
 ### `controller`
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/controller`
 - Responsibility: HTTP boundary, request/response mapping
+- Can depend on: `service`, `dto`, framework validation/security annotations
+- Must not directly call repositories or own business workflows
 
 ### `service`
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/service`
 - Responsibility: backend use-case orchestration
+- Can depend on: `repository`, `entity`, `security`, `websocket`, `dto`
+- Owns transactions, authorization decisions, and notification orchestration
 
 ### `repository`
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/repository`
 - Responsibility: persistence access
+- Must not contain business workflows or controller-facing DTO mapping
 
 ### `entity`
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/entity`
 - Responsibility: storage entities
+- Must not be exposed directly as public API response contracts
 
 ### `security`
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/security`
@@ -93,6 +99,16 @@ consistent without changing runtime behavior.
 - Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/dto`
 - Responsibility: external API request/response contracts
 
+### `websocket`
+- Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/websocket`
+- Responsibility: WebSocket/STOMP infrastructure and connection handling
+- Publishing application notifications should be mediated through service-level methods
+
+### `modules`
+- Path: `safevault-backend/src/main/java/org/ttt/safevaultbackend/modules`
+- Responsibility: logical ownership markers only
+- Must not receive implementation classes during the backend service-boundary refactor
+
 ## Dependency Direction Rules
 
 ### Android
@@ -101,12 +117,19 @@ consistent without changing runtime behavior.
 ### Backend
 `controller -> service -> repository/entity`
 
+Supporting backend infrastructure packages such as `security`, `websocket`,
+`config`, `annotation`, `aspect`, `exception`, and `util` are consumed from the
+layer that owns the relevant boundary. For example, notification publishing is
+called from services through `WebSocketService`, while STOMP transport details
+stay under `websocket`.
+
 ## Forbidden Patterns
 
 - Android `service`/`viewmodel` depending on `ui`
 - `network` containing business branching logic
 - `crypto` containing Android UI flow code
 - backend `controller` directly calling `repository` (bypass `service`)
+- moving backend implementation into `modules/*` packages without a separate approved proposal
 
 ## Change Management
 
