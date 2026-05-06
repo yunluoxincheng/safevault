@@ -87,3 +87,14 @@ Windows PowerShell 下优先使用：
 - Android 包很多，`ui` 中仍可能有直接 Retrofit/安全逻辑调用，后续重构可逐步下沉到 ViewModel/service/manager。
 - 后端已有 `modules/*/package-info.java`，但实际代码仍主要按传统 controller/service/repository 分层组织。
 - `AI_RULES.md`、`Android_rules.md` 已用于简短规则记忆；以本文件和 `openspec/project.md` 为更高优先级。
+
+## Documentation Layout Update (2026-05-06)
+
+- Canonical documentation map: `docs/documentation-layout.md`.
+- Docs index entrypoint: `docs/README.md`.
+- Backend routing policy:
+  - `docs/backend/` for cross-repository backend architecture and ownership.
+  - `docs/api/` for API contracts and schema-facing behavior.
+  - `safevault-backend/docs/` for backend-local deployment/operations.
+- Generated artifact and safe cleanup policy: `docs/operations/generated-artifacts-policy.md`.
+- Root historical docs are preserved in `docs/plans/legacy-root-docs/`; root retains pointer files only.

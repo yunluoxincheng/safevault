@@ -74,6 +74,17 @@ Backend dependency direction:
 - `SafeVaultApplication` declares package `com.ttt.safevault.core` while its file path appears under the root package directory; verify before package/file moves.
 - Android UI classes still contain some direct network/security calls; future refactors can gradually move those toward ViewModel/service/manager boundaries.
 
+## Documentation Layout Baseline (2026-05-06)
+
+- Canonical documentation map is now defined in `docs/documentation-layout.md`.
+- Root-level historical docs were moved to `docs/plans/legacy-root-docs/` and root now keeps pointer files for those entries.
+- Backend documentation routing is now explicit:
+  - cross-repository backend architecture in `docs/backend/`
+  - API contracts and schema docs in `docs/api/`
+  - backend-local deployment/runbooks in `safevault-backend/docs/`
+- Generated/build directory and cleanup guidance is tracked in `docs/operations/generated-artifacts-policy.md`.
+- `safevault-backend/` remains a nested Git repository tracked by root as a gitlink; both repos require separate status checks during refactor work.
+
 ## Legacy Notes
 
 ## Purpose
