@@ -11,6 +11,10 @@ Android structural refactors MUST preserve the dependency direction `ui -> viewm
 - **WHEN** a manifest-visible, resource-referenced, or navigation-referenced class is moved
 - **THEN** all Android manifest, navigation, resource, and import references are updated in the same slice
 
+#### Scenario: Core bootstrap entry points are normalized
+- **WHEN** application bootstrap or core service-location classes are adjusted for boundary consistency
+- **THEN** only one canonical package path remains for each bootstrap entry point, and compatibility wrappers are removed after call sites migrate
+
 ### Requirement: Android Refactor Behavior Preservation
 Android layer-boundary refactors MUST avoid behavior changes unless a separate proposal authorizes them.
 

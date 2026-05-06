@@ -19,7 +19,6 @@ import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ShareHistoryAdapter;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;
 import com.ttt.safevault.model.PasswordShare;
-import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.viewmodel.ShareHistoryViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
@@ -40,7 +39,6 @@ public class ShareListFragment extends Fragment {
     private SwipeRefreshLayout swipeRefresh;
     private View emptyView;
     private boolean isMyShares;
-    private TokenManager tokenManager;
 
     public static ShareListFragment newInstance(boolean isMyShares) {
         ShareListFragment fragment = new ShareListFragment();
@@ -56,7 +54,6 @@ public class ShareListFragment extends Fragment {
         if (getArguments() != null) {
             isMyShares = getArguments().getBoolean(ARG_IS_MY_SHARES, true);
         }
-        tokenManager = TokenManager.getInstance(requireContext());
     }
 
     @Nullable

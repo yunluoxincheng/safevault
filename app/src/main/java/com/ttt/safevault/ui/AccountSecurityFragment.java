@@ -15,8 +15,8 @@ import androidx.annotation.Nullable;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentAccountSecurityBinding;
+import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.SecurityConfig;
-import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
@@ -30,6 +30,7 @@ public class AccountSecurityFragment extends BaseFragment {
 
     private FragmentAccountSecurityBinding binding;
     private SecurityConfig securityConfig;
+    private BackendService backendService;
 
     /** 用于在 DeviceKey 注册过程中临时保存主密码 */
     private String masterPasswordForEnrollment;
@@ -39,6 +40,7 @@ public class AccountSecurityFragment extends BaseFragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         binding = FragmentAccountSecurityBinding.inflate(inflater, container, false);
         securityConfig = new SecurityConfig(requireContext());
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
         return binding.getRoot();
     }
 
@@ -104,9 +106,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 }
 
                 // 检查三层架构是否已初始化
-                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                        com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
-                if (!secureStorage.isMigrated()) {
+                if (!backendService.isBiometricStorageReady()) {
                     new MaterialAlertDialogBuilder(requireContext())
                             .setTitle("无法启用生物识别")
                             .setMessage("密钥存储未初始化，请先使用主密码登录")
@@ -290,8 +290,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     }
 
                     // 调用后端服务设置PIN码
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     boolean success = backendService.setPinCode(pin);
 
                     if (success) {
@@ -331,9 +329,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     String newPin = newPinInput.getText().toString();
 
                     // 验证旧PIN码
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
                     if (!backendService.verifyPinCode(oldPin)) {
                         Toast.makeText(requireContext(), "当前PIN码错误", Toast.LENGTH_SHORT).show();
                         return;
@@ -363,8 +358,6 @@ public class AccountSecurityFragment extends BaseFragment {
                 .setTitle("移除PIN码")
                 .setMessage("确定要移除PIN码吗？")
                 .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     backendService.clearPinCode();
                     binding.tvPinStatus.setText("未启用");
                     Toast.makeText(requireContext(), R.string.pin_removed, Toast.LENGTH_SHORT).show();
@@ -401,8 +394,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     String confirmPassword = confirmPasswordInput.getText().toString();
 
                     // 验证旧密码
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     if (!backendService.isUnlocked()) {
                         // 先尝试用旧密码解锁
@@ -490,8 +481,6 @@ public class AccountSecurityFragment extends BaseFragment {
      * 执行账户删除操作
      */
     private void performDeleteAccount() {
-        com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         boolean success = backendService.deleteAccount();
 
@@ -519,8 +508,6 @@ public class AccountSecurityFragment extends BaseFragment {
      * 执行注销登录操作
      */
     private void performLogout() {
-        com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         // 显示现代化加载对话框
         com.ttt.safevault.utils.LoadingDialog loadingDialog =
@@ -568,14 +555,9 @@ public class AccountSecurityFragment extends BaseFragment {
      */
     private void forceLogout() {
         try {
-            com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
             // 只清除本地令牌，不调用后端 API
-            com.ttt.safevault.network.TokenManager tokenManager =
-                    com.ttt.safevault.network.RetrofitClient.getInstance(requireContext())
-                            .getTokenManager();
-            tokenManager.clearTokens();
+            backendService.clearLocalCloudTokens();
 
             Toast.makeText(requireContext(), "已清除本地数据", Toast.LENGTH_SHORT).show();
             // 返回登录页面
@@ -600,10 +582,9 @@ public class AccountSecurityFragment extends BaseFragment {
      * - 生物识别只是把信任从主密码迁移到设备
      */
     private void enableBiometricAuthentication(@NonNull BiometricAuthManager authManager) {
-        SessionGuard sessionGuard = SessionGuard.getInstance();
 
         // 🧠 检查会话状态：用户是否已通过主密码验证
-        if (sessionGuard.isUnlocked()) {
+        if (backendService.isUnlocked()) {
             // 用户已通过主密码验证（哪怕是 5 分钟前）
             // DataKey 在内存中，可以直接进行生物识别认证
             android.util.Log.d("AccountSecurity",
@@ -790,8 +771,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     }
 
                     // 验证密码
-                    com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     try {
                         boolean authenticated = backendService.unlock(password);
@@ -830,15 +809,12 @@ public class AccountSecurityFragment extends BaseFragment {
         // 在后台线程执行
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             try {
-                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
 
                 // 获取盐值（从 crypto_prefs）
-                String salt = getSaltFromPrefs();
 
                 // 完成 DeviceKey 注册
-                boolean success = secureStorage.completeBiometricEnrollment(
-                    masterPasswordForEnrollment, salt);
+                boolean success = backendService.completeBiometricEnrollmentWithPassword(
+                    masterPasswordForEnrollment);
 
                 // 清除保存的主密码
                 masterPasswordForEnrollment = null;
@@ -882,10 +858,8 @@ public class AccountSecurityFragment extends BaseFragment {
      * @param authManager 生物识别管理器
      */
     private void completeDeviceKeyEnrollmentWithDataKey(@NonNull BiometricAuthManager authManager) {
-        SessionGuard sessionGuard = SessionGuard.getInstance();
-        javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
 
-        if (dataKey == null) {
+        if (!backendService.isUnlocked()) {
             android.util.Log.e("AccountSecurity", "会话中的 DataKey 不可用，无法完成 DeviceKey 注册");
             requireActivity().runOnUiThread(() -> {
                 Toast.makeText(requireContext(), "启用生物识别失败：会话已过期",
@@ -897,15 +871,11 @@ public class AccountSecurityFragment extends BaseFragment {
         // 在后台线程执行
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             try {
-                com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
 
                 // 获取盐值（从 crypto_prefs）
-                String salt = getSaltFromPrefs();
 
                 // 使用 DataKey 直接完成 DeviceKey 注册
-                boolean success = secureStorage.completeBiometricEnrollmentWithDataKey(
-                    dataKey, salt);
+                boolean success = backendService.completeBiometricEnrollmentWithSessionDataKey();
 
                 requireActivity().runOnUiThread(() -> {
                     if (success) {
@@ -1080,8 +1050,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     }
 
                     // 调用后端服务验证密码
-                    com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                     try {
                         boolean authenticated = backendService.unlock(password);
                         if (authenticated) {
@@ -1161,8 +1129,6 @@ public class AccountSecurityFragment extends BaseFragment {
 
         new android.os.Handler().post(() -> {
             try {
-                com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 // 生成导出文件路径
                 String fileName = "safevault_backup_" +
@@ -1327,8 +1293,6 @@ public class AccountSecurityFragment extends BaseFragment {
 
         new android.os.Handler().post(() -> {
             try {
-                com.ttt.safevault.model.BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                 boolean success = backendService.importData(filePath);
 
@@ -1377,11 +1341,8 @@ public class AccountSecurityFragment extends BaseFragment {
      */
     private void updateKeyVersionStatus() {
         try {
-            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
-
-            String keyVersion = secureStorage.getKeyVersion();
-            boolean hasMigratedToV3 = secureStorage.hasMigratedToV3();
+            String keyVersion = backendService.getKeyVersion();
+            boolean hasMigratedToV3 = backendService.hasMigratedToV3();
 
             if (keyVersion != null) {
                 String versionText;
@@ -1426,11 +1387,8 @@ public class AccountSecurityFragment extends BaseFragment {
      * 显示密钥迁移信息对话框
      */
     private void showKeyMigrationInfo() {
-        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(requireContext());
-
-        boolean hasMigratedToV3 = secureStorage.hasMigratedToV3();
-        String keyVersion = secureStorage.getKeyVersion();
+        boolean hasMigratedToV3 = backendService.hasMigratedToV3();
+        String keyVersion = backendService.getKeyVersion();
 
         String title, message, positiveButton, negativeButton;
 
@@ -1483,10 +1441,10 @@ public class AccountSecurityFragment extends BaseFragment {
         android.util.Log.d("AccountSecurity", "=== startKeyMigration() 开始 ===");
         try {
             // 获取会话信息（如果已登录）
-            SessionGuard sessionGuard = SessionGuard.getInstance();
-            android.util.Log.d("AccountSecurity", "SessionGuard.isUnlocked() = " + sessionGuard.isUnlocked());
+            boolean sessionUnlocked = backendService.isUnlocked();
+            android.util.Log.d("AccountSecurity", "sessionUnlocked = " + sessionUnlocked);
 
-            if (!sessionGuard.isUnlocked()) {
+            if (!sessionUnlocked) {
                 // 未登录，需要先验证密码
                 android.util.Log.d("AccountSecurity", "会话未解锁，显示密码验证对话框");
                 showPasswordVerificationForMigration();
@@ -1536,8 +1494,6 @@ public class AccountSecurityFragment extends BaseFragment {
                     }
 
                     // 验证密码
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
                     try {
                         boolean authenticated = backendService.unlock(password);

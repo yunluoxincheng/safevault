@@ -12,12 +12,16 @@ import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.SharePermission;
+import com.ttt.safevault.security.BiometricAuthHelper;
 import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.service.manager.*;
 
 import java.security.SecureRandom;
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.List;
 
 import javax.crypto.SecretKey;
@@ -162,6 +166,110 @@ public class BackendServiceImpl implements BackendService {
     public void setSessionMasterPassword(String masterPassword) {
         // 设置会话主密码到 AccountManager（仅内存存储）
         accountManager.setSessionMasterPassword(masterPassword);
+    }
+
+    @Override
+    public boolean unlockSessionWithBiometric() {
+        try {
+            SecretKey dataKey = secureKeyStorage.unlockDataKeyWithBiometric();
+            if (dataKey == null) {
+                Log.e(TAG, "unlockSessionWithBiometric failed: dataKey is null");
+                return false;
+            }
+            sessionGuard.unlockWithDataKey(dataKey);
+            Log.i(TAG, "Session unlocked with biometric");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "unlockSessionWithBiometric failed", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean shouldShowBiometricLogin() {
+        boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(context);
+        boolean userEnabled = securityConfig.isBiometricEnabled();
+        boolean hasCredentials = isInitialized();
+        boolean isMigrated = secureKeyStorage.isMigrated();
+        return biometricSupported && userEnabled && hasCredentials && isMigrated;
+    }
+
+    @Override
+    public boolean isBiometricStorageReady() {
+        return secureKeyStorage.isMigrated();
+    }
+
+    @Override
+    public boolean completeBiometricEnrollmentWithPassword(String masterPassword) {
+        if (masterPassword == null || masterPassword.isEmpty()) {
+            return false;
+        }
+        try {
+            String salt = cryptoPrefs.getString(KEY_MASTER_SALT, null);
+            if (salt == null || salt.isEmpty()) {
+                Log.e(TAG, "completeBiometricEnrollmentWithPassword failed: missing salt");
+                return false;
+            }
+            return secureKeyStorage.completeBiometricEnrollment(masterPassword, salt);
+        } catch (Exception e) {
+            Log.e(TAG, "completeBiometricEnrollmentWithPassword failed", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean completeBiometricEnrollmentWithSessionDataKey() {
+        try {
+            SecretKey dataKey = sessionGuard.getDataKey();
+            if (dataKey == null) {
+                Log.e(TAG, "completeBiometricEnrollmentWithSessionDataKey failed: dataKey is null");
+                return false;
+            }
+            String salt = cryptoPrefs.getString(KEY_MASTER_SALT, null);
+            if (salt == null || salt.isEmpty()) {
+                Log.e(TAG, "completeBiometricEnrollmentWithSessionDataKey failed: missing salt");
+                return false;
+            }
+            return secureKeyStorage.completeBiometricEnrollmentWithDataKey(dataKey, salt);
+        } catch (Exception e) {
+            Log.e(TAG, "completeBiometricEnrollmentWithSessionDataKey failed", e);
+            return false;
+        }
+    }
+
+    @Override
+    public String getKeyVersion() {
+        return secureKeyStorage.getKeyVersion();
+    }
+
+    @Override
+    public boolean hasMigratedToV3() {
+        return secureKeyStorage.hasMigratedToV3();
+    }
+
+    @Override
+    public PublicKey getSessionRsaPublicKey() {
+        if (!sessionGuard.isUnlocked()) {
+            return null;
+        }
+        return secureKeyStorage.getRsaPublicKey();
+    }
+
+    @Override
+    public KeyPair getSessionRsaKeyPair() {
+        if (!sessionGuard.isUnlocked()) {
+            return null;
+        }
+        SecretKey dataKey = sessionGuard.getDataKey();
+        if (dataKey == null) {
+            return null;
+        }
+        PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
+        PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
+        if (publicKey == null || privateKey == null) {
+            return null;
+        }
+        return new KeyPair(publicKey, privateKey);
     }
 
     @Override
@@ -430,6 +538,11 @@ public class BackendServiceImpl implements BackendService {
     }
 
     @Override
+    public com.ttt.safevault.dto.DeviceRecoveryResult recoverDeviceData(String email, String masterPassword) {
+        return accountManager.recoverDeviceData(email, masterPassword);
+    }
+
+    @Override
     public boolean resetLocalVault() {
         try {
             Log.d(TAG, "Resetting local vault...");
@@ -495,6 +608,11 @@ public class BackendServiceImpl implements BackendService {
     @Override
     public void logoutCloud() {
         cloudAuthManager.logoutCloud();
+    }
+
+    @Override
+    public void clearLocalCloudTokens() {
+        cloudAuthManager.clearLocalCloudTokens();
     }
 
     @Override

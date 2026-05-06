@@ -11,7 +11,7 @@ import com.google.android.material.tabs.TabLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ShareRecordAdapter;
 import com.ttt.safevault.data.ShareRecord;
-import com.ttt.safevault.data.AppDatabase;
+import com.ttt.safevault.service.manager.ShareRecordManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +29,7 @@ public class ShareHistoryActivity extends AppCompatActivity {
     private androidx.recyclerview.widget.RecyclerView recyclerView;
     private View emptyView;
     private ShareRecordAdapter adapter;
+    private ShareRecordManager shareRecordManager;
 
     private int currentTab = 0; // 0: 我分享的, 1: 我接收的
 
@@ -48,6 +49,7 @@ public class ShareHistoryActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_share_history);
 
+        shareRecordManager = new ShareRecordManager(this);
         initViews();
         loadShareHistory(currentTab);
     }
@@ -103,14 +105,10 @@ public class ShareHistoryActivity extends AppCompatActivity {
             List<ShareRecord> records;
             if (tab == 0) {
                 // 我分享的
-                records = AppDatabase.getInstance(this)
-                        .shareRecordDao()
-                        .getMySentShares();
+                records = shareRecordManager.getMySentShares();
             } else {
                 // 我接收的
-                records = AppDatabase.getInstance(this)
-                        .shareRecordDao()
-                        .getMyReceivedShares();
+                records = shareRecordManager.getMyReceivedShares();
             }
 
             List<ShareRecord> finalRecords = records != null ? records : new ArrayList<>();
@@ -173,10 +171,7 @@ public class ShareHistoryActivity extends AppCompatActivity {
 
     private void revokeShare(ShareRecord record) {
         new Thread(() -> {
-            record.status = "revoked";
-            AppDatabase.getInstance(this)
-                    .shareRecordDao()
-                    .updateShareRecord(record);
+            shareRecordManager.revokeShare(record.shareId);
 
             runOnUiThread(() -> {
                 android.widget.Toast.makeText(this,

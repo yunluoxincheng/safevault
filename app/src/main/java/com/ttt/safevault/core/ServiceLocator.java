@@ -10,57 +10,87 @@ import com.ttt.safevault.security.SecurityConfig;
 import com.ttt.safevault.security.SecurityManager;
 import com.ttt.safevault.security.SessionGuard;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
+import com.ttt.safevault.service.BackendServiceImpl;
 
 /**
- * Core namespace facade for ServiceLocator.
- *
- * <p>Delegates to legacy package location to keep existing code stable while
- * enabling new imports under {@code com.ttt.safevault.core}.
+ * Service locator for app-wide singletons.
  */
 public final class ServiceLocator {
 
-    private static final ServiceLocator INSTANCE = new ServiceLocator();
+    private static volatile ServiceLocator INSTANCE;
 
-    private ServiceLocator() {
+    private final Context applicationContext;
+    private BackendService backendService;
+    private SecurityManager securityManager;
+    private SecurityConfig securityConfig;
+
+    private ServiceLocator(@NonNull Context context) {
+        this.applicationContext = context.getApplicationContext();
     }
 
     public static void init(@NonNull Context context) {
-        com.ttt.safevault.ServiceLocator.init(context);
+        if (INSTANCE == null) {
+            synchronized (ServiceLocator.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = new ServiceLocator(context);
+                }
+            }
+        }
     }
 
     public static ServiceLocator getInstance() {
+        if (INSTANCE == null) {
+            throw new IllegalStateException("ServiceLocator must be initialized in Application.onCreate()");
+        }
         return INSTANCE;
     }
 
-    private com.ttt.safevault.ServiceLocator delegate() {
-        return com.ttt.safevault.ServiceLocator.getInstance();
-    }
-
     public BackendService getBackendService() {
-        return delegate().getBackendService();
+        if (backendService == null) {
+            synchronized (this) {
+                if (backendService == null) {
+                    backendService = new BackendServiceImpl(applicationContext);
+                }
+            }
+        }
+        return backendService;
     }
 
     public SecurityManager getSecurityManager() {
-        return delegate().getSecurityManager();
+        if (securityManager == null) {
+            synchronized (this) {
+                if (securityManager == null) {
+                    securityManager = SecurityManager.getInstance(applicationContext);
+                }
+            }
+        }
+        return securityManager;
     }
 
     public SecurityConfig getSecurityConfig() {
-        return delegate().getSecurityConfig();
+        if (securityConfig == null) {
+            synchronized (this) {
+                if (securityConfig == null) {
+                    securityConfig = new SecurityConfig(applicationContext);
+                }
+            }
+        }
+        return securityConfig;
     }
 
     public SessionGuard getSessionGuard() {
-        return delegate().getSessionGuard();
+        return SessionGuard.getInstance();
     }
 
     public SecureKeyStorageManager getSecureKeyStorageManager() {
-        return delegate().getSecureKeyStorageManager();
+        return SecureKeyStorageManager.getInstance(applicationContext);
     }
 
     public BiometricAuthManager getBiometricAuthManager() {
-        return delegate().getBiometricAuthManager();
+        return BiometricAuthManager.getInstance(applicationContext);
     }
 
     public Context getApplicationContext() {
-        return delegate().getApplicationContext();
+        return applicationContext;
     }
 }

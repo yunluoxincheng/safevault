@@ -440,11 +440,9 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
                 executor.execute(() -> {
                     try {
                         // 获取 DataKey 并设置到 SessionGuard（用于会话恢复）
-                        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(AutofillCredentialSelectorActivity.this);
-                        javax.crypto.SecretKey dataKey = secureStorage.unlockDataKeyWithBiometric();
+                        boolean unlocked = backendService.unlockSessionWithBiometric();
 
-                        if (dataKey == null) {
+                        if (!unlocked) {
                             runOnUiThread(() -> {
                                 android.widget.Toast.makeText(AutofillCredentialSelectorActivity.this,
                                         "生物识别失败，请使用主密码", android.widget.Toast.LENGTH_SHORT).show();
@@ -454,9 +452,6 @@ public class AutofillCredentialSelectorActivity extends AppCompatActivity {
                         }
 
                         // 设置 DataKey 到 SessionGuard
-                        com.ttt.safevault.security.SessionGuard sessionGuard =
-                                com.ttt.safevault.security.SessionGuard.getInstance();
-                        sessionGuard.unlockWithDataKey(dataKey);
 
                         android.util.Log.d(TAG, "生物识别验证成功，会话已设置");
 

@@ -12,7 +12,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 
-import com.ttt.safevault.core.SafeVaultApplication;
 import com.ttt.safevault.sync.VaultSyncManager;
 
 import java.util.List;
@@ -32,7 +31,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.network.TokenManager;
+import com.ttt.safevault.service.manager.AuthSessionManager;
+import com.ttt.safevault.service.manager.ContactManager;
 import com.ttt.safevault.service.ShareNotificationService;
 import com.ttt.safevault.sync.SyncTrigger;
 import com.ttt.safevault.utils.SearchHistoryManager;
@@ -49,7 +49,8 @@ public class MainActivity extends AppCompatActivity {
     private AppBarConfiguration appBarConfiguration;
     private PasswordListViewModel listViewModel;
     private BackendService backendService;
-    private TokenManager tokenManager;
+    private AuthSessionManager authSessionManager;
+    private ContactManager contactManager;
     private SearchHistoryManager searchHistoryManager;
     private BottomNavigationView bottomNavigationView;
     private FloatingActionButton fabAddPassword;
@@ -80,8 +81,9 @@ public class MainActivity extends AppCompatActivity {
         // 获取BackendService实例
         backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
-        // 初始化TokenManager
-        tokenManager = TokenManager.getInstance(this);
+        // 初始化会话/联系人边界管理器
+        authSessionManager = new AuthSessionManager(this);
+        contactManager = new ContactManager(this);
 
         // 初始化搜索 debounce handler
         searchDebounceHandler = new Handler(Looper.getMainLooper());
@@ -181,7 +183,7 @@ public class MainActivity extends AppCompatActivity {
      * 如果用户已登录云端账号，启动WebSocket通知服务
      */
     private void initCloudServices() {
-        if (tokenManager != null && tokenManager.isLoggedIn()) {
+        if (authSessionManager != null && authSessionManager.isLoggedIn()) {
             // 主动检查 token 是否需要刷新
             checkAndRefreshTokenIfNeeded();
             startNotificationService();
@@ -192,11 +194,11 @@ public class MainActivity extends AppCompatActivity {
      * 检查并主动刷新 token（如果快过期）
      */
     private void checkAndRefreshTokenIfNeeded() {
-        if (tokenManager == null) {
+        if (authSessionManager == null) {
             return;
         }
 
-        tokenManager.refreshIfNearExpiry()
+        authSessionManager.refreshIfNearExpiry()
             .subscribe(
                 newToken -> android.util.Log.d("MainActivity", "Token refresh check completed"),
                 error -> android.util.Log.w("MainActivity", "Token refresh check failed (non-critical)", error)
@@ -545,9 +547,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 在后台查询未读请求数量
         new Thread(() -> {
-            int count = com.ttt.safevault.data.AppDatabase.getInstance(this)
-                    .friendRequestDao()
-                    .getPendingCount();
+            int count = contactManager != null ? contactManager.getPendingFriendRequestCount() : 0;
 
             runOnUiThread(() -> {
                 if (count > 0) {

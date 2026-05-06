@@ -18,8 +18,9 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.ttt.safevault.R;
+import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
-import com.ttt.safevault.service.manager.AccountManager;
+import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.service.manager.ContactManager;
 
 import java.util.concurrent.Executors;
@@ -42,8 +43,9 @@ public class MyIdentityActivity extends AppCompatActivity {
     private MaterialButton btnRegenerate;
 
     private ContactManager contactManager;
-    private AccountManager accountManager;
+    private AuthSessionManager authSessionManager;
     private BiometricAuthManager biometricAuthManager;
+    private BackendService backendService;
     private String currentQRContent;
 
     @Override
@@ -52,21 +54,10 @@ public class MyIdentityActivity extends AppCompatActivity {
         setContentView(R.layout.activity_my_identity);
 
         contactManager = new ContactManager(this);
+        authSessionManager = new AuthSessionManager(this);
 
-        // 使用正确的构造函数创建 AccountManager
-        com.ttt.safevault.model.BackendService backendService =
-            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-        com.ttt.safevault.data.PasswordDao passwordDao =
-            com.ttt.safevault.data.AppDatabase.getInstance(this).passwordDao();
-        com.ttt.safevault.service.manager.PasswordManager passwordManager =
-            new com.ttt.safevault.service.manager.PasswordManager(backendService, passwordDao);
-
-        accountManager = new AccountManager(
-                this,
-                passwordManager,
-                new com.ttt.safevault.security.SecurityConfig(this),
-                com.ttt.safevault.network.RetrofitClient.getInstance(this)
-        );
+        // 统一通过 BackendService 访问会话与认证状态
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         // 初始化 BiometricAuthManager
         biometricAuthManager = BiometricAuthManager.getInstance(this);
@@ -96,14 +87,10 @@ public class MyIdentityActivity extends AppCompatActivity {
 
     private void loadUserInfo() {
         // 从TokenManager获取用户信息
-        com.ttt.safevault.network.TokenManager tokenManager =
-            com.ttt.safevault.network.RetrofitClient.getInstance(this)
-                .getTokenManager();
-
         // 获取显示名称、验证用户名和邮箱
-        String displayName = tokenManager.getDisplayName();
-        String verifiedUsername = tokenManager.getVerifiedUsername();
-        String userEmail = tokenManager.getLastLoginEmail();
+        String displayName = authSessionManager.getDisplayName();
+        String verifiedUsername = authSessionManager.getVerifiedUsername();
+        String userEmail = authSessionManager.getLastLoginEmail();
 
         // 添加详细日志
         Log.d(TAG, "=== TokenManager 获取的用户信息 ===");
@@ -143,9 +130,6 @@ public class MyIdentityActivity extends AppCompatActivity {
      */
     private void checkAndVerifyIdentity() {
         // 检查CryptoManager是否已解锁（即是否有主密码）
-        com.ttt.safevault.model.BackendService backendService =
-            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
         if (backendService.isUnlocked()) {
             // 已解锁，直接生成QR码
             Log.d(TAG, "CryptoManager已解锁，直接生成QR码");
@@ -175,9 +159,7 @@ public class MyIdentityActivity extends AppCompatActivity {
         Executors.newSingleThreadExecutor().execute(() -> {
             try {
                 // 从TokenManager获取当前登录的邮箱
-                String userEmail = com.ttt.safevault.network.RetrofitClient.getInstance(
-                        MyIdentityActivity.this)
-                        .getTokenManager().getLastLoginEmail();
+                String userEmail = authSessionManager.getLastLoginEmail();
 
                 // 从 BackendService 获取 DataKey（用于解密私钥）
                 // 注意：生成身份码只需要公钥，不需要主密码
@@ -313,9 +295,6 @@ public class MyIdentityActivity extends AppCompatActivity {
                 Log.d(TAG, "生物识别验证成功");
                 // 生物识别成功后，SessionGuard 应该已经解锁
                 // 生成身份码只需要公钥，不需要主密码
-                com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
                 if (backendService.isUnlocked()) {
                     runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
@@ -411,8 +390,6 @@ public class MyIdentityActivity extends AppCompatActivity {
     private boolean verifyMasterPassword(String password) {
         try {
             // 尝试使用密码解锁 CryptoManager
-            com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
             return backendService.unlock(password);
         } catch (Exception e) {
             Log.e(TAG, "验证主密码时发生异常", e);

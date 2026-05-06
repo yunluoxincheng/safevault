@@ -31,6 +31,7 @@ import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
 import com.ttt.safevault.security.biometric.AuthScenario;
+import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.LoginViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
@@ -60,6 +61,8 @@ public class LoginActivity extends AppCompatActivity {
     // ViewModel
     private AuthViewModel authViewModel;
     private LoginViewModel loginViewModel;
+    private AuthSessionManager authSessionManager;
+    private BackendService backendService;
 
     // 状态标志
     private boolean isPasswordVisible = false;
@@ -99,6 +102,8 @@ public class LoginActivity extends AppCompatActivity {
         ViewModelProvider.Factory factory = new ViewModelFactory(getApplication());
         authViewModel = new ViewModelProvider(this, factory).get(AuthViewModel.class);
         loginViewModel = new ViewModelProvider(this, factory).get(LoginViewModel.class);
+        authSessionManager = new AuthSessionManager(this);
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         initViews();
         setupObservers();
@@ -126,8 +131,7 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         // 预填充上次登录的邮箱
-        String lastEmail = com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
-                .getTokenManager().getLastLoginEmail();
+        String lastEmail = authSessionManager.getLastLoginEmail();
         if (emailInput != null && lastEmail != null && !lastEmail.isEmpty()) {
             emailInput.setText(lastEmail);
         }
@@ -185,9 +189,7 @@ public class LoginActivity extends AppCompatActivity {
         // 注册账号链接
         registerText.setOnClickListener(v -> {
             // 清除验证状态（开始新的注册流程）
-            com.ttt.safevault.network.TokenManager tokenManager =
-                com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
-            tokenManager.clearEmailVerificationStatus();
+            authSessionManager.clearEmailVerificationStatus();
 
             Intent intent = new Intent(this, RegisterActivity.class);
             startActivity(intent);
@@ -324,8 +326,7 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         // 保存邮箱到本地（下次自动填充）
-        com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
-                .getTokenManager().saveLastLoginEmail(email);
+        authSessionManager.saveLastLoginEmail(email);
 
         // 调用云端登录
         authViewModel.loginWithEmail(email, password);
@@ -351,13 +352,8 @@ public class LoginActivity extends AppCompatActivity {
             // 保存邮箱登录信息到 TokenManager（包括 displayName 和 username）
             String responseUsername = response.getUsername();
             String responseDisplayName = response.getDisplayName();
-            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
-                    .getTokenManager().saveEmailLoginInfo(email, responseUsername, responseDisplayName);
+            authSessionManager.saveEmailLoginInfo(email, responseUsername, responseDisplayName);
             android.util.Log.d(TAG, "用户信息已保存 - email: " + email + ", username: " + responseUsername + ", displayName: " + responseDisplayName);
-
-            // 保存当前用户邮箱到 AccountManager（通过 BackendService）
-            com.ttt.safevault.model.BackendService backendService =
-                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
             // 检查用户是否已初始化（老用户使用 unlock，新用户使用 initialize）
             boolean isInitialized = backendService.isInitialized();
@@ -389,8 +385,7 @@ public class LoginActivity extends AppCompatActivity {
 
             // 保存会话密码到 AccountManager（通过 BackendServiceImpl）
             // 注意：SafeVault 3.4.0 不再保存密码到生物识别存储
-            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService()
-                    .setSessionMasterPassword(password);
+            backendService.setSessionMasterPassword(password);
             android.util.Log.d(TAG, "会话密码已保存到 AccountManager（仅内存）");
 
             // 老设备登录，执行云端数据同步
@@ -421,22 +416,7 @@ public class LoginActivity extends AppCompatActivity {
             @Override
             protected com.ttt.safevault.dto.DeviceRecoveryResult doInBackground(Void... voids) {
                 try {
-                    com.ttt.safevault.model.BackendService backendService =
-                            com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
-                    // SafeVault 3.4.0：通过反射获取 BackendServiceImpl 的 AccountManager
-                    try {
-                        java.lang.reflect.Field accountManagerField =
-                            backendService.getClass().getDeclaredField("accountManager");
-                        accountManagerField.setAccessible(true);
-                        com.ttt.safevault.service.manager.AccountManager accountManager =
-                            (com.ttt.safevault.service.manager.AccountManager) accountManagerField.get(backendService);
-
-                        return accountManager.recoverDeviceData(email, masterPassword);
-                    } catch (Exception reflectEx) {
-                        android.util.Log.e(TAG, "反射获取 AccountManager 失败", reflectEx);
-                        return com.ttt.safevault.dto.DeviceRecoveryResult.failure("内部错误", null);
-                    }
+                    return backendService.recoverDeviceData(email, masterPassword);
                 } catch (Exception e) {
                     android.util.Log.e(TAG, "设备数据恢复失败", e);
                     return com.ttt.safevault.dto.DeviceRecoveryResult.failure(e.getMessage(), null);
@@ -448,8 +428,7 @@ public class LoginActivity extends AppCompatActivity {
                 if (result.isSuccess()) {
                     android.util.Log.d(TAG, "设备数据恢复成功");
                     // 保存会话密码到内存（通过 BackendService）
-                    com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService()
-                            .setSessionMasterPassword(masterPassword);
+                    backendService.setSessionMasterPassword(masterPassword);
                     // 恢复成功后，继续执行数据同步
                     handleCloudDataSync();
                     // 导航到主页
@@ -476,8 +455,7 @@ public class LoginActivity extends AppCompatActivity {
         try {
             com.ttt.safevault.service.manager.EncryptionSyncManager syncManager =
                     new com.ttt.safevault.service.manager.EncryptionSyncManager(
-                            this,
-                            com.ttt.safevault.network.RetrofitClient.getInstance(this)
+                            this
                     );
 
             com.ttt.safevault.service.manager.EncryptionSyncManager.SyncResult syncResult =
@@ -550,27 +528,16 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void onKeyAccessGranted() {
-                // Keystore 授权成功，需要恢复 DataKey 到 SessionGuard
+                // Keystore 授权成功，通过 service 边界恢复 DataKey 并解锁会话
                 runOnUiThread(() -> {
                     try {
-                        // 1. 使用生物识别恢复 DataKey
-                        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(
-                                        getApplicationContext());
-                        javax.crypto.SecretKey dataKey = secureStorage.unlockDataKeyWithBiometric();
-
-                        if (dataKey == null) {
+                        boolean unlocked = backendService.unlockSessionWithBiometric();
+                        if (!unlocked) {
                             showError("生物识别解锁失败：无法恢复加密密钥");
-                            android.util.Log.e(TAG, "unlockDataKeyWithBiometric() 返回 null");
+                            android.util.Log.e(TAG, "unlockSessionWithBiometric() failed");
                             return;
                         }
 
-                        // 2. 缓存 DataKey 到 SessionGuard（解锁会话）
-                        com.ttt.safevault.security.SessionGuard.getInstance()
-                                .unlockWithDataKey(dataKey);
-                        android.util.Log.i(TAG, "SessionGuard 已通过生物识别解锁");
-
-                        // 3. 导航到主界面
                         hideError();
                         navigateToMain();
 
@@ -696,26 +663,10 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        boolean biometricSupported = BiometricAuthHelper.isBiometricSupported(this);
-        com.ttt.safevault.security.SecurityConfig securityConfig =
-                new com.ttt.safevault.security.SecurityConfig(this);
-        com.ttt.safevault.model.BackendService backendService =
-                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-        com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-
-        boolean userEnabled = securityConfig.isBiometricEnabled();
-        boolean hasCredentials = backendService.isInitialized();
-        boolean isMigrated = secureStorage.isMigrated();
-
-        boolean shouldShow = biometricSupported && userEnabled && hasCredentials && isMigrated;
+        boolean shouldShow = backendService.shouldShowBiometricLogin();
         biometricButton.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
 
-        android.util.Log.d(TAG, "updateBiometricButtonVisibility: " + shouldShow +
-                " (deviceSupported=" + biometricSupported +
-                ", userEnabled=" + userEnabled +
-                ", hasCredentials=" + hasCredentials +
-                ", isMigrated=" + isMigrated + ")");
+        android.util.Log.d(TAG, "updateBiometricButtonVisibility: " + shouldShow);
     }
 
     @Override

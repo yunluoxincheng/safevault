@@ -114,6 +114,10 @@ public class EncryptionSyncManager {
     private final android.content.SharedPreferences prefs;
     private final ExecutorService databaseExecutor;  // 用于数据库操作的线程池
 
+    public EncryptionSyncManager(@NonNull Context context) {
+        this(context, RetrofitClient.getInstance(context.getApplicationContext()));
+    }
+
     public EncryptionSyncManager(@NonNull Context context, @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();
         this.retrofitClient = retrofitClient;

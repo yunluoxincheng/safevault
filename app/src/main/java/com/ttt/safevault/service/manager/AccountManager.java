@@ -50,6 +50,13 @@ public class AccountManager {
 
     public AccountManager(@NonNull Context context,
                          @NonNull PasswordManager passwordManager,
+                         @NonNull SecurityConfig securityConfig) {
+        this(context, passwordManager, securityConfig,
+            RetrofitClient.getInstance(context.getApplicationContext()));
+    }
+
+    public AccountManager(@NonNull Context context,
+                         @NonNull PasswordManager passwordManager,
                          @NonNull SecurityConfig securityConfig,
                          @NonNull RetrofitClient retrofitClient) {
         this.context = context.getApplicationContext();

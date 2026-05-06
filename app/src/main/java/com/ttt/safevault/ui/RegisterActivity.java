@@ -22,6 +22,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordStrength;
+import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
@@ -60,6 +61,8 @@ public class RegisterActivity extends AppCompatActivity {
 
     // ViewModel
     private AuthViewModel authViewModel;
+    private AuthSessionManager authSessionManager;
+    private BackendService backendService;
 
     // 状态标志
     private boolean isStepOne = true; // 是否为第一步（邮箱验证）
@@ -90,11 +93,11 @@ public class RegisterActivity extends AppCompatActivity {
         } else {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         }
+        authSessionManager = new AuthSessionManager(this);
+        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         // 清除之前的验证状态（用户点击"注册"意味着开始新的注册流程）
-        com.ttt.safevault.network.TokenManager tokenManager =
-            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
-        tokenManager.clearEmailVerificationStatus();
+        authSessionManager.clearEmailVerificationStatus();
 
         // 初始化ViewModel
         ViewModelProvider.Factory factory = new ViewModelFactory(getApplication());
@@ -222,9 +225,7 @@ public class RegisterActivity extends AppCompatActivity {
         // 返回登录
         backToLoginText.setOnClickListener(v -> {
             // 清除验证状态（用户取消注册流程）
-            com.ttt.safevault.network.TokenManager tokenManager =
-                com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
-            tokenManager.clearEmailVerificationStatus();
+            authSessionManager.clearEmailVerificationStatus();
             finish();
         });
 
@@ -521,9 +522,7 @@ public class RegisterActivity extends AppCompatActivity {
         }
 
         // 先检查本地保险库是否已存在
-        BackendService backendService =
-                com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
+        BackendService backendService = this.backendService;
         if (backendService.isInitialized()) {
             // 本地保险库已存在，显示对话框让用户选择
             showVaultExistsDialog(password);
@@ -545,8 +544,6 @@ public class RegisterActivity extends AppCompatActivity {
                     "选择\"取消\"将返回，您可以使用现有账户登录。")
             .setPositiveButton("重置并继续", (dialog, which) -> {
                 // 重置本地保险库
-                BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
                 boolean reset = backendService.resetLocalVault();
                 if (reset) {
                     // 重置成功，继续注册
@@ -579,9 +576,6 @@ public class RegisterActivity extends AppCompatActivity {
         new android.os.Handler().post(() -> {
             try {
                 // 调用后端服务完成注册
-                BackendService backendService =
-                        com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
                 com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
                         backendService.completeRegistration(registeredEmail, registeredUsername, password);
 
@@ -595,12 +589,10 @@ public class RegisterActivity extends AppCompatActivity {
                     }
 
                     // 保存邮箱到 TokenManager
-                    com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
-                            .getTokenManager().saveLastLoginEmail(registeredEmail);
+                    authSessionManager.saveLastLoginEmail(registeredEmail);
 
                     // 清除验证状态
-                    com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext())
-                            .getTokenManager().clearEmailVerificationStatus();
+                    authSessionManager.clearEmailVerificationStatus();
 
                     showMessage("注册成功！正在前往登录界面...");
 
@@ -750,9 +742,7 @@ public class RegisterActivity extends AppCompatActivity {
 
         // 第一步：停止轮询并清除验证状态
         stopVerificationPolling();
-        com.ttt.safevault.network.TokenManager tokenManager =
-            com.ttt.safevault.network.RetrofitClient.getInstance(getApplicationContext()).getTokenManager();
-        tokenManager.clearEmailVerificationStatus();
+        authSessionManager.clearEmailVerificationStatus();
 
         super.onBackPressed();
     }

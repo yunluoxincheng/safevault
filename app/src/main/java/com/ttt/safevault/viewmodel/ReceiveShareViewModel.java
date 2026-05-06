@@ -210,6 +210,37 @@ public class ReceiveShareViewModel extends AndroidViewModel {
     }
 
     /**
+     * 保存离线解密后的密码到本地库
+     */
+    public void savePasswordItemLocally(@NonNull PasswordItem passwordItem) {
+        _isLoading.setValue(true);
+        _errorMessage.setValue(null);
+        _saveSuccess.setValue(false);
+
+        executor.execute(() -> {
+            try {
+                int newId = backendService.addPassword(
+                        passwordItem.getTitle(),
+                        passwordItem.getUsername(),
+                        passwordItem.getPassword(),
+                        passwordItem.getUrl(),
+                        passwordItem.getNotes()
+                );
+                if (newId > 0) {
+                    _savedPasswordId.postValue(newId);
+                    _saveSuccess.postValue(true);
+                } else {
+                    _errorMessage.postValue("保存失败");
+                }
+            } catch (Exception e) {
+                _errorMessage.postValue("保存失败: " + e.getMessage());
+            } finally {
+                _isLoading.postValue(false);
+            }
+        });
+    }
+
+    /**
      * 检查分享是否有效
      */
     public boolean isShareValid() {

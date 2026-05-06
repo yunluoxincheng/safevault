@@ -16,10 +16,8 @@ import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ContactAdapter;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.service.ContactSyncManager;
+import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.service.manager.ContactManager;
-import com.ttt.safevault.network.TokenManager;
-import com.ttt.safevault.network.RetrofitClient;
-import com.ttt.safevault.network.api.FriendServiceApi;
 
 import java.util.List;
 
@@ -44,8 +42,7 @@ public class ContactListActivity extends AppCompatActivity {
     private ContactAdapter adapter;
     private ContactManager contactManager;
     private ContactSyncManager contactSyncManager;
-    private TokenManager tokenManager;
-    private FriendServiceApi friendServiceApi;
+    private AuthSessionManager authSessionManager;
     private CompositeDisposable disposables = new CompositeDisposable();
     private com.google.android.material.badge.BadgeDrawable friendRequestBadge;
 
@@ -56,8 +53,7 @@ public class ContactListActivity extends AppCompatActivity {
 
         contactManager = new ContactManager(this);
         contactSyncManager = new ContactSyncManager(this);
-        tokenManager = new TokenManager(this);
-        friendServiceApi = RetrofitClient.getInstance(this).getFriendServiceApi();
+        authSessionManager = new AuthSessionManager(this);
 
         initViews();
     }
@@ -195,9 +191,7 @@ public class ContactListActivity extends AppCompatActivity {
                     contact.myNote = newNote.isEmpty() ? null : newNote;
                     // 更新联系人备注
                     new Thread(() -> {
-                        com.ttt.safevault.data.AppDatabase.getInstance(this)
-                                .contactDao()
-                                .updateContact(contact);
+                        contactManager.updateContact(contact);
                         runOnUiThread(this::loadContacts);
                     }).start();
                 })
@@ -225,13 +219,18 @@ public class ContactListActivity extends AppCompatActivity {
      */
     private void deleteContactAndFriend(Contact contact) {
         // 如果是云端好友，先调用云端 API 删除
-        if (contact.cloudUserId != null && !contact.cloudUserId.isEmpty() && friendServiceApi != null) {
+        if (contact.cloudUserId != null && !contact.cloudUserId.isEmpty()) {
             disposables.add(
-                friendServiceApi.deleteFriend(contact.cloudUserId)
+                io.reactivex.rxjava3.core.Observable
+                    .fromCallable(() -> contactManager.deleteCloudFriend(contact.cloudUserId))
                     .subscribeOn(Schedulers.io())
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribe(
-                        response -> {
+                        cloudDeleted -> {
+                            if (!cloudDeleted) {
+                                showDeleteErrorDialog("删除失败: 云端删除未成功");
+                                return;
+                            }
                             // 云端删除成功后，删除本地数据
                             boolean success = contactManager.deleteContact(contact.contactId);
                             if (success) {
@@ -315,10 +314,7 @@ public class ContactListActivity extends AppCompatActivity {
     }
 
     private void checkLoginAndNavigateToSearch() {
-        com.ttt.safevault.network.TokenManager tokenManager =
-            new com.ttt.safevault.network.TokenManager(this);
-
-        if (!tokenManager.isLoggedIn()) {
+        if (!authSessionManager.isLoggedIn()) {
             new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("需要登录")
                 .setMessage("搜索添加好友需要先登录云端账号")
@@ -338,9 +334,7 @@ public class ContactListActivity extends AppCompatActivity {
 
     private void updateFriendRequestBadge() {
         new Thread(() -> {
-            int count = com.ttt.safevault.data.AppDatabase.getInstance(this)
-                .friendRequestDao()
-                .getPendingCount();
+            int count = contactManager.getPendingFriendRequestCount();
 
             runOnUiThread(() -> {
                 if (friendRequestBadge == null) return;
@@ -374,9 +368,9 @@ public class ContactListActivity extends AppCompatActivity {
     private void syncAndLoadContacts() {
         swipeRefreshLayout.setRefreshing(true);
         Log.d(TAG, "syncAndLoadContacts: Starting contact sync process");
-        Log.d(TAG, "syncAndLoadContacts: Is logged in? " + tokenManager.isLoggedIn());
+        Log.d(TAG, "syncAndLoadContacts: Is logged in? " + authSessionManager.isLoggedIn());
 
-        if (tokenManager.isLoggedIn()) {
+        if (authSessionManager.isLoggedIn()) {
             // 已登录：先同步云端好友，再加载本地列表
             Log.d(TAG, "User logged in, syncing cloud contacts...");
             disposables.add(

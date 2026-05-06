@@ -20,6 +20,7 @@ import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.databinding.ActivityReceiveShareBinding;
 import com.ttt.safevault.dto.response.ReceivedShareResponse;
 import com.ttt.safevault.model.EncryptedSharePacket;
+import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordShare;
 import com.ttt.safevault.model.ShareDataPacket;
@@ -55,6 +56,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
 
     // 加密管理器
     private ShareEncryptionManager encryptionManager;
+    private BackendService backendService;
 
     // 分享数据
     private String shareId;
@@ -87,6 +89,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
 
         // 初始化加密管理器
         encryptionManager = new ShareEncryptionManager();
+        backendService = ServiceLocator.getInstance().getBackendService();
 
         // 获取分享数据，支持多种方式：
         // 1. 通过Intent Extra传递：getStringExtra(EXTRA_SHARE_DATA) 或 EXTRA_QR_CONTENT
@@ -245,12 +248,9 @@ public class ReceiveShareActivity extends AppCompatActivity {
             }
 
             // 获取自己的密钥对（接收方）- SafeVault 3.4.0：使用 SecureKeyStorageManager
-            com.ttt.safevault.security.SecureKeyStorageManager secureStorage =
-                com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-            com.ttt.safevault.security.SessionGuard sessionGuard =
-                com.ttt.safevault.security.SessionGuard.getInstance();
+            KeyPair receiverKeyPair = backendService.getSessionRsaKeyPair();
 
-            if (!sessionGuard.isUnlocked()) {
+            if (receiverKeyPair == null) {
                 runOnUiThread(() -> {
                     binding.progressBar.setVisibility(View.GONE);
                     binding.scrollView.setVisibility(View.VISIBLE);
@@ -259,11 +259,8 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 return;
             }
 
-            javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
-            java.security.PrivateKey privateKey = secureStorage.decryptRsaPrivateKey(dataKey);
-            java.security.PublicKey publicKey = secureStorage.getRsaPublicKey();
 
-            if (privateKey == null || publicKey == null) {
+            if (false) {
                 runOnUiThread(() -> {
                     binding.progressBar.setVisibility(View.GONE);
                     binding.scrollView.setVisibility(View.VISIBLE);
@@ -272,7 +269,7 @@ public class ReceiveShareActivity extends AppCompatActivity {
                 return;
             }
 
-            KeyPair receiverKeyPair = new java.security.KeyPair(publicKey, privateKey);
+            // receiverKeyPair already resolved from BackendService session boundary.
 
             // 从解密后的数据中获取发送方公钥
             // 由于新版本使用混合加密，我们需要使用 openEncryptedPacket() 方法

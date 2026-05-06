@@ -172,6 +172,10 @@ public class CloudAuthManager {
     /**
      * 完成注册
      */
+    public void clearLocalCloudTokens() {
+        tokenManager.clearTokens();
+    }
+
     public com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
             String email, String username, String masterPassword) {
         try {

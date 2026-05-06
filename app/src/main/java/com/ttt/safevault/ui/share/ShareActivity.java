@@ -2,13 +2,10 @@ package com.ttt.safevault.ui.share;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Base64;
-import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,14 +19,10 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.ttt.safevault.R;
 import com.ttt.safevault.core.ServiceLocator;
-import com.ttt.safevault.crypto.ShareEncryptionManager;
 import com.ttt.safevault.data.Contact;
-import com.ttt.safevault.dto.request.CreateShareRequest;
 import com.ttt.safevault.dto.response.ShareResponse;
 import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.model.EncryptedSharePacket;
 import com.ttt.safevault.model.PasswordItem;
-import com.ttt.safevault.model.ShareDataPacket;
 import com.ttt.safevault.model.SharePermission;
 import com.ttt.safevault.security.BiometricAuthHelper;
 import com.ttt.safevault.security.SafetyNumberManager;
@@ -39,15 +32,12 @@ import com.ttt.safevault.service.manager.ShareRecordManager;
 import com.ttt.safevault.viewmodel.ShareViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
-import java.security.KeyPair;
-import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 密码分享界面
- * 使用端到端加密将密码分享给联系人（云端分享）
+ * 密码分享页面（云端分享）。
  */
 public class ShareActivity extends AppCompatActivity {
     private static final String TAG = "ShareActivity";
@@ -55,28 +45,25 @@ public class ShareActivity extends AppCompatActivity {
     public static final String EXTRA_PASSWORD_ID = "password_id";
     public static final String EXTRA_CONTACT_ID = "contact_id";
 
-    // 使用 ActivityResultLauncher 替代 startActivityForResult
     private final ActivityResultLauncher<Intent> contactListLauncher =
-        registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-            if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                String selectedContactId = result.getData().getStringExtra(ContactListActivity.EXTRA_CONTACT_ID);
-                if (selectedContactId != null) {
-                    loadContact(selectedContactId);
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    String selectedContactId = result.getData().getStringExtra(ContactListActivity.EXTRA_CONTACT_ID);
+                    if (selectedContactId != null) {
+                        loadContact(selectedContactId);
+                    }
                 }
-            }
-        });
+            });
 
     private ShareViewModel viewModel;
     private BackendService backendService;
     private BiometricAuthHelper biometricAuthHelper;
     private ContactManager contactManager;
-    private ShareEncryptionManager encryptionManager;
     private ShareRecordManager recordManager;
     private SafetyNumberManager safetyNumberManager;
 
     private TextView textContactName;
     private TextView textUsername;
-    private RadioGroup groupExpireTime;
     private RadioButton radio1Hour;
     private RadioButton radio1Day;
     private RadioButton radio7Days;
@@ -92,6 +79,10 @@ public class ShareActivity extends AppCompatActivity {
     private Contact selectedContact;
     private PasswordItem passwordToShare;
 
+    private ShareResponse latestShareResponse;
+    private long pendingShareExpireAt;
+    private SharePermission pendingSharePermission;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -102,10 +93,8 @@ public class ShareActivity extends AppCompatActivity {
             getSupportActionBar().setTitle("分享密码");
         }
 
-        // 获取传入的密码ID和联系人ID
         passwordId = getIntent().getIntExtra(EXTRA_PASSWORD_ID, -1);
         contactId = getIntent().getStringExtra(EXTRA_CONTACT_ID);
-
         if (passwordId == -1) {
             Toast.makeText(this, "无效的密码ID", Toast.LENGTH_SHORT).show();
             finish();
@@ -127,7 +116,6 @@ public class ShareActivity extends AppCompatActivity {
         ViewModelFactory factory = new ViewModelFactory(getApplication(), backendService);
         viewModel = new ViewModelProvider(this, factory).get(ShareViewModel.class);
         contactManager = new ContactManager(this);
-        encryptionManager = new ShareEncryptionManager();
         recordManager = new ShareRecordManager(this);
         safetyNumberManager = SafetyNumberManager.getInstance(this);
     }
@@ -135,7 +123,6 @@ public class ShareActivity extends AppCompatActivity {
     private void initViews() {
         textContactName = findViewById(R.id.textContactName);
         textUsername = findViewById(R.id.textUsername);
-        groupExpireTime = findViewById(R.id.groupExpireTime);
         radio1Hour = findViewById(R.id.radio1Hour);
         radio1Day = findViewById(R.id.radio1Day);
         radio7Days = findViewById(R.id.radio7Days);
@@ -146,7 +133,6 @@ public class ShareActivity extends AppCompatActivity {
         btnShare = findViewById(R.id.btnShare);
         btnSelectContact = findViewById(R.id.btnSelectContact);
 
-        // 默认选中7天
         if (radio7Days != null) {
             radio7Days.setChecked(true);
         }
@@ -154,25 +140,22 @@ public class ShareActivity extends AppCompatActivity {
         if (btnShare != null) {
             btnShare.setOnClickListener(v -> authenticateAndShare());
         }
-
         if (btnSelectContact != null) {
             btnSelectContact.setOnClickListener(v -> {
-                // 跳转到联系人列表
                 Intent intent = new Intent(this, ContactListActivity.class);
                 contactListLauncher.launch(intent);
             });
         }
 
-        // 观察分享结果
         observeShareResult();
     }
 
-    /**
-     * 观察云端分享结果
-     */
     private void observeShareResult() {
+        viewModel.getCloudShareResponse().observe(this, response -> latestShareResponse = response);
+
         viewModel.getShareSuccess().observe(this, success -> {
             if (success) {
+                saveShareRecordAfterCloudSuccess();
                 hideLoading();
                 Toast.makeText(this, "分享成功", Toast.LENGTH_SHORT).show();
                 finish();
@@ -186,33 +169,6 @@ public class ShareActivity extends AppCompatActivity {
                 viewModel.clearError();
             }
         });
-    }
-
-    /**
-     * 显示加载状态
-     */
-    private void showLoading(String message) {
-        if (cardProgress != null) {
-            cardProgress.setVisibility(View.VISIBLE);
-        }
-        if (textStatus != null) {
-            textStatus.setText(message);
-        }
-        if (btnShare != null) {
-            btnShare.setEnabled(false);
-        }
-    }
-
-    /**
-     * 隐藏加载状态
-     */
-    private void hideLoading() {
-        if (cardProgress != null) {
-            cardProgress.setVisibility(View.GONE);
-        }
-        if (btnShare != null) {
-            btnShare.setEnabled(true);
-        }
     }
 
     private void loadPassword() {
@@ -230,18 +186,19 @@ public class ShareActivity extends AppCompatActivity {
         });
     }
 
-    private void loadContact(String contactId) {
-        // 在后台线程查询联系人数据，避免主线程访问数据库异常
+    private void loadContact(String selectedContactId) {
         new Thread(() -> {
             List<Contact> contacts = contactManager.getAllContacts();
             for (Contact contact : contacts) {
-                if (contact.contactId.equals(contactId)) {
+                if (selectedContactId.equals(contact.contactId)) {
                     selectedContact = contact;
                     runOnUiThread(() -> {
                         if (textContactName != null) {
-                            textContactName.setText(contact.displayName != null && !contact.displayName.isEmpty()
-                                ? contact.displayName
-                                : contact.username);
+                            textContactName.setText(
+                                    contact.displayName != null && !contact.displayName.isEmpty()
+                                            ? contact.displayName
+                                            : contact.username
+                            );
                         }
                     });
                     break;
@@ -250,24 +207,18 @@ public class ShareActivity extends AppCompatActivity {
         }).start();
     }
 
-    /**
-     * 验证用户身份后执行分享
-     */
     private void authenticateAndShare() {
         if (selectedContact == null) {
             Toast.makeText(this, "请先选择联系人", Toast.LENGTH_SHORT).show();
             return;
         }
-
         if (passwordToShare == null) {
             Toast.makeText(this, "密码数据未加载", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 检查是否可以使用生物识别
         boolean canUseBiometric = BiometricAuthHelper.isBiometricSupported(this)
                 && BiometricAuthManager.getInstance(this).canUseBiometric();
-
         if (canUseBiometric) {
             showBiometricAuthAndShare();
         } else {
@@ -275,9 +226,6 @@ public class ShareActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 使用生物识别验证
-     */
     private void showBiometricAuthAndShare() {
         biometricAuthHelper.authenticate(new BiometricAuthHelper.BiometricAuthCallback() {
             @Override
@@ -288,87 +236,48 @@ public class ShareActivity extends AppCompatActivity {
             @Override
             public void onFailure(String error) {
                 runOnUiThread(() -> {
-                    Toast.makeText(ShareActivity.this,
-                        "生物识别验证失败: " + error, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ShareActivity.this, "生物识别失败: " + error, Toast.LENGTH_SHORT).show();
                     showPasswordAuthAndShare();
                 });
             }
 
             @Override
             public void onCancel() {
-                runOnUiThread(() ->
-                    Toast.makeText(ShareActivity.this, "已取消分享", Toast.LENGTH_SHORT).show()
-                );
+                runOnUiThread(() -> Toast.makeText(ShareActivity.this, "已取消分享", Toast.LENGTH_SHORT).show());
             }
         });
     }
 
-    /**
-     * 使用主密码验证
-     */
     private void showPasswordAuthAndShare() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
-        com.google.android.material.textfield.TextInputLayout passwordLayout =
-            dialogView.findViewById(R.id.passwordLayout);
         com.google.android.material.textfield.TextInputEditText passwordInput =
-            dialogView.findViewById(R.id.passwordInput);
-
-        if (passwordInput != null) {
-            passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        }
-        if (passwordLayout != null) {
-            passwordLayout.setEndIconDrawable(getDrawable(R.drawable.ic_visibility));
-
-            passwordLayout.setEndIconOnClickListener(v -> {
-                if (passwordInput == null) return;
-
-                int selection = passwordInput.getSelectionEnd();
-                int currentInputType = passwordInput.getInputType();
-                int variation = currentInputType & android.text.InputType.TYPE_MASK_VARIATION;
-
-                if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) {
-                    passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                        | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-                    passwordLayout.setEndIconDrawable(getDrawable(R.drawable.ic_visibility_off));
-                } else {
-                    passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                        | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-                    passwordLayout.setEndIconDrawable(getDrawable(R.drawable.ic_visibility));
-                }
-                if (selection >= 0) {
-                    passwordInput.setSelection(selection);
-                }
-            });
-        }
+                dialogView.findViewById(R.id.passwordInput);
 
         new MaterialAlertDialogBuilder(this)
-            .setTitle("验证身份")
-            .setMessage("请输入主密码以验证身份")
-            .setView(dialogView)
-            .setPositiveButton("确认", (dialog, which) -> {
-                if (passwordInput == null) return;
-
-                String password = passwordInput.getText().toString();
-                if (password.isEmpty()) {
-                    Toast.makeText(this, "请输入密码", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                new Thread(() -> {
-                    boolean verified = backendService.unlock(password);
-                    runOnUiThread(() -> {
-                        if (verified) {
-                            generateShare();
-                        } else {
-                            Toast.makeText(this, "密码错误", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }).start();
-            })
-            .setNegativeButton("取消", null)
-            .setCancelable(false)
-            .show();
+                .setTitle("验证身份")
+                .setMessage("请输入主密码以验证身份")
+                .setView(dialogView)
+                .setPositiveButton("确认", (dialog, which) -> {
+                    if (passwordInput == null) return;
+                    String password = passwordInput.getText() != null ? passwordInput.getText().toString() : "";
+                    if (password.isEmpty()) {
+                        Toast.makeText(this, "请输入密码", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    new Thread(() -> {
+                        boolean verified = backendService.unlock(password);
+                        runOnUiThread(() -> {
+                            if (verified) {
+                                generateShare();
+                            } else {
+                                Toast.makeText(this, "密码错误", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
+                })
+                .setNegativeButton("取消", null)
+                .setCancelable(false)
+                .show();
     }
 
     private void generateShare() {
@@ -376,300 +285,177 @@ public class ShareActivity extends AppCompatActivity {
             Toast.makeText(this, "请先选择联系人", Toast.LENGTH_SHORT).show();
             return;
         }
-
         if (passwordToShare == null) {
             Toast.makeText(this, "密码数据未加载", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 检查是否已登录云端
         if (!viewModel.isCloudLoggedIn()) {
             Toast.makeText(this, "请先登录云端服务", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        // 检查联系人是否有云端用户ID
         if (selectedContact.cloudUserId == null || selectedContact.cloudUserId.isEmpty()) {
-            Toast.makeText(this, "该联系人未绑定云端账号，无法进行云端分享", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "该联系人未绑定云端账号，无法云端分享", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // 获取主密码和用户邮箱
-        String masterPassword = getMasterPassword();
-        String userEmail = getUserEmail();
-
-        if (masterPassword == null) {
-            Toast.makeText(this, "请先解锁应用", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (userEmail == null) {
-            Toast.makeText(this, "无法获取用户信息", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // 安全码验证检查
-        checkSafetyNumberAndProceed(() -> doGenerateShare(masterPassword, userEmail));
+        checkSafetyNumberAndProceed(this::requestCloudShare);
     }
 
-    /**
-     * 检查安全码验证状态，并在必要时显示验证对话框
-     */
-    private void checkSafetyNumberAndProceed(Runnable onProceed) {
+    private void checkSafetyNumberAndProceed(@NonNull Runnable onProceed) {
         new Thread(() -> {
             try {
-                // 获取接收方公钥
                 PublicKey receiverPublicKey = parsePublicKey(selectedContact.publicKey);
-
-                // 获取发送方密钥对
-                com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-                com.ttt.safevault.security.SessionGuard sessionGuard =
-                    com.ttt.safevault.security.SessionGuard.getInstance();
-
-                if (!sessionGuard.isUnlocked()) {
-                    runOnUiThread(() -> Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show());
+                java.security.KeyPair senderKeyPair = backendService.getSessionRsaKeyPair();
+                if (senderKeyPair == null || senderKeyPair.getPublic() == null) {
+                    runOnUiThread(() -> Toast.makeText(this, "会话未解锁", Toast.LENGTH_SHORT).show());
                     return;
                 }
+                PublicKey senderPublicKey = senderKeyPair.getPublic();
 
-                javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
-                java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
-                java.security.PublicKey senderPublicKey = secureKeyStorage.getRsaPublicKey();
-
-                if (privateKey == null || senderPublicKey == null) {
-                    runOnUiThread(() -> Toast.makeText(this, "无法获取密钥对", Toast.LENGTH_SHORT).show());
-                    return;
-                }
-
-                // 检查验证状态
                 boolean isVerified = safetyNumberManager.isVerified(selectedContact.username, receiverPublicKey);
                 boolean publicKeyChanged = safetyNumberManager.hasPublicKeyChanged(selectedContact.username, receiverPublicKey);
 
                 runOnUiThread(() -> {
-                    // 如果公钥已变化或未验证，显示验证对话框
                     if (publicKeyChanged || !isVerified) {
                         SafetyNumberVerificationDialog.show(
-                            this,
-                            selectedContact,
-                            receiverPublicKey,
-                            senderPublicKey,
-                            new SafetyNumberVerificationDialog.Callback() {
-                                @Override
-                                public void onVerified() {
-                                    onProceed.run();
-                                }
+                                this,
+                                selectedContact,
+                                receiverPublicKey,
+                                senderPublicKey,
+                                new SafetyNumberVerificationDialog.Callback() {
+                                    @Override
+                                    public void onVerified() {
+                                        onProceed.run();
+                                    }
 
-                                @Override
-                                public void onNotMatch() {
-                                    Toast.makeText(ShareActivity.this,
-                                        "安全码不匹配，分享已取消。请通过其他渠道联系对方确认。",
-                                        Toast.LENGTH_LONG).show();
-                                }
+                                    @Override
+                                    public void onNotMatch() {
+                                        Toast.makeText(
+                                                ShareActivity.this,
+                                                "安全码不匹配，分享已取消。请通过其他渠道确认。",
+                                                Toast.LENGTH_LONG
+                                        ).show();
+                                    }
 
-                                @Override
-                                public void onSkip() {
-                                    // 允许跳过，但继续分享
-                                    onProceed.run();
+                                    @Override
+                                    public void onSkip() {
+                                        onProceed.run();
+                                    }
                                 }
-                            }
                         );
                     } else {
-                        // 已验证且公钥未变化，直接继续
                         onProceed.run();
                     }
                 });
-
             } catch (Exception e) {
-                Log.e(TAG, "检查安全码验证状态失败", e);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "验证检查失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                    // 即使验证检查失败，也允许继续分享
+                    Toast.makeText(this, "安全码校验失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     onProceed.run();
                 });
             }
         }).start();
     }
 
-    /**
-     * 执行实际的分享操作
-     */
-    private void doGenerateShare(String masterPassword, String userEmail) {
-        showLoading("正在加密并创建云端分享...");
+    private void requestCloudShare() {
+        if (selectedContact == null) {
+            return;
+        }
+        pendingSharePermission = new SharePermission(true, true, true);
+        pendingShareExpireAt = getExpireTime();
+        latestShareResponse = null;
 
-        // 在后台线程执行加密和云端分享
-        new Thread(() -> {
-            try {
-                // SafeVault 3.4.0：使用 SecureKeyStorageManager 替代 KeyDerivationManager
-                com.ttt.safevault.security.SecureKeyStorageManager secureKeyStorage =
-                    com.ttt.safevault.security.SecureKeyStorageManager.getInstance(this);
-                com.ttt.safevault.security.SessionGuard sessionGuard =
-                    com.ttt.safevault.security.SessionGuard.getInstance();
-
-                if (!sessionGuard.isUnlocked()) {
-                    runOnUiThread(() -> {
-                        hideLoading();
-                        Toast.makeText(this, "会话未锁定", Toast.LENGTH_SHORT).show();
-                    });
-                    return;
-                }
-
-                // 1. 获取接收方公钥
-                String receiverPublicKeyBase64 = selectedContact.publicKey;
-                PublicKey receiverPublicKey = parsePublicKey(receiverPublicKeyBase64);
-
-                // 2. 获取发送方密钥对（从 SecureKeyStorageManager）
-                javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
-                java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
-                java.security.PublicKey publicKey = secureKeyStorage.getRsaPublicKey();
-
-                if (privateKey == null || publicKey == null) {
-                    runOnUiThread(() -> {
-                        hideLoading();
-                        Toast.makeText(this, "无法获取密钥对", Toast.LENGTH_SHORT).show();
-                    });
-                    return;
-                }
-
-                // 创建临时 KeyPair 对象
-                java.security.KeyPair senderKeyPair = new java.security.KeyPair(publicKey, privateKey);
-
-                // 3. 创建分享数据包
-                ShareDataPacket dataPacket = new ShareDataPacket();
-                dataPacket.version = "1.0";
-                dataPacket.senderId = generateUserId(userEmail); // 使用本地方法
-                dataPacket.senderPublicKey = Base64.encodeToString(
-                    senderKeyPair.getPublic().getEncoded(),
-                    Base64.NO_WRAP
-                );
-                dataPacket.createdAt = System.currentTimeMillis();
-                dataPacket.expireAt = getExpireTime();
-                dataPacket.permission = new SharePermission(true, true, true);
-                dataPacket.password = passwordToShare;
-
-                // 4. 创建加密包
-                EncryptedSharePacket encryptedPacket = encryptionManager.createEncryptedPacket(
-                    dataPacket,
-                    receiverPublicKey,
-                    senderKeyPair.getPrivate()
-                );
-
-                if (encryptedPacket == null) {
-                    runOnUiThread(() -> {
-                        hideLoading();
-                        Toast.makeText(this, "加密失败", Toast.LENGTH_SHORT).show();
-                    });
-                    return;
-                }
-
-                // 5. 创建云端分享请求
-                CreateShareRequest request = new CreateShareRequest();
-                request.setPasswordId(String.valueOf(passwordId));
-                request.setToUserId(selectedContact.cloudUserId);
-                request.setEncryptedPassword(encryptedPacket.getEncryptedData());
-                request.setTitle(passwordToShare.getTitle());
-                request.setUsername(passwordToShare.getUsername());
-                request.setUrl(passwordToShare.getUrl());
-                request.setNotes(passwordToShare.getNotes());
-                request.setExpireInMinutes(getExpireMinutes());
-                request.setPermission(dataPacket.permission);
-
-                // 6. 调用云端API创建分享（必须在主线程调用ViewModel）
-                int expireMinutes = getExpireMinutes();
-                runOnUiThread(() -> {
-                    viewModel.createCloudShare(
-                        passwordId,
-                        selectedContact.cloudUserId,
-                        expireMinutes,
-                        dataPacket.permission
-                    );
-                });
-
-                // 7. 保存本地分享记录
-                recordManager.createShareRecord(
-                    passwordId,
-                    "sent",
-                    selectedContact.contactId,
-                    encryptedPacket.getEncryptedData(),
-                    dataPacket.permission,
-                    dataPacket.expireAt
-                );
-
-            } catch (Exception e) {
-                Log.e(TAG, "创建云端分享失败", e);
-                runOnUiThread(() -> {
-                    hideLoading();
-                    Toast.makeText(this, "分享失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }
-        }).start();
+        showLoading("正在创建云端分享...");
+        viewModel.createCloudShare(
+                passwordId,
+                selectedContact.cloudUserId,
+                getExpireMinutes(),
+                pendingSharePermission
+        );
     }
 
-    /**
-     * 获取过期时间（分钟）
-     */
+    private void saveShareRecordAfterCloudSuccess() {
+        if (selectedContact == null || pendingSharePermission == null) {
+            return;
+        }
+
+        String payload = "";
+        if (latestShareResponse != null && latestShareResponse.getShareToken() != null) {
+            payload = latestShareResponse.getShareToken();
+        }
+
+        recordManager.createShareRecord(
+                passwordId,
+                "sent",
+                selectedContact.contactId,
+                payload,
+                pendingSharePermission,
+                pendingShareExpireAt
+        );
+    }
+
+    private void showLoading(@NonNull String message) {
+        if (cardProgress != null) {
+            cardProgress.setVisibility(View.VISIBLE);
+        }
+        if (progressIndicator != null) {
+            progressIndicator.setVisibility(View.VISIBLE);
+        }
+        if (textStatus != null) {
+            textStatus.setText(message);
+        }
+        if (btnShare != null) {
+            btnShare.setEnabled(false);
+        }
+    }
+
+    private void hideLoading() {
+        if (cardProgress != null) {
+            cardProgress.setVisibility(View.GONE);
+        }
+        if (progressIndicator != null) {
+            progressIndicator.setVisibility(View.GONE);
+        }
+        if (btnShare != null) {
+            btnShare.setEnabled(true);
+        }
+    }
+
     private int getExpireMinutes() {
         if (radio1Hour != null && radio1Hour.isChecked()) {
             return 60;
-        } else if (radio1Day != null && radio1Day.isChecked()) {
-            return 60 * 24;
-        } else if (radio7Days != null && radio7Days.isChecked()) {
-            return 60 * 24 * 7;
-        } else {
-            return 0; // 永不过期
         }
+        if (radio1Day != null && radio1Day.isChecked()) {
+            return 60 * 24;
+        }
+        if (radio7Days != null && radio7Days.isChecked()) {
+            return 60 * 24 * 7;
+        }
+        return 0;
     }
 
     private long getExpireTime() {
         long now = System.currentTimeMillis();
-
         if (radio1Hour != null && radio1Hour.isChecked()) {
             return now + TimeUnit.HOURS.toMillis(1);
-        } else if (radio1Day != null && radio1Day.isChecked()) {
-            return now + TimeUnit.DAYS.toMillis(1);
-        } else if (radio7Days != null && radio7Days.isChecked()) {
-            return now + TimeUnit.DAYS.toMillis(7);
-        } else {
-            return 0; // 永不过期
         }
+        if (radio1Day != null && radio1Day.isChecked()) {
+            return now + TimeUnit.DAYS.toMillis(1);
+        }
+        if (radio7Days != null && radio7Days.isChecked()) {
+            return now + TimeUnit.DAYS.toMillis(7);
+        }
+        return 0;
     }
 
-    private PublicKey parsePublicKey(String base64) throws Exception {
+    private PublicKey parsePublicKey(@NonNull String base64) throws Exception {
         byte[] keyBytes = android.util.Base64.decode(base64, android.util.Base64.NO_WRAP);
-        java.security.spec.X509EncodedKeySpec spec =
-            new java.security.spec.X509EncodedKeySpec(keyBytes);
+        java.security.spec.X509EncodedKeySpec spec = new java.security.spec.X509EncodedKeySpec(keyBytes);
         java.security.KeyFactory factory = java.security.KeyFactory.getInstance("RSA");
         return factory.generatePublic(spec);
     }
 
-    /**
-     * 从邮箱生成用户ID（SafeVault 3.4.0：本地方法，替代 KeyDerivationManager）
-     */
-    private String generateUserId(String email) {
-        if (email == null || email.isEmpty()) {
-            return "user_unknown";
-        }
-        String encoded = android.util.Base64.encodeToString(
-            email.getBytes(),
-            android.util.Base64.NO_WRAP | android.util.Base64.URL_SAFE
-        );
-        // 取前16个字符作为用户ID
-        return "user_" + encoded.substring(0, Math.min(16, encoded.length()));
-    }
-
-    private String getMasterPassword() {
-        // 从 CryptoManager 获取主密码
-        // 简化实现：假设已经通过生物识别或主密码验证解锁
-        return backendService.getMasterPassword();
-    }
-
-    private String getUserEmail() {
-        // 从 SharedPreferences 获取用户邮箱
-        return getSharedPreferences("backend_prefs", MODE_PRIVATE)
-            .getString("user_email", null);
-    }
-
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
             finish();
             return true;

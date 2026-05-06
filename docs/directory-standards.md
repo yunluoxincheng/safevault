@@ -44,6 +44,7 @@ consistent without changing runtime behavior.
 ### `service/manager`
 - Path: `app/src/main/java/com/ttt/safevault/service/manager`
 - Responsibility: focused capability modules (auth/sync/share/account/etc.)
+- Session/token state access from UI should be wrapped here (for example `AuthSessionManager`) instead of direct `TokenManager` calls in Activities/Fragments.
 - Can depend on: `network`, `security`, `model`
 
 ### `security`

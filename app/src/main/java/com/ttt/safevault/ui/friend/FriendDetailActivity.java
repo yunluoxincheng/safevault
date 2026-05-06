@@ -18,7 +18,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.core.ServiceLocator;
 import com.ttt.safevault.adapter.ShareTimelineAdapter;
-import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.ShareRecord;
 import com.ttt.safevault.model.BackendService;

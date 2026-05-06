@@ -23,11 +23,10 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.ContactAdapter;
 import com.ttt.safevault.ui.MainActivity;
-import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.service.ContactSyncManager;
+import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.service.manager.ContactManager;
-import com.ttt.safevault.network.TokenManager;
 
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -65,7 +64,7 @@ public class ContactListFragment extends Fragment {
     private ContactAdapter adapter;
     private ContactManager contactManager;
     private ContactSyncManager contactSyncManager;
-    private TokenManager tokenManager;
+    private AuthSessionManager authSessionManager;
     private CompositeDisposable disposables;
     private Mode mode = Mode.BROWSE;
     private String searchQuery = "";
@@ -87,7 +86,7 @@ public class ContactListFragment extends Fragment {
         }
         contactManager = new ContactManager(requireContext());
         contactSyncManager = new ContactSyncManager(requireContext());
-        tokenManager = new TokenManager(requireContext());
+        authSessionManager = new AuthSessionManager(requireContext());
         disposables = new CompositeDisposable();
     }
 
@@ -293,9 +292,7 @@ public class ContactListFragment extends Fragment {
     private void updateContactNote(Contact contact, String newNote) {
         Executors.newSingleThreadExecutor().execute(() -> {
             contact.myNote = newNote.isEmpty() ? null : newNote;
-            AppDatabase.getInstance(requireContext())
-                    .contactDao()
-                    .updateContact(contact);
+            contactManager.updateContact(contact);
 
             requireActivity().runOnUiThread(() -> {
                 loadContacts();
@@ -372,10 +369,7 @@ public class ContactListFragment extends Fragment {
     }
 
     private void checkLoginAndNavigateToSearch() {
-        com.ttt.safevault.network.TokenManager tokenManager =
-            new com.ttt.safevault.network.TokenManager(requireContext());
-
-        if (!tokenManager.isLoggedIn()) {
+        if (!authSessionManager.isLoggedIn()) {
             new androidx.appcompat.app.AlertDialog.Builder(requireContext())
                 .setTitle("需要登录")
                 .setMessage("搜索添加好友需要先登录云端账号")
@@ -425,7 +419,7 @@ public class ContactListFragment extends Fragment {
      * 如果未登录，直接加载本地数据
      */
     private void syncAndLoadContacts() {
-        if (tokenManager.isLoggedIn()) {
+        if (authSessionManager.isLoggedIn()) {
             // 已登录：先同步云端好友，再加载本地列表
             Log.d(TAG, "User logged in, syncing cloud contacts...");
             disposables.add(

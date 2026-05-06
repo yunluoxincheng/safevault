@@ -1,6 +1,8 @@
 package com.ttt.safevault.model;
 
 import java.util.List;
+import java.security.KeyPair;
+import java.security.PublicKey;
 
 /**
  * 后端服务接口
@@ -95,6 +97,56 @@ public interface BackendService {
      * @param masterPassword 主密码
      */
     void setSessionMasterPassword(String masterPassword);
+
+    /**
+     * 使用生物识别解锁当前会话（恢复 DataKey 到 SessionGuard）
+     * @return true 表示解锁成功
+     */
+    boolean unlockSessionWithBiometric();
+
+    /**
+     * 登录页是否应显示生物识别入口
+     * @return true 表示应显示
+     */
+    boolean shouldShowBiometricLogin();
+
+    /**
+     * 生物识别存储是否就绪（密钥迁移完成）。
+     * @return true 表示可以继续启用生物识别流程
+     */
+    boolean isBiometricStorageReady();
+
+    /**
+     * 使用主密码完成 DeviceKey 注册。
+     * @param masterPassword 主密码
+     * @return true 表示注册成功
+     */
+    boolean completeBiometricEnrollmentWithPassword(String masterPassword);
+
+    /**
+     * 使用当前会话 DataKey 完成 DeviceKey 注册。
+     * @return true 表示注册成功
+     */
+    boolean completeBiometricEnrollmentWithSessionDataKey();
+
+    /**
+     * 鑾峰彇褰撳墠瀵嗛挜鐗堟湰銆?     * @return 鐗堟湰锛屼緥濡?v2/v3锛屾湭鐭ユ椂鍙负 null
+     */
+    String getKeyVersion();
+
+    /**
+     * 妫€鏌ユ槸鍚﹀凡瀹屾垚 v3 杩佺Щ銆?     */
+    boolean hasMigratedToV3();
+
+    /**
+     * 鑾峰彇褰撳墠浼氳瘽鍙敤鐨?RSA 鍏挜銆?
+     * 浠呭湪浼氳瘽宸茶В閿佹椂杩斿洖闈炵┖锛屽惁鍒欒繑鍥?null銆?     */
+    PublicKey getSessionRsaPublicKey();
+
+    /**
+     * 鑾峰彇褰撳墠浼氳瘽鍙敤鐨?RSA 瀵嗛挜瀵癸紙浠呭唴瀛樼紦瀛橈級銆?
+     * 浼氳瘽鏈В閿佹垨瀵嗛挜涓嶅彲鐢ㄦ椂杩斿洖 null銆?     */
+    KeyPair getSessionRsaKeyPair();
 
     /**
      * 检查应用是否已初始化（是否已设置主密码）
@@ -225,6 +277,14 @@ public interface BackendService {
      * @return true表示重置成功
      */
     boolean resetLocalVault();
+
+    /**
+     * 新设备登录后恢复云端数据到本地
+     * @param email 用户邮箱
+     * @param masterPassword 主密码
+     * @return 恢复结果
+     */
+    com.ttt.safevault.dto.DeviceRecoveryResult recoverDeviceData(String email, String masterPassword);
 
     // ========== 新增：分享管理接口 ==========
     // 旧的本地分享方法已移除，现在使用云端分享接口
@@ -392,6 +452,11 @@ public interface BackendService {
      * 登出云端服务
      */
     void logoutCloud();
+
+    /**
+     * 仅清理本地云端 token，不调用服务端注销接口。
+     */
+    void clearLocalCloudTokens();
 
     /**
      * 完成注册

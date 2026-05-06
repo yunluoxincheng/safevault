@@ -12,6 +12,7 @@ import com.google.gson.JsonSyntaxException;
 import com.ttt.safevault.data.AppDatabase;
 import com.ttt.safevault.data.Contact;
 import com.ttt.safevault.data.ContactDao;
+import com.ttt.safevault.network.RetrofitClient;
 import com.ttt.safevault.network.TokenManager;
 import com.ttt.safevault.security.SecureKeyStorageManager;
 
@@ -33,12 +34,14 @@ public class ContactManager {
     private final Context context;
     private final ContactDao contactDao;
     private final SecureKeyStorageManager secureKeyStorage;
+    private final RetrofitClient retrofitClient;
     private final Gson gson;
 
     public ContactManager(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.contactDao = AppDatabase.getInstance(context).contactDao();
         this.secureKeyStorage = SecureKeyStorageManager.getInstance(context);
+        this.retrofitClient = RetrofitClient.getInstance(context);
         this.gson = new Gson();
     }
 
@@ -245,6 +248,48 @@ public class ContactManager {
         } catch (Exception e) {
             Log.e(TAG, "Failed to delete contact", e);
             return false;
+        }
+    }
+
+    /**
+     * 更新联系人。
+     */
+    public boolean updateContact(@NonNull Contact contact) {
+        try {
+            contactDao.updateContact(contact);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to update contact", e);
+            return false;
+        }
+    }
+
+    /**
+     * 删除云端好友关系。
+     */
+    public boolean deleteCloudFriend(@NonNull String cloudUserId) {
+        try {
+            retrofitClient.getFriendServiceApi()
+                .deleteFriend(cloudUserId)
+                .blockingFirst();
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to delete cloud friend", e);
+            return false;
+        }
+    }
+
+    /**
+     * 获取待处理好友请求数量。
+     */
+    public int getPendingFriendRequestCount() {
+        try {
+            return AppDatabase.getInstance(context)
+                .friendRequestDao()
+                .getPendingCount();
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get pending friend request count", e);
+            return 0;
         }
     }
 
