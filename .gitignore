@@ -17,5 +17,7 @@ local.properties
 openspec/
 .claude/
 safevault-backend/
+task.md
+
 # Git worktrees
 .worktrees/
