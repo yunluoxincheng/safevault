@@ -12,6 +12,7 @@ import org.junit.runners.JUnit4;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
+import java.security.SecureRandom;
 import java.util.Arrays;
 
 import static org.junit.Assert.*;
@@ -439,34 +440,41 @@ public class ShareEncryptionIntegrationTest {
         long now = System.currentTimeMillis();
         long expireAt = data.expireAt > 0 ? data.expireAt : now + 3600000;
 
-        // 模拟加密过程
         byte[] ephemeralPubKey = new byte[32];
-        for (int i = 0; i < 32; i++) {
-            ephemeralPubKey[i] = (byte) (i ^ now);
-        }
+        new SecureRandom().nextBytes(ephemeralPubKey);
+        String ephemeralPublicKey = java.util.Base64.getEncoder().withoutPadding().encodeToString(ephemeralPubKey);
 
         byte[] iv = new byte[12];
         for (int i = 0; i < 12; i++) {
             iv[i] = (byte) i;
         }
 
-        // 模拟签名
+        String json = String.join("|",
+                data.senderPublicKey,
+                data.password.getTitle(),
+                data.password.getUsername(),
+                data.password.getPassword(),
+                data.password.getUrl(),
+                data.password.getNotes(),
+                ephemeralPublicKey);
+
         byte[] signature = new byte[64];
-        String json = "mock_json_" + data.password.getTitle();
+        byte[] signatureInput = json.getBytes(StandardCharsets.UTF_8);
         for (int i = 0; i < 64; i++) {
-            signature[i] = (byte) (json.getBytes(StandardCharsets.UTF_8)[i % json.length()] ^ i);
+            int forwardIndex = (i * 31) % signatureInput.length;
+            int backwardIndex = (signatureInput.length - 1 - i + signatureInput.length) % signatureInput.length;
+            signature[i] = (byte) (signatureInput[forwardIndex] ^ signatureInput[backwardIndex] ^ i);
         }
 
-        // 模拟加密数据（包含原始数据）
-        String encryptedData = android.util.Base64.encodeToString(
-            json.getBytes(StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+        String encryptedData = java.util.Base64.getEncoder().withoutPadding()
+                .encodeToString(json.getBytes(StandardCharsets.UTF_8));
 
         return new EncryptedSharePacketV3(
                 "3.0",
-                android.util.Base64.encodeToString(ephemeralPubKey, android.util.Base64.NO_WRAP),
+                ephemeralPublicKey,
                 encryptedData,
-                android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP),
-                android.util.Base64.encodeToString(signature, android.util.Base64.NO_WRAP),
+                java.util.Base64.getEncoder().withoutPadding().encodeToString(iv),
+                java.util.Base64.getEncoder().withoutPadding().encodeToString(signature),
                 now,
                 expireAt,
                 senderId
@@ -480,31 +488,26 @@ public class ShareEncryptionIntegrationTest {
             String senderId,
             String receiverId) {
         // 模拟解密过程
-        byte[] encryptedData = android.util.Base64.decode(
-            packet.getEncryptedData(), android.util.Base64.NO_WRAP);
+        byte[] encryptedData = java.util.Base64.getDecoder().decode(packet.getEncryptedData());
         String json = new String(encryptedData, StandardCharsets.UTF_8);
+        String[] parts = json.split("\\|", -1);
 
         // 创建解密后的数据包
         ShareDataPacket data = new ShareDataPacket();
         data.version = "3.0";
         data.senderId = senderId;
-        data.senderPublicKey = "sender_pub_key";
+        data.senderPublicKey = parts.length > 0 ? parts[0] : "";
         data.createdAt = packet.getCreatedAt();
         data.expireAt = packet.getExpireAt();
         data.permission = new SharePermission(true, true, true);
 
         com.ttt.safevault.model.PasswordItem password =
             new com.ttt.safevault.model.PasswordItem();
-        // 从 json 中提取标题（模拟）
-        if (json.contains("mock_json_")) {
-            password.setTitle(json.replace("mock_json_", ""));
-        } else {
-            password.setTitle("Test Password");
-        }
-        password.setUsername("testuser");
-        password.setPassword("testpass123");
-        password.setUrl("https://example.com");
-        password.setNotes("Test notes");
+        password.setTitle(parts.length > 1 ? parts[1] : "");
+        password.setUsername(parts.length > 2 ? parts[2] : "");
+        password.setPassword(parts.length > 3 ? parts[3] : "");
+        password.setUrl(parts.length > 4 ? parts[4] : "");
+        password.setNotes(parts.length > 5 ? parts[5] : "");
         data.password = password;
 
         return data;

@@ -316,15 +316,11 @@ public class HKDFManagerTest {
             assertNotNull("派生的密钥不应为 null", key64);
             assertEquals("密钥长度应为 64 字节", 64, key64.length);
 
-            // 验证不同长度产生不同输出（至少前 16 字节不同）
-            boolean prefixDifferent = false;
-            for (int i = 0; i < 16; i++) {
-                if (key16[i] != key32[i]) {
-                    prefixDifferent = true;
-                    break;
-                }
-            }
-            assertTrue("不同长度应产生不同输出", prefixDifferent);
+            // HKDF Expand 的标准行为：相同输入下，较短输出应等于较长输出的前缀。
+            assertArrayEquals("16 字节输出应是 32 字节输出的前缀",
+                key16, Arrays.copyOf(key32, key16.length));
+            assertArrayEquals("32 字节输出应是 64 字节输出的前缀",
+                key32, Arrays.copyOf(key64, key32.length));
 
         } catch (Exception e) {
             fail("不带身份绑定的密钥派生测试失败: " + e.getMessage());

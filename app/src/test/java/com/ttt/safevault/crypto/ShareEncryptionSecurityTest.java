@@ -328,8 +328,8 @@ public class ShareEncryptionSecurityTest {
 
         // 各种无效时间戳
         long[] invalidTimestamps = {
-            now - maxDrift - 1,            // 超出边界（过去）
-            now + maxDrift + 1,            // 超出边界（未来）
+            now - maxDrift - 1000,         // 超出边界（过去）
+            now + maxDrift + 1000,         // 超出边界（未来）
             now - 3600000,                 // 1 小时前
             now + 3600000,                 // 1 小时后
             0,                             // 零时间戳

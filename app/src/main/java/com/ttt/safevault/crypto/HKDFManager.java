@@ -73,8 +73,9 @@ public class HKDFManager {
         }
 
         try {
-            // 构建 info 参数：混合双方身份（防止密钥混淆攻击）
-            String info = CryptoConstants.HKDF_INFO_PREFIX + senderId + "\0" + receiverId + "\0";
+            // 构建 info 参数：使用稳定身份顺序，防止双方设备派生出不同密钥。
+            String[] orderedIds = orderIdentities(senderId, receiverId);
+            String info = CryptoConstants.HKDF_INFO_PREFIX + orderedIds[0] + "\0" + orderedIds[1] + "\0";
             byte[] infoBytes = info.getBytes(StandardCharsets.UTF_8);
 
             Log.d(TAG, "Deriving AES key from shared secret: " + sharedSecret.length + " bytes");
@@ -213,14 +214,9 @@ public class HKDFManager {
      * @return salt 字节数组
      */
     private byte[] generateSalt(String senderId, String receiverId) {
-        // 确保身份参数的顺序一致，防止密钥混淆
-        // 使用字典序确保不同设备得到相同结果
-        String combined;
-        if (senderId.compareTo(receiverId) < 0) {
-            combined = senderId + ":" + receiverId;
-        } else {
-            combined = receiverId + ":" + senderId;
-        }
+        // 确保身份参数的顺序一致，防止密钥混淆。
+        String[] orderedIds = orderIdentities(senderId, receiverId);
+        String combined = orderedIds[0] + ":" + orderedIds[1];
 
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -233,6 +229,13 @@ public class HKDFManager {
             Log.e(TAG, "Failed to generate salt", e);
             return new byte[32]; // 回退到零 salt
         }
+    }
+
+    private String[] orderIdentities(String senderId, String receiverId) {
+        if (senderId.compareTo(receiverId) <= 0) {
+            return new String[] {senderId, receiverId};
+        }
+        return new String[] {receiverId, senderId};
     }
 
     /**

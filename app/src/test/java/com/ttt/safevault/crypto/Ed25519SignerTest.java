@@ -7,6 +7,7 @@ import org.junit.runners.JUnit4;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.util.Arrays;
 
 import static org.junit.Assert.*;
@@ -416,9 +417,11 @@ public class Ed25519SignerTest {
      * 模拟 Ed25519 密钥对生成
      */
     private KeyPair generateMockEd25519KeyPair() {
+        byte[] keyMaterial = new byte[32];
+        new SecureRandom().nextBytes(keyMaterial);
         return new KeyPair(
-            new MockEd25519PublicKey(),
-            new MockEd25519PrivateKey()
+            new MockEd25519PublicKey(keyMaterial),
+            new MockEd25519PrivateKey(keyMaterial)
         );
     }
 
@@ -426,13 +429,14 @@ public class Ed25519SignerTest {
      * 模拟 Ed25519 签名
      */
     private byte[] mockSign(byte[] data, PrivateKey privateKey) {
-        // 使用模拟的签名算法
         byte[] signature = new byte[64];
         byte[] privKeyBytes = privateKey.getEncoded();
+        int dataLength = data.length == 0 ? 1 : data.length;
 
-        // 简单的模拟签名（实际使用 Ed25519）
+        // 简单的确定性模拟签名；真实实现由 Ed25519 signer 覆盖。
         for (int i = 0; i < 64; i++) {
-            signature[i] = (byte) (data[i % data.length] ^ privKeyBytes[i % 32]);
+            byte dataByte = data.length == 0 ? 0 : data[i % dataLength];
+            signature[i] = (byte) (dataByte ^ privKeyBytes[i % 32] ^ i);
         }
 
         return signature;
@@ -443,10 +447,12 @@ public class Ed25519SignerTest {
      */
     private boolean mockVerify(byte[] data, byte[] signature, PublicKey publicKey) {
         byte[] pubKeyBytes = publicKey.getEncoded();
+        int dataLength = data.length == 0 ? 1 : data.length;
 
         // 简单的模拟验证（与签名过程对称）
         for (int i = 0; i < 64; i++) {
-            int expected = data[i % data.length] ^ pubKeyBytes[i % 32];
+            byte dataByte = data.length == 0 ? 0 : data[i % dataLength];
+            int expected = dataByte ^ pubKeyBytes[i % 32] ^ i;
             if ((signature[i] & 0xFF) != (expected & 0xFF)) {
                 return false;
             }
@@ -489,14 +495,12 @@ public class Ed25519SignerTest {
      * Mock Ed25519 PublicKey 实现
      */
     private static class MockEd25519PublicKey implements PublicKey {
-        private final byte[] encoded = new byte[32];
+        private final byte[] encoded;
         private final String algorithm = "EdDSA";
         private final String format = "RAW";
 
-        public MockEd25519PublicKey() {
-            for (int i = 0; i < 32; i++) {
-                encoded[i] = (byte) (i + 1);
-            }
+        public MockEd25519PublicKey(byte[] encoded) {
+            this.encoded = Arrays.copyOf(encoded, encoded.length);
         }
 
         @Override
@@ -519,14 +523,12 @@ public class Ed25519SignerTest {
      * Mock Ed25519 PrivateKey 实现
      */
     private static class MockEd25519PrivateKey implements PrivateKey {
-        private final byte[] encoded = new byte[32];
+        private final byte[] encoded;
         private final String algorithm = "EdDSA";
         private final String format = "RAW";
 
-        public MockEd25519PrivateKey() {
-            for (int i = 0; i < 32; i++) {
-                encoded[i] = (byte) (i ^ 0xAA);
-            }
+        public MockEd25519PrivateKey(byte[] encoded) {
+            this.encoded = Arrays.copyOf(encoded, encoded.length);
         }
 
         @Override

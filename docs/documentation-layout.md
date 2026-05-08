@@ -1,6 +1,6 @@
-# SafeVault Documentation Layout Baseline
+ï»¿# SafeVault Documentation Layout Baseline
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 ## 1. Canonical Documentation Homes
 
@@ -26,13 +26,13 @@ Last updated: 2026-05-06
 | `Android_rules.md` | AI collaborators | Active | Keep at root |
 | `CLAUDE.md` | AI collaborators | Active | Keep at root |
 | `task.md` | Refactor tracking | Active | Keep at root |
-| `implementation_plan.md` | Historical plan | Stale/historical | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `JAVA_17_CHANGES_SUMMARY.md` | Historical migration notes | Stale/historical | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `JAVA_17_UPGRADE.md` | Historical migration notes | Stale/historical | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `SafeVault ¿ª·¢ÎÄµµ.md` | Legacy high-level Chinese docs | Historical, partially stale | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `SafeVault ¿ª·¢ÎÄµµÇ°¶Ë.md` | Legacy frontend Chinese docs | Historical, partially stale | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `SafeVault ¿ª·¢ÎÄµµºó¶Ë.md` | Legacy backend Chinese docs | Historical, partially stale | Move to `docs/plans/legacy-root-docs/` and leave pointer |
-| `Í¼±êÓ³ÉäÇåµ¥.md` | Legacy design reference | Historical | Move to `docs/plans/legacy-root-docs/` and leave pointer |
+| `implementation_plan.md` | Historical plan | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/implementation_plan.md` |
+| `JAVA_17_CHANGES_SUMMARY.md` | Historical migration notes | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/JAVA_17_CHANGES_SUMMARY.md` |
+| `JAVA_17_UPGRADE.md` | Historical migration notes | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/JAVA_17_UPGRADE.md` |
+| `SafeVault å¼€å‘æ–‡æ¡£.md` | Legacy high-level Chinese docs | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/SafeVault å¼€å‘æ–‡æ¡£.md` |
+| `SafeVault å¼€å‘æ–‡æ¡£å‰ç«¯.md` | Legacy frontend Chinese docs | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/SafeVault å¼€å‘æ–‡æ¡£å‰ç«¯.md` |
+| `SafeVault å¼€å‘æ–‡æ¡£åç«¯.md` | Legacy backend Chinese docs | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/SafeVault å¼€å‘æ–‡æ¡£åç«¯.md` |
+| `å›¾æ ‡æ˜ å°„æ¸…å•.md` | Legacy design reference | Removed from root | Canonical copy is `docs/plans/legacy-root-docs/å›¾æ ‡æ˜ å°„æ¸…å•.md` |
 
 ## 3. docs/ and Backend docs Inventory Summary
 
@@ -45,12 +45,14 @@ Last updated: 2026-05-06
 - API docs: `docs/api/*.md` remain canonical for API/schema/sync contracts.
 - Operations docs: rollback and migration runbooks in `docs/operations/`.
 - Historical plans: dated implementation notes in `docs/plans/`.
+- Legacy root documents: preserved only in `docs/plans/legacy-root-docs/`.
 - User docs: `docs/user-guide/`, `docs/faq/`, and `docs/USER-DOCS-INDEX.md`.
 
 ### `safevault-backend/docs/`
 
 - `safevault-backend/docs/deployment/server-deployment.md`
 - `safevault-backend/docs/modularization-plan.md`
+- `safevault-backend/docs/service-boundaries.md`
 
 These stay backend-local because they assume backend working directory commands and backend repo ownership.
 
@@ -63,7 +65,7 @@ These stay backend-local because they assume backend working directory commands 
 
 ## 5. Nested Backend Git Policy
 
-Current state on 2026-05-06:
+Current state on 2026-05-07:
 
 - Root repo tracks `safevault-backend` as a gitlink (mode `160000`).
 - `safevault-backend/` is an independent nested Git repository with its own commits.
@@ -91,5 +93,5 @@ Policy:
 
 ## 7. Open Documentation Debt
 
-- Several historical Chinese documents show encoding issues in terminal output and need a dedicated cleanup proposal for language/encoding normalization.
-- Some historical plan files may describe superseded architecture assumptions and should be reviewed before reuse.
+- Historical Chinese documents are preserved under `docs/plans/legacy-root-docs/` and should be reviewed before reuse because parts may describe superseded architecture assumptions.
+- Root-level compatibility pointers for legacy documents were removed on 2026-05-07 to keep the repository root limited to active entrypoints and collaborator memory.

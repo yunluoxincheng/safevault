@@ -7,6 +7,7 @@ import org.junit.runners.JUnit4;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.util.Arrays;
 
 import static org.junit.Assert.*;
@@ -313,9 +314,11 @@ public class X25519KeyManagerTest {
      * 因为需要使用 Bouncy Castle 或系统 API
      */
     private KeyPair generateMockX25519KeyPair() {
+        byte[] keyMaterial = new byte[32];
+        new SecureRandom().nextBytes(keyMaterial);
         return new KeyPair(
-            new MockPublicKey(),
-            new MockPrivateKey()
+            new MockPublicKey(keyMaterial),
+            new MockPrivateKey(keyMaterial)
         );
     }
 
@@ -325,10 +328,11 @@ public class X25519KeyManagerTest {
      * 注意：真实的 ECDH 需要使用 X25519 算法
      */
     private byte[] mockECDH(PrivateKey privateKey, PublicKey publicKey) {
-        // 模拟共享密钥生成
+        byte[] privateBytes = privateKey.getEncoded();
+        byte[] publicBytes = publicKey.getEncoded();
         byte[] sharedSecret = new byte[32];
         for (int i = 0; i < 32; i++) {
-            sharedSecret[i] = (byte) (i ^ 0x42);  // 模拟值
+            sharedSecret[i] = (byte) (privateBytes[i] ^ publicBytes[i]);
         }
         return sharedSecret;
     }
@@ -357,15 +361,12 @@ public class X25519KeyManagerTest {
      * Mock PublicKey 实现
      */
     private static class MockPublicKey implements PublicKey {
-        private final byte[] encoded = new byte[32];
+        private final byte[] encoded;
         private final String algorithm = "XDH";
         private final String format = "RAW";
 
-        public MockPublicKey() {
-            // 生成模拟公钥（非零）
-            for (int i = 0; i < 32; i++) {
-                encoded[i] = (byte) (i + 1);
-            }
+        public MockPublicKey(byte[] encoded) {
+            this.encoded = Arrays.copyOf(encoded, encoded.length);
         }
 
         @Override
@@ -388,15 +389,12 @@ public class X25519KeyManagerTest {
      * Mock PrivateKey 实现
      */
     private static class MockPrivateKey implements PrivateKey {
-        private final byte[] encoded = new byte[32];
+        private final byte[] encoded;
         private final String algorithm = "XDH";
         private final String format = "RAW";
 
-        public MockPrivateKey() {
-            // 生成模拟私钥
-            for (int i = 0; i < 32; i++) {
-                encoded[i] = (byte) (i ^ 0xFF);
-            }
+        public MockPrivateKey(byte[] encoded) {
+            this.encoded = Arrays.copyOf(encoded, encoded.length);
         }
 
         @Override
