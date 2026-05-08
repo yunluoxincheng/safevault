@@ -16,5 +16,6 @@ local.properties
 .gradle-local/
 openspec/
 .claude/
+safevault-backend/
 # Git worktrees
 .worktrees/
