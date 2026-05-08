@@ -24,7 +24,6 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
-import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.model.PasswordStrength;
 import com.ttt.safevault.utils.AnimationUtils;
@@ -60,7 +59,6 @@ public class EditPasswordFragment extends Fragment {
     private View loadingOverlay;
     private LinearProgressIndicator progressIndicator;
     private MaterialButton saveButton;
-    private BackendService backendService;
     private int passwordId = -1;
     private boolean isPasswordVisible = false;
 
@@ -79,9 +77,6 @@ public class EditPasswordFragment extends Fragment {
         if (getArguments() != null) {
             passwordId = getArguments().getInt("passwordId", -1);
         }
-
-        // 获取BackendService实例
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
     }
 
     @Nullable
@@ -95,8 +90,11 @@ public class EditPasswordFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        // 检查会话状态（Guarded Execution 模式）
-        if (backendService != null && !backendService.isUnlocked()) {
+        initViews(view);
+        initViewModel();
+
+        // 检查会话状态（通过 ViewModel 边界）
+        if (!viewModel.isUnlocked()) {
             android.util.Log.w("EditPasswordFragment", "会话未解锁，跳转到登录页面");
             showError("会话已锁定，请重新登录");
 
@@ -108,8 +106,6 @@ public class EditPasswordFragment extends Fragment {
             return;
         }
 
-        initViews(view);
-        initViewModel();
         setupTextWatchers();
         setupClickListeners();
         setupObservers();

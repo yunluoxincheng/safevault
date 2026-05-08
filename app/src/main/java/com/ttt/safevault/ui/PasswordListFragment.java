@@ -24,8 +24,6 @@ import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.ttt.safevault.R;
 import com.ttt.safevault.adapter.PasswordListAdapter;
-import com.ttt.safevault.sync.SyncTrigger;
-import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.utils.AnimationUtils;
 import com.ttt.safevault.viewmodel.PasswordListViewModel;
@@ -48,7 +46,6 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
     private Button clearSearchButton;
     private View loadingLayout;
     private PasswordListAdapter adapter;
-    private BackendService backendService;
 
     // 标签筛选相关
     private ChipGroup tagsChipGroup;
@@ -57,9 +54,6 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // 获取BackendService实例
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
     }
 
     @Nullable
@@ -185,10 +179,7 @@ public class PasswordListFragment extends Fragment implements PasswordListAdapte
 
     private void setupSwipeRefresh() {
         swipeRefreshLayout.setOnRefreshListener(() -> {
-            // 触发云端同步
-            SyncTrigger.getInstance(requireContext()).triggerSyncOnRefresh();
-            // 同时刷新本地数据
-            viewModel.refresh();
+            viewModel.triggerSyncAndRefresh(requireContext());
         });
     }
 

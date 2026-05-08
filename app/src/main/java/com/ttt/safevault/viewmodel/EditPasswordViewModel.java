@@ -65,6 +65,13 @@ public class EditPasswordViewModel extends AndroidViewModel {
     }
 
     /**
+     * 检查会话是否已解锁
+     */
+    public boolean isUnlocked() {
+        return backendService != null && backendService.isUnlocked();
+    }
+
+    /**
      * 加载密码条目（编辑模式）
      */
     public void loadPasswordItem(int id) {

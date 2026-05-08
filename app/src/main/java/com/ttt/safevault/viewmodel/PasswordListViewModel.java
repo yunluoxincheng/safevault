@@ -1,8 +1,6 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -17,7 +15,11 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
+import com.ttt.safevault.sync.SyncTrigger;
+import com.ttt.safevault.sync.SyncConfig;
+import com.ttt.safevault.sync.SyncStateManager;
 import com.ttt.safevault.sync.VaultSyncManager;
+import com.ttt.safevault.utils.ClipboardManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +36,7 @@ public class PasswordListViewModel extends AndroidViewModel {
     private final BackendService backendService;
     private final ExecutorService executor;
     private final Context applicationContext;
-    private final ClipboardManager clipboardManager;
+    private final ClipboardManager secureClipboard;
 
     // LiveData用于UI状态管理
     private final MutableLiveData<List<PasswordItem>> _passwordItems = new MutableLiveData<>();
@@ -75,7 +77,7 @@ public class PasswordListViewModel extends AndroidViewModel {
         this.backendService = backendService;
         this.executor = Executors.newSingleThreadExecutor();
         this.applicationContext = application.getApplicationContext();
-        this.clipboardManager = (ClipboardManager) application.getSystemService(Context.CLIPBOARD_SERVICE);
+        this.secureClipboard = new ClipboardManager(application);
 
         // 注册广播接收器
         LocalBroadcastManager.getInstance(applicationContext).registerReceiver(
@@ -270,8 +272,7 @@ public class PasswordListViewModel extends AndroidViewModel {
             try {
                 PasswordItem item = backendService.decryptItem(itemId);
                 if (item != null && item.getPassword() != null) {
-                    ClipData clip = ClipData.newPlainText("密码", item.getPassword());
-                    clipboardManager.setPrimaryClip(clip);
+                    secureClipboard.copySensitiveText(item.getPassword(), "密码");
                 }
             } catch (Exception e) {
                 _errorMessage.postValue("复制失败: " + e.getMessage());
@@ -284,6 +285,24 @@ public class PasswordListViewModel extends AndroidViewModel {
      */
     public void refresh() {
         loadPasswordItems();
+    }
+
+    /**
+     * 触发云端同步并刷新本地数据
+     */
+    public void triggerSyncAndRefresh(Context context) {
+        SyncConfig config = SyncStateManager.getInstance().getCurrentConfig();
+        if (config != null && config.isSyncEnabled()) {
+            VaultSyncManager.getInstance(context).syncNow(new VaultSyncManager.SyncCallback() {
+                @Override
+                public void onSyncSuccess(long newVersion) {}
+                @Override
+                public void onSyncConflict(long cloudVersion, long localVersion) {}
+                @Override
+                public void onSyncFailure(String errorMessage) {}
+            });
+        }
+        refresh();
     }
 
     /**

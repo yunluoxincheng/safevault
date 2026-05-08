@@ -23,7 +23,6 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
-import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
 import com.ttt.safevault.viewmodel.PasswordDetailViewModel;
 
@@ -53,7 +52,6 @@ public class PasswordDetailFragment extends Fragment {
     private View copyUsernameStatus;
     private View copyPasswordStatus;
     private View copyUrlStatus;
-    private BackendService backendService;
     private int passwordId = -1;
 
     @Override
@@ -64,9 +62,6 @@ public class PasswordDetailFragment extends Fragment {
         if (getArguments() != null) {
             passwordId = getArguments().getInt("passwordId", -1);
         }
-
-        // 获取BackendService实例
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
     }
 
     @Nullable

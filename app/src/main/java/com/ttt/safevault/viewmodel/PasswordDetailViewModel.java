@@ -1,8 +1,6 @@
 package com.ttt.safevault.viewmodel;
 
 import android.app.Application;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,6 +12,7 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordItem;
+import com.ttt.safevault.utils.ClipboardManager;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,7 +25,7 @@ public class PasswordDetailViewModel extends AndroidViewModel {
 
     private final BackendService backendService;
     private final ExecutorService executor;
-    private final ClipboardManager clipboardManager;
+    private final ClipboardManager secureClipboard;
     private final Handler mainHandler;
 
     // 密码显示状态的超时时间（毫秒）
@@ -54,7 +53,7 @@ public class PasswordDetailViewModel extends AndroidViewModel {
         super(application);
         this.backendService = backendService;
         this.executor = Executors.newSingleThreadExecutor();
-        this.clipboardManager = (ClipboardManager) application.getSystemService(Context.CLIPBOARD_SERVICE);
+        this.secureClipboard = new ClipboardManager(application);
         this.mainHandler = new Handler(Looper.getMainLooper());
     }
 
@@ -132,8 +131,9 @@ public class PasswordDetailViewModel extends AndroidViewModel {
     public void copyUsername() {
         PasswordItem item = _passwordItem.getValue();
         if (item != null && item.getUsername() != null && !item.getUsername().isEmpty()) {
-            copyToClipboard(item.getUsername(), "用户名");
-            _copiedField.setValue(0); // 0表示用户名
+            secureClipboard.copyText(item.getUsername(), "用户名");
+            _copiedField.setValue(0);
+            scheduleCopiedFieldClear();
         }
     }
 
@@ -143,8 +143,9 @@ public class PasswordDetailViewModel extends AndroidViewModel {
     public void copyPassword() {
         PasswordItem item = _passwordItem.getValue();
         if (item != null && item.getPassword() != null && !item.getPassword().isEmpty()) {
-            copyToClipboard(item.getPassword(), "密码");
-            _copiedField.setValue(1); // 1表示密码
+            secureClipboard.copySensitiveText(item.getPassword(), "密码");
+            _copiedField.setValue(1);
+            scheduleCopiedFieldClear();
         }
     }
 
@@ -154,19 +155,13 @@ public class PasswordDetailViewModel extends AndroidViewModel {
     public void copyUrl() {
         PasswordItem item = _passwordItem.getValue();
         if (item != null && item.getUrl() != null && !item.getUrl().isEmpty()) {
-            copyToClipboard(item.getUrl(), "网址");
-            _copiedField.setValue(2); // 2表示URL
+            secureClipboard.copyText(item.getUrl(), "网址");
+            _copiedField.setValue(2);
+            scheduleCopiedFieldClear();
         }
     }
 
-    /**
-     * 复制文本到剪贴板
-     */
-    private void copyToClipboard(String text, String label) {
-        ClipData clip = ClipData.newPlainText(label, text);
-        clipboardManager.setPrimaryClip(clip);
-
-        // 清除之前的状态
+    private void scheduleCopiedFieldClear() {
         mainHandler.postDelayed(() -> _copiedField.setValue(null), 2000);
     }
 

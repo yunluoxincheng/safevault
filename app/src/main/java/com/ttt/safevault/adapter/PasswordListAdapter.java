@@ -382,24 +382,28 @@ public class PasswordListAdapter extends ListAdapter<PasswordItem, PasswordListA
         @Nullable
         @Override
         public Object getChangePayload(@NonNull PasswordItem oldItem, @NonNull PasswordItem newItem) {
-            // 返回哪些字段发生了变化，用于局部更新
             Bundle diff = new Bundle();
 
-            if (!oldItem.getTitle().equals(newItem.getTitle())) {
+            if (!safeEquals(oldItem.getTitle(), newItem.getTitle())) {
                 diff.putString("title", newItem.getTitle());
             }
-            if (!oldItem.getUsername().equals(newItem.getUsername())) {
+            if (!safeEquals(oldItem.getUsername(), newItem.getUsername())) {
                 diff.putString("username", newItem.getUsername());
             }
-            if (!oldItem.getUrl().equals(newItem.getUrl())) {
+            if (!safeEquals(oldItem.getUrl(), newItem.getUrl())) {
                 diff.putString("url", newItem.getUrl());
             }
-            // 添加标签变化检测
-            if (!oldItem.getTags().equals(newItem.getTags())) {
+            if (!safeEquals(oldItem.getTags(), newItem.getTags())) {
                 diff.putStringArrayList("tags", new ArrayList<>(newItem.getTags()));
             }
 
             return diff.isEmpty() ? null : diff;
+        }
+
+        private boolean safeEquals(Object a, Object b) {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            return a.equals(b);
         }
     };
 
