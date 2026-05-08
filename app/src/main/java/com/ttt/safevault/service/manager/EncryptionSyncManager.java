@@ -584,7 +584,7 @@ public class EncryptionSyncManager {
             String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
                 Log.e(TAG, "Cannot upload vault: master password not available");
-                return SyncResult.failure("无法获取主密码，请重新解锁应用");
+                return SyncResult.failure("主密码不可用，请使用主密码解锁后再同步");
             }
 
             // 4. 获取所有密码条目
@@ -699,8 +699,7 @@ public class EncryptionSyncManager {
             String masterPassword = backendService.getMasterPassword();
             if (masterPassword == null || masterPassword.isEmpty()) {
                 Log.e(TAG, "Cannot import vault: master password not available");
-                Log.e(TAG, "Please log out and log in again to restore full functionality");
-                return SyncResult.failure("无法获取主密码，请退出后重新登录");
+                return SyncResult.failure("主密码不可用，请使用主密码解锁后再同步");
             }
             Log.d(TAG, "Master password obtained, length: " + masterPassword.length());
 

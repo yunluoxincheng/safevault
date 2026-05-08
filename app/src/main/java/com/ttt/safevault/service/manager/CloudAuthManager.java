@@ -184,10 +184,6 @@ public class CloudAuthManager {
                 ServiceLocator.getInstance().getBackendService();
 
             if (backendService.isInitialized()) {
-                // 已存在本地保险库，不允许重新注册
-                // 这可能是因为：
-                // 1. 用户之前注册失败但本地保险库已创建
-                // 2. 用户已经有账户
                 Log.e(TAG, "本地保险库已存在，无法重新注册。请先清除应用数据或使用现有账户登录。");
                 throw new RuntimeException("本地保险库已存在。如需重新注册，请先在设置中删除账户或清除应用数据。");
             }
@@ -200,81 +196,106 @@ public class CloudAuthManager {
             }
             Log.d(TAG, "本地保险库初始化成功");
 
-            // 1. 生成盐值
-            com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
-                com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context);
-            String salt = argon2Manager.getOrGenerateUserSalt(email);
+            try {
+                // 1. 生成盐值
+                com.ttt.safevault.crypto.Argon2KeyDerivationManager argon2Manager =
+                    com.ttt.safevault.crypto.Argon2KeyDerivationManager.getInstance(context);
+                String salt = argon2Manager.getOrGenerateUserSalt(email);
 
-            // 2. 派生密钥并生成密码验证器
-            javax.crypto.SecretKey derivedKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, salt);
-            String passwordVerifier = Base64.getEncoder().encodeToString(derivedKey.getEncoded());
+                // 2. 派生密钥并生成密码验证器
+                javax.crypto.SecretKey derivedKey = argon2Manager.deriveKeyWithArgon2id(masterPassword, salt);
+                String passwordVerifier = Base64.getEncoder().encodeToString(derivedKey.getEncoded());
 
-            // 3. 获取 RSA 公钥（从 SecureKeyStorageManager）
-            String publicKey = getPublicKey();
-            if (publicKey == null) {
-                throw new RuntimeException("无法获取 RSA 公钥，请检查本地保险库初始化状态");
+                // 3. 获取 RSA 公钥（从 SecureKeyStorageManager）
+                String publicKey = getPublicKey();
+                if (publicKey == null) {
+                    throw new RuntimeException("无法获取 RSA 公钥，请检查本地保险库初始化状态");
+                }
+
+                // 4. 获取私钥并加密
+                com.ttt.safevault.security.SessionGuard sessionGuard =
+                    com.ttt.safevault.security.SessionGuard.getInstance();
+                if (!sessionGuard.isUnlocked()) {
+                    throw new RuntimeException("会话未解锁，无法完成注册");
+                }
+
+                javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
+                if (dataKey == null) {
+                    throw new RuntimeException("无法获取 DataKey");
+                }
+
+                java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
+                if (privateKey == null) {
+                    throw new RuntimeException("无法获取私钥");
+                }
+
+                // 5. 使用主密码加密私钥（使用 BackupEncryptionManager）
+                com.ttt.safevault.security.BackupEncryptionManager backupManager =
+                    com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
+
+                com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptedKey =
+                    backupManager.encryptForCloudSync(
+                        android.util.Base64.encodeToString(privateKey.getEncoded(), android.util.Base64.NO_WRAP),
+                        masterPassword,
+                        salt
+                    );
+
+                // 6. 获取设备ID
+                String deviceId = getDeviceId();
+
+                // 7. 构建完成注册请求
+                com.ttt.safevault.dto.request.CompleteRegistrationRequest request =
+                        com.ttt.safevault.dto.request.CompleteRegistrationRequest.builder()
+                                .email(email)
+                                .username(username)
+                                .passwordVerifier(passwordVerifier)
+                                .salt(salt)
+                                .publicKey(publicKey)
+                                .encryptedPrivateKey(encryptedKey.getEncryptedData())
+                                .privateKeyIv(encryptedKey.getIv())
+                                .authTag(encryptedKey.getAuthTag())
+                                .deviceId(deviceId)
+                                .build();
+
+                // 8. 调用后端完成注册 API
+                com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
+                        retrofitClient.getAuthServiceApi()
+                                .completeRegistration(request)
+                                .blockingFirst();
+
+                if (response != null && response.getSuccess()) {
+                    // 9. 保存令牌
+                    tokenManager.saveTokens(response.getUserId(), response.getAccessToken(), response.getRefreshToken());
+
+                    Log.d(TAG, "Registration completed successfully for user: " + username);
+                    return response;
+                }
+
+                // 后端返回失败或响应为空，回滚本地初始化状态
+                String errorMsg = response != null ? response.getMessage() : "服务器无响应";
+                Log.e(TAG, "后端注册失败: " + errorMsg);
+                try {
+                    secureKeyStorage.clearAll();
+                    com.ttt.safevault.security.SessionGuard.getInstance().lock();
+                } catch (Exception cleanupEx) {
+                    Log.e(TAG, "回滚本地初始化状态失败", cleanupEx);
+                }
+                throw new RuntimeException("注册完成失败: " + errorMsg);
+
+            } catch (Exception e) {
+                // 后端注册失败，回滚本地初始化状态，允许重试
+                Log.e(TAG, "后端注册失败，回滚本地初始化状态", e);
+                try {
+                    secureKeyStorage.clearAll();
+                    com.ttt.safevault.security.SessionGuard.getInstance().lock();
+                } catch (Exception cleanupEx) {
+                    Log.e(TAG, "回滚本地初始化状态失败", cleanupEx);
+                }
+                throw new RuntimeException("注册完成失败: " + e.getMessage());
             }
 
-            // 4. 获取私钥并加密
-            com.ttt.safevault.security.SessionGuard sessionGuard =
-                com.ttt.safevault.security.SessionGuard.getInstance();
-            if (!sessionGuard.isUnlocked()) {
-                throw new RuntimeException("会话未解锁，无法完成注册");
-            }
-
-            javax.crypto.SecretKey dataKey = sessionGuard.getDataKey();
-            if (dataKey == null) {
-                throw new RuntimeException("无法获取 DataKey");
-            }
-
-            java.security.PrivateKey privateKey = secureKeyStorage.decryptRsaPrivateKey(dataKey);
-            if (privateKey == null) {
-                throw new RuntimeException("无法获取私钥");
-            }
-
-            // 5. 使用主密码加密私钥（使用 BackupEncryptionManager）
-            com.ttt.safevault.security.BackupEncryptionManager backupManager =
-                com.ttt.safevault.security.BackupEncryptionManager.getInstance(context);
-
-            com.ttt.safevault.security.BackupEncryptionManager.CloudBackupResult encryptedKey =
-                backupManager.encryptForCloudSync(
-                    android.util.Base64.encodeToString(privateKey.getEncoded(), android.util.Base64.NO_WRAP),
-                    masterPassword,
-                    salt
-                );
-
-            // 6. 获取设备ID
-            String deviceId = getDeviceId();
-
-            // 7. 构建完成注册请求
-            com.ttt.safevault.dto.request.CompleteRegistrationRequest request =
-                    com.ttt.safevault.dto.request.CompleteRegistrationRequest.builder()
-                            .email(email)
-                            .username(username)
-                            .passwordVerifier(passwordVerifier)
-                            .salt(salt)
-                            .publicKey(publicKey)
-                            .encryptedPrivateKey(encryptedKey.getEncryptedData())
-                            .privateKeyIv(encryptedKey.getIv())
-                            .authTag(encryptedKey.getAuthTag())
-                            .deviceId(deviceId)
-                            .build();
-
-            // 8. 调用后端完成注册 API
-            com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
-                    retrofitClient.getAuthServiceApi()
-                            .completeRegistration(request)
-                            .blockingFirst();
-
-            if (response != null && response.getSuccess()) {
-                // 9. 保存令牌
-                tokenManager.saveTokens(response.getUserId(), response.getAccessToken(), response.getRefreshToken());
-
-                Log.d(TAG, "Registration completed successfully for user: " + username);
-            }
-
-            return response;
-
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             Log.e(TAG, "Failed to complete registration", e);
             throw new RuntimeException("注册完成失败: " + e.getMessage());

@@ -474,6 +474,22 @@ public class LoginActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 生物识别解锁后尝试同步（优雅降级）
+     *
+     * 生物识别解锁不持有主密码，因此云端同步加密不可用。
+     * 仅记录日志，不阻塞登录。用户可通过手动同步触发密码认证。
+     */
+    private void tryAttemptSyncAfterBiometricUnlock() {
+        String masterPassword = backendService.getMasterPassword();
+        if (masterPassword != null && !masterPassword.isEmpty()) {
+            android.util.Log.d(TAG, "生物识别解锁后主密码可用，尝试同步");
+            handleCloudDataSync();
+        } else {
+            android.util.Log.i(TAG, "生物识别解锁后主密码不可用，跳过云端同步");
+        }
+    }
+
     private void navigateToMain() {
         if (fromAutofill || fromAutofillSave) {
             // 从自动填充或自动填充保存跳转过来，返回结果
@@ -537,6 +553,9 @@ public class LoginActivity extends AppCompatActivity {
                             android.util.Log.e(TAG, "unlockSessionWithBiometric() failed");
                             return;
                         }
+
+                        // 生物识别解锁不持有主密码，尝试同步但优雅降级
+                        tryAttemptSyncAfterBiometricUnlock();
 
                         hideError();
                         navigateToMain();

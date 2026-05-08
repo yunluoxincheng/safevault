@@ -142,7 +142,8 @@ public class AccountManager {
     public void logout() {
         // 锁定会话（使用 SessionGuard）
         com.ttt.safevault.security.SessionGuard.getInstance().lock();
-        // 清除内存中的敏感数据
+        // 清除内存中的会话主密码
+        clearSessionMasterPassword();
     }
 
     /**

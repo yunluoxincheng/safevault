@@ -189,9 +189,21 @@ public class PasswordManager {
         EncryptedPasswordEntity entity = new EncryptedPasswordEntity();
 
         // 每个字段独立加密，IV拼接到密文前
-        entity.setEncryptedTitle(encryptField(item.getTitle()));
-        entity.setEncryptedUsername(encryptField(item.getUsername()));
-        entity.setEncryptedPassword(encryptField(item.getPassword()));
+        String encTitle = encryptField(item.getTitle());
+        String encUsername = encryptField(item.getUsername());
+        String encPassword = encryptField(item.getPassword());
+
+        // 必要字段加密失败视为致命错误
+        if (item.getTitle() != null && !item.getTitle().isEmpty() && encTitle == null) {
+            throw new SecurityException("标题加密失败");
+        }
+        if (item.getPassword() != null && !item.getPassword().isEmpty() && encPassword == null) {
+            throw new SecurityException("密码字段加密失败");
+        }
+
+        entity.setEncryptedTitle(encTitle);
+        entity.setEncryptedUsername(encUsername);
+        entity.setEncryptedPassword(encPassword);
         entity.setEncryptedUrl(encryptField(item.getUrl()));
         entity.setEncryptedNotes(encryptField(item.getNotes()));
 
