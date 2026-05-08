@@ -858,3 +858,26 @@ Status decision: the Android unit-test failures and backend test-compilation fai
   - added Android layer-boundary and behavior-preservation requirements/scenarios to canonical spec
 - Notes:
   - `openspec` CLI is not available in current PATH; archive flow was completed with equivalent manual steps.
+
+## Latest Session Update (propose core vault sync flow)
+
+- Date: 2026-05-08
+- User request:
+  - Create a new OpenSpec proposal based on `docs/plans/safevault-development-roadmap.md`.
+- Exploration:
+  - Read `docs/plans/safevault-development-roadmap.md`; the roadmap recommends the first immediate proposal as `stabilize-core-vault-sync-flow`.
+  - Read `openspec/project.md` and relevant current specs (`backend-integration`, `auth-refresh`, `project-structure`) for constraints.
+  - Checked `openspec/changes/`; no active non-archive change existed before this proposal.
+  - Confirmed `openspec` CLI is not available in current PATH, so the proposal scaffold was created manually using the local `openspec-propose` skill workflow.
+- Created change:
+  - `openspec/changes/stabilize-core-vault-sync-flow/.openspec.yaml`
+  - `openspec/changes/stabilize-core-vault-sync-flow/proposal.md`
+  - `openspec/changes/stabilize-core-vault-sync-flow/design.md`
+  - `openspec/changes/stabilize-core-vault-sync-flow/tasks.md`
+- Scope decision:
+  - The proposal focuses on stabilizing the canonical register/login/vault-init/unlock/encrypted-save/sync/relogin/decrypt loop before later roadmap items such as vault boundary refactor, security lifecycle hardening, CI, sharing, autofill, or documentation polish.
+- Verification:
+  - Confirmed all four change files exist under `openspec/changes/stabilize-core-vault-sync-flow/`.
+  - Checked generated artifacts do not contain copied `<context>`, `<rules>`, or `<project_context>` instruction blocks.
+  - Root Git status now shows `task.md` modified and `openspec/changes/stabilize-core-vault-sync-flow/` untracked.
+  - Nested backend Git status shows no listed file changes, only the existing Git ignore permission warning.
