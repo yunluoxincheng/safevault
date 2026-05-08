@@ -15,5 +15,6 @@
 local.properties
 .gradle-local/
 openspec/
+.claude/
 # Git worktrees
 .worktrees/
