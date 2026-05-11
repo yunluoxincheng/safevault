@@ -109,6 +109,7 @@ public class LoginActivity extends AppCompatActivity {
         setupObservers();
         setupClickListeners();
         setupTextWatchers();
+        setupLoginViewModelObservers();
         initBiometricAuth();
     }
 
@@ -544,27 +545,8 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void onKeyAccessGranted() {
-                // Keystore 授权成功，通过 service 边界恢复 DataKey 并解锁会话
-                runOnUiThread(() -> {
-                    try {
-                        boolean unlocked = backendService.unlockSessionWithBiometric();
-                        if (!unlocked) {
-                            showError("生物识别解锁失败：无法恢复加密密钥");
-                            android.util.Log.e(TAG, "unlockSessionWithBiometric() failed");
-                            return;
-                        }
-
-                        // 生物识别解锁不持有主密码，尝试同步但优雅降级
-                        tryAttemptSyncAfterBiometricUnlock();
-
-                        hideError();
-                        navigateToMain();
-
-                    } catch (Exception e) {
-                        showError("生物识别解锁失败: " + e.getMessage());
-                        android.util.Log.e(TAG, "生物识别解锁异常", e);
-                    }
-                });
+                // Keystore 授权成功，通过 ViewModel 边界恢复 DataKey 并解锁会话
+                loginViewModel.completeBiometricUnlock();
             }
 
             @Override
@@ -682,10 +664,26 @@ public class LoginActivity extends AppCompatActivity {
             return;
         }
 
-        boolean shouldShow = backendService.shouldShowBiometricLogin();
+        boolean shouldShow = loginViewModel.shouldShowBiometricLogin();
         biometricButton.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
 
         android.util.Log.d(TAG, "updateBiometricButtonVisibility: " + shouldShow);
+    }
+
+    private void setupLoginViewModelObservers() {
+        loginViewModel.biometricUnlockResult.observe(this, success -> {
+            if (success != null && success) {
+                tryAttemptSyncAfterBiometricUnlock();
+                hideError();
+                navigateToMain();
+            }
+        });
+
+        loginViewModel.biometricUnlockError.observe(this, error -> {
+            if (error != null && !error.isEmpty()) {
+                showError(error);
+            }
+        });
     }
 
     @Override

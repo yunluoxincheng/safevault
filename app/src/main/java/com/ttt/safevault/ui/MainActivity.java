@@ -108,16 +108,10 @@ public class MainActivity extends AppCompatActivity {
             android.util.Log.d("MainActivity", "backgroundTime=" + bgTime);
         }
 
-        // 获取 SessionGuard 并设置 SecurityConfig
-        com.ttt.safevault.security.SessionGuard sessionGuard =
-                com.ttt.safevault.security.SessionGuard.getInstance();
-        sessionGuard.setSecurityConfig(this);
-
         if (savedInstanceState == null && launchedFromHistory) {
             // 从最近任务/后台恢复，检查是否需要锁定
             android.util.Log.d("MainActivity", "从后台恢复，检查是否需要锁定");
-            long backgroundTime = backendService != null ? backendService.getBackgroundTime() : 0;
-            if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
+            if (backendService != null && backendService.shouldLockByBackgroundTimeout(this)) {
                 android.util.Log.d("MainActivity", "需要锁定，跳转到登录页面");
                 lockApp();
                 return;
@@ -619,10 +613,8 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 检查应用从后台返回时是否需要锁定
-     * 只在应用真正进入后台（而不是Activity之间切换）时才检查
      *
-     * 注意：onResume() 在 onActivityStarted() 之后调用，此时 isAppInForeground 已经被设为 true。
-     * 因此这里直接检查后台时间，通过 backgroundTime 是否为 0 来判断是否需要锁定。
+     * 通过 BackendService 边界判断，UI 不直接访问 SessionGuard。
      */
     private void checkAutoLock() {
         android.util.Log.d("MainActivity", "=== checkAutoLock() 开始 ===");
@@ -640,12 +632,7 @@ public class MainActivity extends AppCompatActivity {
             long backgroundMillis = System.currentTimeMillis() - backgroundTime;
             android.util.Log.d("MainActivity", "后台时长: " + (backgroundMillis / 1000) + " 秒");
 
-            // 使用 SessionGuard 统一检查是否需要锁定
-            com.ttt.safevault.security.SessionGuard sessionGuard =
-                    com.ttt.safevault.security.SessionGuard.getInstance();
-            sessionGuard.setSecurityConfig(this);
-
-            if (sessionGuard.shouldLockBySessionTimeout(backgroundTime)) {
+            if (backendService.shouldLockByBackgroundTimeout(this)) {
                 // 超时，需要重新锁定
                 android.util.Log.d("MainActivity", "*** 会话锁定超时，执行锁定 ***");
                 lockApp();

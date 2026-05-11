@@ -24,6 +24,8 @@ consistent without changing runtime behavior.
 - Responsibility: Activity/Fragment/Dialog rendering and interaction wiring
 - Can depend on: `viewmodel`, minimal `core`
 - Must not directly do crypto or persistence operations
+- Must not directly access `SessionGuard`, `SecureKeyStorageManager`, or `BiometricAuthManager` internals; use ViewModel/BackendService boundaries instead
+- BiometricPrompt hosting is an accepted platform-boundary exception; enrollment eligibility and completion decisions must come from ViewModel
 
 ### `viewmodel`
 - Path: `app/src/main/java/com/ttt/safevault/viewmodel`

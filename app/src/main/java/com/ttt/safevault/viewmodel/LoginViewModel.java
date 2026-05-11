@@ -194,12 +194,46 @@ public class LoginViewModel extends AndroidViewModel {
         try {
             BiometricManager biometricManager = BiometricManager.from(getApplication());
             int canAuthenticateResult = biometricManager.canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG | 
+                BiometricManager.Authenticators.BIOMETRIC_STRONG |
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL);
             return canAuthenticateResult == BiometricManager.BIOMETRIC_SUCCESS;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    // ========== Biometric Unlock ==========
+
+    private final MutableLiveData<Boolean> _biometricUnlockResult = new MutableLiveData<>();
+    private final MutableLiveData<String> _biometricUnlockError = new MutableLiveData<>();
+
+    public LiveData<Boolean> biometricUnlockResult = _biometricUnlockResult;
+    public LiveData<String> biometricUnlockError = _biometricUnlockError;
+
+    /**
+     * 完成生物识别解锁：恢复 DataKey 到 SessionGuard。
+     * 在 BiometricPrompt 成功回调中调用。
+     */
+    public void completeBiometricUnlock() {
+        executor.execute(() -> {
+            try {
+                boolean unlocked = backendService.unlockSessionWithBiometric();
+                if (unlocked) {
+                    _biometricUnlockResult.postValue(true);
+                } else {
+                    _biometricUnlockError.postValue("生物识别解锁失败：无法恢复加密密钥");
+                }
+            } catch (Exception e) {
+                _biometricUnlockError.postValue("生物识别解锁失败: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 检查登录页是否应显示生物识别按钮。
+     */
+    public boolean shouldShowBiometricLogin() {
+        return backendService != null && backendService.shouldShowBiometricLogin();
     }
 
     @Override

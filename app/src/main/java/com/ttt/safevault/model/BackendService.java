@@ -207,6 +207,14 @@ public interface BackendService {
     long getBackgroundTime();
 
     /**
+     * 检查应用是否应因后台超时而锁定。
+     * UI 通过此方法判断是否需要跳转登录页，避免直接依赖 SessionGuard。
+     * @param context 用于读取 SecurityConfig
+     * @return true 表示超时应锁定
+     */
+    boolean shouldLockByBackgroundTimeout(android.content.Context context);
+
+    /**
      * 获取会话锁定超时时间
      * @return 超时时间（秒）
      */

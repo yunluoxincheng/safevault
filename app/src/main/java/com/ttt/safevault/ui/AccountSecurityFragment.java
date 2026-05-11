@@ -2,218 +2,363 @@ package com.ttt.safevault.ui;
 
 import android.content.Context;
 import android.os.Bundle;
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.lifecycle.ViewModelProvider;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.ttt.safevault.R;
 import com.ttt.safevault.databinding.FragmentAccountSecurityBinding;
-import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.security.SecurityConfig;
-import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
 import com.ttt.safevault.security.biometric.AuthScenario;
+import com.ttt.safevault.security.biometric.BiometricAuthManager;
+import com.ttt.safevault.viewmodel.AccountSecurityViewModel;
+import com.ttt.safevault.viewmodel.ViewModelFactory;
 
 /**
  * 账户安全设置 Fragment
- * 管理解锁选项、生物识别、PIN码、主密码等安全设置
+ *
+ * 安全编排逻辑已迁移到 AccountSecurityViewModel。
+ * Fragment 保留职责：
+ * - BiometricPrompt 托管（Android 平台边界例外）
+ * - UI 渲染和对话框
+ * - 导航
  */
 public class AccountSecurityFragment extends BaseFragment {
 
-    private FragmentAccountSecurityBinding binding;
-    private SecurityConfig securityConfig;
-    private BackendService backendService;
+    private static final String TAG = "AccountSecurity";
 
-    /** 用于在 DeviceKey 注册过程中临时保存主密码 */
-    private String masterPasswordForEnrollment;
+    private FragmentAccountSecurityBinding binding;
+    private AccountSecurityViewModel viewModel;
+    private BiometricAuthManager biometricAuthManager;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         binding = FragmentAccountSecurityBinding.inflate(inflater, container, false);
-        securityConfig = new SecurityConfig(requireContext());
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
+
+        ViewModelProvider.Factory factory = new ViewModelFactory(requireActivity().getApplication());
+        viewModel = new ViewModelProvider(this, factory).get(AccountSecurityViewModel.class);
+        biometricAuthManager = viewModel.getBiometricAuthManager();
+
         return binding.getRoot();
     }
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        setupObservers();
         setupClickListeners();
+        viewModel.loadInitialState();
         loadSettings();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        // 每次进入 Fragment 时刷新密钥状态
-        updateKeyVersionStatus();
+        viewModel.refreshKeyVersionStatus();
     }
 
-    private void loadSettings() {
-        // 显示当前自动锁定选项
-        SecurityConfig.AutoLockMode autoLockMode = securityConfig.getAutoLockMode();
-        binding.tvAutoLockValue.setText(autoLockMode.getDisplayName());
+    // ========== Observers ==========
 
-        // 生物识别开关状态
-        binding.switchBiometric.setChecked(securityConfig.isBiometricEnabled());
+    private void setupObservers() {
+        viewModel.biometricEnabled.observe(getViewLifecycleOwner(), enabled -> {
+            if (binding != null) {
+                binding.switchBiometric.setChecked(enabled != null && enabled);
+            }
+        });
 
-        // 允许截图开关状态
-        binding.switchScreenshot.setChecked(securityConfig.isScreenshotAllowed());
+        viewModel.biometricAvailable.observe(getViewLifecycleOwner(), available -> {
+            // Biometric button visibility is driven by loadSettings() below
+        });
 
-        // PIN码状态
-        if (securityConfig.isPinCodeEnabled()) {
-            binding.tvPinStatus.setText("已启用");
-        } else {
-            binding.tvPinStatus.setText("未启用");
-        }
+        viewModel.keyVersionInfo.observe(getViewLifecycleOwner(), info -> {
+            if (binding == null || info == null) return;
+            updateKeyVersionDisplay(info);
+        });
 
-        // 密钥版本状态
-        updateKeyVersionStatus();
+        viewModel.enrollmentReadiness.observe(getViewLifecycleOwner(), readiness -> {
+            if (readiness == null) return;
+            handleEnrollmentReadiness(readiness);
+        });
+
+        viewModel.successMessage.observe(getViewLifecycleOwner(), message -> {
+            if (message != null && !message.isEmpty()) {
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        viewModel.errorMessage.observe(getViewLifecycleOwner(), message -> {
+            if (message != null && !message.isEmpty()) {
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        viewModel.isLoading.observe(getViewLifecycleOwner(), loading -> {
+            // Could show/hide progress indicator
+        });
+
+        viewModel.navigateToLogin.observe(getViewLifecycleOwner(), navigate -> {
+            if (navigate != null && navigate && getActivity() != null) {
+                getActivity().finish();
+            }
+        });
     }
+
+    // ========== Click Listeners ==========
 
     private void setupClickListeners() {
-        // 自动锁定选项
+        // Auto-lock
         binding.cardAutoLock.setOnClickListener(v -> showAutoLockDialog());
 
-        // 生物识别开关 - 使用点击监听器而不是状态改变监听器
-        // 这样只有用户主动点击时才会触发，避免初始化时触发
-        binding.switchBiometric.setOnClickListener(v -> {
-            boolean newState = binding.switchBiometric.isChecked();
+        // Biometric switch
+        binding.switchBiometric.setOnClickListener(v -> handleBiometricSwitchClick());
 
-            if (newState) {
-                // 用户想要开启生物识别（点击后状态变为true）
-                // 先将开关恢复为关闭状态，等待验证成功后再开启
-                binding.switchBiometric.setChecked(false);
+        // Screenshot switch
+        binding.switchScreenshot.setOnClickListener(v -> handleScreenshotSwitchClick());
 
-                // 检查设备是否支持生物识别
-                BiometricAuthManager authManager = BiometricAuthManager.getInstance(requireContext());
-                if (!authManager.canUseBiometric()) {
-                    new MaterialAlertDialogBuilder(requireContext())
-                            .setTitle("生物识别不可用")
-                            .setMessage(authManager.getBiometricNotAvailableReason())
-                            .setPositiveButton("确定", null)
-                            .show();
-                    return;
-                }
-
-                // 检查三层架构是否已初始化
-                if (!backendService.isBiometricStorageReady()) {
-                    new MaterialAlertDialogBuilder(requireContext())
-                            .setTitle("无法启用生物识别")
-                            .setMessage("密钥存储未初始化，请先使用主密码登录")
-                            .setPositiveButton("确定", null)
-                            .show();
-                    return;
-                }
-
-                // 启用生物识别（使用新架构的 BiometricAuthManager）
-                android.util.Log.d("AccountSecurity", "启用生物识别（新架构）");
-                enableBiometricAuthentication(authManager);
-            } else {
-                // 用户想要关闭生物识别（点击后状态变为false）
-                binding.switchBiometric.setChecked(false);
-
-                // 使用 BiometricAuthManager 禁用生物识别
-                BiometricAuthManager authManager = BiometricAuthManager.getInstance(requireContext());
-                authManager.disableBiometric();
-
-                // 同步到 SecurityConfig
-                securityConfig.setBiometricEnabled(false);
-
-                android.util.Log.d("AccountSecurity", "生物识别已禁用（新架构）");
-                Toast.makeText(requireContext(), "生物识别已禁用", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        // 允许截图开关 - 使用点击监听器
-        binding.switchScreenshot.setOnClickListener(v -> {
-            boolean newState = binding.switchScreenshot.isChecked();
-
-            if (newState) {
-                // 用户想要开启截图（点击后状态变为true）
-                // 先将开关恢复为关闭状态，等待验证成功后再开启
-                binding.switchScreenshot.setChecked(false);
-
-                // 启用截图前要求用户验证身份并确认
-                new MaterialAlertDialogBuilder(requireContext())
-                        .setTitle(R.string.enable_screenshot_confirm)
-                        .setMessage(R.string.enable_screenshot_message)
-                        .setPositiveButton("验证并启用", (dialog, which) -> {
-                            // 验证身份
-                            promptUserAuthentication(() -> {
-                                // 验证成功，启用截图
-                                binding.switchScreenshot.setChecked(true);
-                                securityConfig.setScreenshotAllowed(true);
-                                Toast.makeText(requireContext(), R.string.screenshot_enabled, Toast.LENGTH_SHORT).show();
-                                // 应用设置到所有Activity
-                                applyScreenshotSettings();
-                            }, () -> {
-                                // 验证失败，保持开关关闭状态
-                                binding.switchScreenshot.setChecked(false);
-                            });
-                        })
-                        .setNegativeButton(R.string.cancel, (dialog, which) -> {
-                            binding.switchScreenshot.setChecked(false);
-                        })
-                        .show();
-            } else {
-                // 用户想要关闭截图（点击后状态变为false）- 直接关闭，不需要验证
-                binding.switchScreenshot.setChecked(false);
-                securityConfig.setScreenshotAllowed(false);
-                Toast.makeText(requireContext(), R.string.screenshot_disabled, Toast.LENGTH_SHORT).show();
-                // 应用设置到所有Activity
-                applyScreenshotSettings();
-            }
-        });
-
-        // PIN码设置
+        // PIN code
         binding.cardPinCode.setOnClickListener(v -> {
-            if (securityConfig.isPinCodeEnabled()) {
+            if (viewModel.isPinCodeEnabled()) {
                 showPinCodeOptionsDialog();
             } else {
-                // 显示设置PIN码对话框
                 showSetupPinDialog();
             }
         });
 
-        // 更改主密码
-        binding.cardChangePassword.setOnClickListener(v -> {
-            showChangePasswordDialog();
-        });
+        // Change password
+        binding.cardChangePassword.setOnClickListener(v -> showChangePasswordDialog());
 
-        // 导出数据
+        // Export data
         binding.cardExportData.setOnClickListener(v -> {
-            showExportDataDialog();
+            promptUserAuthentication(() -> performExportData(), null);
         });
 
-        // 导入数据
+        // Import data
         binding.cardImportData.setOnClickListener(v -> {
-            showImportDataDialog();
+            promptUserAuthentication(() -> selectImportFile(), null);
         });
 
-        // 注销登录
+        // Logout
         binding.cardLogout.setOnClickListener(v -> showLogoutDialog());
 
-        // 删除账户
-        binding.cardDeleteAccount.setOnClickListener(v -> {
-            showDeleteAccountDialog();
+        // Delete account
+        binding.cardDeleteAccount.setOnClickListener(v -> showDeleteAccountDialog());
+
+        // Key migration
+        binding.cardKeyMigration.setOnClickListener(v -> startKeyMigration());
+    }
+
+    // ========== Initial Settings Load ==========
+
+    private void loadSettings() {
+        // Auto-lock
+        SecurityConfig.AutoLockMode autoLockMode = viewModel.getAutoLockMode();
+        binding.tvAutoLockValue.setText(autoLockMode.getDisplayName());
+
+        // Biometric switch
+        binding.switchBiometric.setChecked(viewModel.isBiometricEnabled());
+
+        // Screenshot switch
+        binding.switchScreenshot.setChecked(viewModel.isScreenshotAllowed());
+
+        // PIN status
+        binding.tvPinStatus.setText(viewModel.isPinCodeEnabled() ? "已启用" : "未启用");
+
+        // Key version
+        viewModel.refreshKeyVersionStatus();
+    }
+
+    // ========== Biometric Switch Handler ==========
+
+    private void handleBiometricSwitchClick() {
+        boolean newState = binding.switchBiometric.isChecked();
+
+        if (newState) {
+            // User wants to enable biometric
+            binding.switchBiometric.setChecked(false);
+            // Delegate eligibility check to ViewModel
+            viewModel.checkEnrollmentEligibility();
+        } else {
+            // User wants to disable biometric
+            binding.switchBiometric.setChecked(false);
+            viewModel.disableBiometric();
+            Toast.makeText(requireContext(), "生物识别已禁用", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Handle enrollment readiness result from ViewModel.
+     * This is where the platform-boundary exception applies: Fragment hosts BiometricPrompt.
+     */
+    private void handleEnrollmentReadiness(@NonNull AccountSecurityViewModel.EnrollmentReadiness readiness) {
+        if (!readiness.canEnroll) {
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(readiness.needsPassword ? "无法启用生物识别" : "生物识别不可用")
+                    .setMessage(readiness.notAvailableReason)
+                    .setPositiveButton("确定", null)
+                    .show();
+            return;
+        }
+
+        if (readiness.needsPassword) {
+            // Session not unlocked, need password first
+            showPasswordDialogForEnrollment();
+        } else {
+            // Session already unlocked, directly host BiometricPrompt
+            triggerBiometricEnrollmentPrompt();
+        }
+    }
+
+    /**
+     * Show password dialog when session is not unlocked.
+     * ViewModel handles the actual password verification.
+     */
+    private void showPasswordDialogForEnrollment() {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
+        com.google.android.material.textfield.TextInputLayout passwordLayout =
+                dialogView.findViewById(R.id.passwordLayout);
+        com.google.android.material.textfield.TextInputEditText passwordInput =
+                dialogView.findViewById(R.id.passwordInput);
+
+        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility));
+
+        passwordLayout.setEndIconOnClickListener(v -> {
+            int selection = passwordInput.getSelectionEnd();
+            int currentInputType = passwordInput.getInputType();
+            int variation = currentInputType & android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;
+
+            if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) {
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                        android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+                passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility_off));
+            } else {
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility));
+            }
+            passwordInput.setSelection(selection);
         });
 
-        // 密钥迁移
-        binding.cardKeyMigration.setOnClickListener(v -> {
-            android.util.Log.d("AccountSecurity", "密钥迁移卡片被点击");
-            startKeyMigration();
-        });
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("验证主密码")
+                .setMessage("为了启用生物识别，请先验证您的主密码")
+                .setView(dialogView)
+                .setPositiveButton("验证", (dialog, which) -> {
+                    String password = passwordInput.getText().toString();
+                    if (password.isEmpty()) {
+                        Toast.makeText(requireContext(), "密码不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    boolean authenticated = viewModel.verifyPassword(password);
+                    if (authenticated) {
+                        viewModel.saveEnrollmentPassword(password);
+                        triggerBiometricEnrollmentPrompt();
+                    } else {
+                        Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
+
+    /**
+     * Host BiometricPrompt for enrollment. Platform-boundary exception.
+     * On success, delegate enrollment completion to ViewModel.
+     */
+    private void triggerBiometricEnrollmentPrompt() {
+        biometricAuthManager.authenticate(
+                (androidx.fragment.app.FragmentActivity) requireActivity(),
+                AuthScenario.ENROLLMENT,
+                new AuthCallback() {
+                    @Override
+                    public void onUserVerified() {}
+
+                    @Override
+                    public void onKeyAccessGranted() {
+                        // Delegate enrollment completion to ViewModel
+                        String enrollmentPassword = viewModel.getEnrollmentPassword();
+                        if (enrollmentPassword != null) {
+                            viewModel.completeEnrollmentWithPassword(enrollmentPassword);
+                        } else {
+                            viewModel.completeEnrollmentWithSessionDataKey();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull AuthError error, @NonNull String message, boolean canRetry) {
+                        viewModel.clearEnrollmentPassword();
+                        requireActivity().runOnUiThread(() -> {
+                            if (error == AuthError.DEBOUNCED) {
+                                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            Log.e(TAG, "启用生物识别失败: " + error + " - " + message);
+                            Toast.makeText(requireContext(), "启用生物识别失败: " + message, Toast.LENGTH_SHORT).show();
+                        });
+                    }
+
+                    @Override
+                    public void onCancel() {
+                        viewModel.clearEnrollmentPassword();
+                    }
+
+                    @Override
+                    public void onBiometricChanged() {
+                        viewModel.clearEnrollmentPassword();
+                        requireActivity().runOnUiThread(() ->
+                                new MaterialAlertDialogBuilder(requireContext())
+                                        .setTitle("生物识别信息已变更")
+                                        .setMessage("检测到您的生物识别信息已变更，请使用主密码登录后重新启用生物识别。")
+                                        .setPositiveButton("我知道了", null)
+                                        .show()
+                        );
+                    }
+                }
+        );
+    }
+
+    // ========== Screenshot Switch ==========
+
+    private void handleScreenshotSwitchClick() {
+        boolean newState = binding.switchScreenshot.isChecked();
+
+        if (newState) {
+            binding.switchScreenshot.setChecked(false);
+            new MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(R.string.enable_screenshot_confirm)
+                    .setMessage(R.string.enable_screenshot_message)
+                    .setPositiveButton("验证并启用", (dialog, which) -> {
+                        promptUserAuthentication(() -> {
+                            viewModel.setScreenshotAllowed(true);
+                            binding.switchScreenshot.setChecked(true);
+                            Toast.makeText(requireContext(), R.string.screenshot_enabled, Toast.LENGTH_SHORT).show();
+                            applyScreenshotSettings();
+                        }, () -> binding.switchScreenshot.setChecked(false));
+                    })
+                    .setNegativeButton(R.string.cancel, (dialog, which) -> binding.switchScreenshot.setChecked(false))
+                    .show();
+        } else {
+            binding.switchScreenshot.setChecked(false);
+            viewModel.setScreenshotAllowed(false);
+            Toast.makeText(requireContext(), R.string.screenshot_disabled, Toast.LENGTH_SHORT).show();
+            applyScreenshotSettings();
+        }
+    }
+
+    // ========== Auto-lock Dialog ==========
 
     private void showAutoLockDialog() {
         SecurityConfig.AutoLockMode[] modes = SecurityConfig.AutoLockMode.values();
@@ -221,14 +366,13 @@ public class AccountSecurityFragment extends BaseFragment {
         for (int i = 0; i < modes.length; i++) {
             options[i] = modes[i].getDisplayName();
         }
-
-        int currentSelection = securityConfig.getAutoLockMode().ordinal();
+        int currentSelection = viewModel.getAutoLockMode().ordinal();
 
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.session_lock)
                 .setSingleChoiceItems(options, currentSelection, (dialog, which) -> {
                     SecurityConfig.AutoLockMode selectedMode = modes[which];
-                    securityConfig.setAutoLockMode(selectedMode);
+                    viewModel.setAutoLockMode(selectedMode);
                     binding.tvAutoLockValue.setText(selectedMode.getDisplayName());
                     dialog.dismiss();
                     Toast.makeText(requireContext(), "会话锁定已设置为: " + selectedMode.getDisplayName(), Toast.LENGTH_SHORT).show();
@@ -237,35 +381,24 @@ public class AccountSecurityFragment extends BaseFragment {
                 .show();
     }
 
+    // ========== PIN Code Dialogs ==========
+
     private void showPinCodeOptionsDialog() {
         String[] options = {"更改PIN码", "移除PIN码"};
-
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("PIN码选项")
                 .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        // 更改PIN码
-                        showChangePinDialog();
-                    } else {
-                        // 移除PIN码
-                        showRemovePinDialog();
-                    }
+                    if (which == 0) showChangePinDialog();
+                    else showRemovePinDialog();
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /**
-     * 显示设置PIN码对话框
-     */
     private void showSetupPinDialog() {
-        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_pin_setup, null);
-        com.google.android.material.textfield.TextInputLayout pinLayout =
-                dialogView.findViewById(R.id.pinLayout);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_pin_setup, null);
         com.google.android.material.textfield.TextInputEditText pinInput =
                 dialogView.findViewById(R.id.pinInput);
-        com.google.android.material.textfield.TextInputLayout confirmPinLayout =
-                dialogView.findViewById(R.id.confirmPinLayout);
         com.google.android.material.textfield.TextInputEditText confirmPinInput =
                 dialogView.findViewById(R.id.confirmPinInput);
 
@@ -277,21 +410,16 @@ public class AccountSecurityFragment extends BaseFragment {
                     String pin = pinInput.getText().toString();
                     String confirmPin = confirmPinInput.getText().toString();
 
-                    // 验证PIN码格式
                     if (!pin.matches("\\d{4,6}")) {
                         Toast.makeText(requireContext(), "PIN码必须是4-6位数字", Toast.LENGTH_SHORT).show();
                         return;
                     }
-
-                    // 验证两次输入是否一致
                     if (!pin.equals(confirmPin)) {
                         Toast.makeText(requireContext(), "两次输入的PIN码不一致", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // 调用后端服务设置PIN码
-                    boolean success = backendService.setPinCode(pin);
-
+                    boolean success = viewModel.setPinCode(pin);
                     if (success) {
                         binding.tvPinStatus.setText("已启用");
                         Toast.makeText(requireContext(), "PIN码设置成功", Toast.LENGTH_SHORT).show();
@@ -303,11 +431,8 @@ public class AccountSecurityFragment extends BaseFragment {
                 .show();
     }
 
-    /**
-     * 显示更改PIN码对话框
-     */
     private void showChangePinDialog() {
-        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_pin_setup, null);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_pin_setup, null);
         com.google.android.material.textfield.TextInputLayout oldPinLayout =
                 dialogView.findViewById(R.id.pinLayout);
         com.google.android.material.textfield.TextInputEditText oldPinInput =
@@ -317,7 +442,6 @@ public class AccountSecurityFragment extends BaseFragment {
         com.google.android.material.textfield.TextInputEditText newPinInput =
                 dialogView.findViewById(R.id.confirmPinInput);
 
-        // 修改提示文字
         oldPinLayout.setHint("请输入当前PIN码");
         newPinLayout.setHint("请输入新PIN码（4-6位数字）");
 
@@ -328,26 +452,17 @@ public class AccountSecurityFragment extends BaseFragment {
                     String oldPin = oldPinInput.getText().toString();
                     String newPin = newPinInput.getText().toString();
 
-                    // 验证旧PIN码
-                    if (!backendService.verifyPinCode(oldPin)) {
+                    if (!viewModel.verifyPinCode(oldPin)) {
                         Toast.makeText(requireContext(), "当前PIN码错误", Toast.LENGTH_SHORT).show();
                         return;
                     }
-
-                    // 验证新PIN码格式
                     if (!newPin.matches("\\d{4,6}")) {
                         Toast.makeText(requireContext(), "新PIN码必须是4-6位数字", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // 设置新PIN码
-                    boolean success = backendService.setPinCode(newPin);
-
-                    if (success) {
-                        Toast.makeText(requireContext(), "PIN码更改成功", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(requireContext(), "PIN码更改失败", Toast.LENGTH_SHORT).show();
-                    }
+                    boolean success = viewModel.setPinCode(newPin);
+                    Toast.makeText(requireContext(), success ? "PIN码更改成功" : "PIN码更改失败", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
@@ -358,7 +473,7 @@ public class AccountSecurityFragment extends BaseFragment {
                 .setTitle("移除PIN码")
                 .setMessage("确定要移除PIN码吗？")
                 .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                    backendService.clearPinCode();
+                    viewModel.clearPinCode();
                     binding.tvPinStatus.setText("未启用");
                     Toast.makeText(requireContext(), R.string.pin_removed, Toast.LENGTH_SHORT).show();
                 })
@@ -366,21 +481,14 @@ public class AccountSecurityFragment extends BaseFragment {
                 .show();
     }
 
-    /**
-     * 显示更改主密码对话框
-     */
+    // ========== Change Password Dialog ==========
+
     private void showChangePasswordDialog() {
-        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_change, null);
-        com.google.android.material.textfield.TextInputLayout oldPasswordLayout =
-                dialogView.findViewById(R.id.oldPasswordLayout);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_change, null);
         com.google.android.material.textfield.TextInputEditText oldPasswordInput =
                 dialogView.findViewById(R.id.oldPasswordInput);
-        com.google.android.material.textfield.TextInputLayout newPasswordLayout =
-                dialogView.findViewById(R.id.newPasswordLayout);
         com.google.android.material.textfield.TextInputEditText newPasswordInput =
                 dialogView.findViewById(R.id.newPasswordInput);
-        com.google.android.material.textfield.TextInputLayout confirmPasswordLayout =
-                dialogView.findViewById(R.id.confirmPasswordLayout);
         com.google.android.material.textfield.TextInputEditText confirmPasswordInput =
                 dialogView.findViewById(R.id.confirmPasswordInput);
 
@@ -393,699 +501,156 @@ public class AccountSecurityFragment extends BaseFragment {
                     String newPassword = newPasswordInput.getText().toString();
                     String confirmPassword = confirmPasswordInput.getText().toString();
 
-                    // 验证旧密码
-
-                    if (!backendService.isUnlocked()) {
-                        // 先尝试用旧密码解锁
-                        if (!backendService.unlock(oldPassword)) {
+                    if (!viewModel.isSessionUnlocked()) {
+                        if (!viewModel.verifyPassword(oldPassword)) {
                             Toast.makeText(requireContext(), "当前密码错误", Toast.LENGTH_SHORT).show();
                             return;
                         }
-                    } else {
-                        // 已解锁状态，验证旧密码是否正确
-                        if (!oldPassword.isEmpty()) {
-                            // 简单验证：这里应该使用更安全的方式
-                            // 由于后端服务设计，这里直接使用changeMasterPassword验证
-                        }
                     }
-
-                    // 验证新密码强度
                     if (newPassword.length() < 8) {
                         Toast.makeText(requireContext(), "新密码长度至少为8位", Toast.LENGTH_SHORT).show();
                         return;
                     }
-
-                    // 验证两次输入是否一致
                     if (!newPassword.equals(confirmPassword)) {
                         Toast.makeText(requireContext(), "两次输入的新密码不一致", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
-                    // 更改主密码
-                    boolean success = backendService.changeMasterPassword(oldPassword.isEmpty() ? null : oldPassword, newPassword);
-
-                    if (success) {
-                        Toast.makeText(requireContext(), "主密码更改成功", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(requireContext(), "主密码更改失败", Toast.LENGTH_SHORT).show();
-                    }
+                    viewModel.changeMasterPassword(
+                            oldPassword.isEmpty() ? null : oldPassword, newPassword);
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /**
-     * 显示删除账户对话框（多重确认）
-     */
-    private void showDeleteAccountDialog() {
-        // 第一重确认
-        new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("删除账户")
-                .setMessage("您确定要删除账户吗？此操作不可撤销！")
-                .setPositiveButton("继续", (dialog, which) -> {
-                    // 第二重确认
-                    showDeleteAccountSecondConfirmation();
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
-    }
-
-    /**
-     * 第二重确认对话框
-     */
-    private void showDeleteAccountSecondConfirmation() {
-        new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("最后确认")
-                .setMessage("删除账户将永久清除所有数据，包括：\n\n" +
-                           "• 所有密码记录\n" +
-                           "• 云端同步数据\n" +
-                           "• 设备信息\n" +
-                           "• 安全设置\n\n" +
-                           "提示：建议您在删除账户前先导出重要数据。\n" +
-                           "如需导出，请前往「设置 → 数据管理 → 导出数据」。\n\n" +
-                           "此操作无法撤销，确定继续吗？")
-                .setPositiveButton("我已了解，继续删除", (dialog, which) -> {
-                    // 要求用户验证身份
-                    promptUserAuthentication(() -> {
-                        // 验证成功，执行删除
-                        performDeleteAccount();
-                    }, () -> {
-                        Toast.makeText(requireContext(), "身份验证失败，无法删除账户", Toast.LENGTH_SHORT).show();
-                    });
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
-    }
-
-    /**
-     * 执行账户删除操作
-     */
-    private void performDeleteAccount() {
-
-        boolean success = backendService.deleteAccount();
-
-        if (success) {
-            Toast.makeText(requireContext(), "账户已删除", Toast.LENGTH_SHORT).show();
-            // 返回登录页面
-            requireActivity().finish();
-        } else {
-            Toast.makeText(requireContext(), "账户删除失败", Toast.LENGTH_SHORT).show();
-        }
-    }
+    // ========== Logout/Account Dialogs ==========
 
     private void showLogoutDialog() {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.logout_confirm_title)
                 .setMessage(R.string.logout_confirm_message)
                 .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                    performLogout();
+                    com.ttt.safevault.utils.LoadingDialog loadingDialog =
+                            com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在注销...");
+                    viewModel.performLogout();
+                    loadingDialog.dismiss();
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /**
-     * 执行注销登录操作
-     */
-    private void performLogout() {
-
-        // 显示现代化加载对话框
-        com.ttt.safevault.utils.LoadingDialog loadingDialog =
-                com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在注销...");
-
-        // 在后台线程执行注销
-        new android.os.Handler().post(() -> {
-            try {
-                // 调用后端注销 API
-                backendService.logoutCloud();
-
-                // 注销成功
-                requireActivity().runOnUiThread(() -> {
-                    loadingDialog.dismiss();
-                    Toast.makeText(requireContext(), R.string.logged_out, Toast.LENGTH_SHORT).show();
-                    // 返回登录页面
-                    requireActivity().finish();
-                });
-            } catch (Exception e) {
-                // 注销失败，询问是否强制清除本地数据
-                requireActivity().runOnUiThread(() -> {
-                    loadingDialog.dismiss();
-                    showLogoutFailedDialog();
-                });
-            }
-        });
-    }
-
-    /**
-     * 注销失败对话框
-     */
-    private void showLogoutFailedDialog() {
+    private void showDeleteAccountDialog() {
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("注销失败")
-                .setMessage("无法连接到服务器，是否强制清除本地数据？\n\n注意：服务器会话可能会保留，直到令牌过期。")
-                .setPositiveButton("强制清除", (dialog, which) -> {
-                    forceLogout();
-                })
-                .setNegativeButton("取消", null)
+                .setTitle("删除账户")
+                .setMessage("您确定要删除账户吗？此操作不可撤销！")
+                .setPositiveButton("继续", (dialog, which) -> showDeleteAccountSecondConfirmation())
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /**
-     * 强制注销（仅清除本地数据）
-     */
-    private void forceLogout() {
-        try {
-
-            // 只清除本地令牌，不调用后端 API
-            backendService.clearLocalCloudTokens();
-
-            Toast.makeText(requireContext(), "已清除本地数据", Toast.LENGTH_SHORT).show();
-            // 返回登录页面
-            requireActivity().finish();
-        } catch (Exception e) {
-            Toast.makeText(requireContext(), "清除失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    /**
-     * 启用生物识别认证（使用会话管理优化）
-     *
-     * 流程：
-     * 1. 检查会话状态（SessionGuard.isUnlocked()）
-     * 2. 如果已解锁：直接进行生物识别认证（无需重复输入主密码）
-     * 3. 如果未解锁：先要求用户验证主密码
-     * 4. 使用会话中的 DataKey 完成生物识别注册
-     *
-     * 🧠 核心思想：
-     * - "主密码已验证"的唯一凭证 = 能否访问 DataKey
-     * - DataKey 在内存中 = 用户已通过主密码验证（哪怕是 5 分钟前）
-     * - 生物识别只是把信任从主密码迁移到设备
-     */
-    private void enableBiometricAuthentication(@NonNull BiometricAuthManager authManager) {
-
-        // 🧠 检查会话状态：用户是否已通过主密码验证
-        if (backendService.isUnlocked()) {
-            // 用户已通过主密码验证（哪怕是 5 分钟前）
-            // DataKey 在内存中，可以直接进行生物识别认证
-            android.util.Log.d("AccountSecurity",
-                "会话已解锁，直接进行生物识别认证（无需重复输入主密码）");
-
-            androidx.fragment.app.FragmentActivity activity =
-                (androidx.fragment.app.FragmentActivity) requireActivity();
-
-            authManager.authenticate(activity, AuthScenario.ENROLLMENT,
-                new AuthCallback() {
-                    @Override
-                    public void onUserVerified() {
-                        // 用户通过 UI 认证，等待 Keystore 授权
-                    }
-
-                    @Override
-                    public void onKeyAccessGranted() {
-                        // 生物识别认证成功，完成 DeviceKey 注册
-                        completeDeviceKeyEnrollmentWithDataKey(authManager);
-                    }
-
-                    @Override
-                    public void onFailure(@NonNull AuthError error,
-                                       @NonNull String message,
-                                       boolean canRetry) {
-                        requireActivity().runOnUiThread(() -> {
-                            if (error == AuthError.DEBOUNCED) {
-                                Toast.makeText(requireContext(), message,
-                                    Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-                            android.util.Log.e("AccountSecurity",
-                                "启用生物识别失败: " + error + " - " + message);
-                            Toast.makeText(requireContext(),
-                                "启用生物识别失败: " + message,
-                                Toast.LENGTH_SHORT).show();
-                        });
-                    }
-
-                    @Override
-                    public void onCancel() {
-                        // 用户取消，不做处理
-                    }
-
-                    @Override
-                    public void onBiometricChanged() {
-                        requireActivity().runOnUiThread(() -> {
-                            new MaterialAlertDialogBuilder(requireContext())
-                                .setTitle("生物识别信息已变更")
-                                .setMessage("检测到您的生物识别信息已变更，" +
-                                    "请使用主密码登录后重新启用生物识别。")
-                                .setPositiveButton("我知道了", null)
-                                .show();
-                        });
-                    }
-                }
-            );
-
-        } else {
-            // 用户当前没有主信任（DataKey 不在内存中）
-            // 必须重新输入主密码来获取 DataKey
-            android.util.Log.d("AccountSecurity",
-                "会话未解锁，需要先验证主密码");
-
-            // 第一步：先要求用户验证主密码
-            showPasswordAuthenticationDialogForEnrollment(
-                authManager,
-                () -> {
-                    // 主密码验证成功，继续生物识别认证
-                    androidx.fragment.app.FragmentActivity activity =
-                        (androidx.fragment.app.FragmentActivity) requireActivity();
-
-                    authManager.authenticate(activity, AuthScenario.ENROLLMENT,
-                        new AuthCallback() {
-                            @Override
-                            public void onUserVerified() {
-                                // 用户通过 UI 认证，等待 Keystore 授权
-                            }
-
-                            @Override
-                            public void onKeyAccessGranted() {
-                                // 生物识别认证成功，完成 DeviceKey 注册
-                                completeDeviceKeyEnrollment(authManager);
-                            }
-
-                            @Override
-                            public void onFailure(@NonNull AuthError error,
-                                               @NonNull String message,
-                                               boolean canRetry) {
-                                requireActivity().runOnUiThread(() -> {
-                                    if (error == AuthError.DEBOUNCED) {
-                                        Toast.makeText(requireContext(), message,
-                                            Toast.LENGTH_SHORT).show();
-                                        return;
-                                    }
-                                    android.util.Log.e("AccountSecurity",
-                                        "启用生物识别失败: " + error + " - " + message);
-                                    Toast.makeText(requireContext(),
-                                        "启用生物识别失败: " + message,
-                                        Toast.LENGTH_SHORT).show();
-                                });
-                            }
-
-                            @Override
-                            public void onCancel() {
-                                // 用户取消，不做处理
-                            }
-
-                            @Override
-                            public void onBiometricChanged() {
-                                requireActivity().runOnUiThread(() -> {
-                                    new MaterialAlertDialogBuilder(requireContext())
-                                        .setTitle("生物识别信息已变更")
-                                        .setMessage("检测到您的生物识别信息已变更，" +
-                                            "请使用主密码登录后重新启用生物识别。")
-                                        .setPositiveButton("我知道了", null)
-                                        .show();
-                                });
-                            }
-                        }
-                    );
-                },
-                () -> {
-                    // 主密码验证失败
-                    Toast.makeText(requireContext(), "主密码验证失败，无法启用生物识别",
-                        Toast.LENGTH_SHORT).show();
-                }
-            );
-        }
-    }
-
-    /**
-     * 显示主密码验证对话框（用于启用生物识别）
-     */
-    private void showPasswordAuthenticationDialogForEnrollment(
-            @NonNull BiometricAuthManager authManager,
-            @NonNull Runnable onSuccess,
-            @NonNull Runnable onFailure) {
-
-        android.view.View dialogView = getLayoutInflater().inflate(
-            R.layout.dialog_password_input, null);
-        com.google.android.material.textfield.TextInputLayout passwordLayout =
-            dialogView.findViewById(R.id.passwordLayout);
-        com.google.android.material.textfield.TextInputEditText passwordInput =
-            dialogView.findViewById(R.id.passwordInput);
-
-        // 确保初始状态正确：密码隐藏，闭眼图标
-        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
-            android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        passwordLayout.setEndIconDrawable(
-            requireContext().getDrawable(R.drawable.ic_visibility));
-
-        // 设置密码可见性切换
-        passwordLayout.setEndIconOnClickListener(v -> {
-            int selection = passwordInput.getSelectionEnd();
-            int currentInputType = passwordInput.getInputType();
-            int variation = currentInputType & android.text.InputType.TYPE_MASK_VARIATION;
-
-            if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) {
-                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
-                    android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-                passwordLayout.setEndIconDrawable(
-                    requireContext().getDrawable(R.drawable.ic_visibility_off));
-            } else {
-                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
-                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-                passwordLayout.setEndIconDrawable(
-                    requireContext().getDrawable(R.drawable.ic_visibility));
-            }
-            passwordInput.setSelection(selection);
-        });
-
+    private void showDeleteAccountSecondConfirmation() {
         new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("验证主密码")
-                .setMessage("为了启用生物识别，请先验证您的主密码")
-                .setView(dialogView)
-                .setPositiveButton("验证", (dialog, which) -> {
-                    String password = passwordInput.getText().toString();
-                    if (password.isEmpty()) {
-                        Toast.makeText(requireContext(), "密码不能为空",
-                            Toast.LENGTH_SHORT).show();
-                        onFailure.run();
-                        return;
-                    }
-
-                    // 验证密码
-
-                    try {
-                        boolean authenticated = backendService.unlock(password);
-                        if (authenticated) {
-                            // 保存主密码供后续 DeviceKey 注册使用
-                            this.masterPasswordForEnrollment = password;
-                            onSuccess.run();
-                        } else {
-                            Toast.makeText(requireContext(), "密码错误，验证失败",
-                                Toast.LENGTH_SHORT).show();
-                            onFailure.run();
-                        }
-                    } catch (Exception e) {
-                        Toast.makeText(requireContext(), "验证时发生错误: " + e.getMessage(),
-                            Toast.LENGTH_SHORT).show();
-                        onFailure.run();
-                    }
+                .setTitle("最后确认")
+                .setMessage("删除账户将永久清除所有数据，包括：\n\n" +
+                        "• 所有密码记录\n• 云端同步数据\n• 设备信息\n• 安全设置\n\n" +
+                        "提示：建议您在删除账户前先导出重要数据。\n" +
+                        "如需导出，请前往「设置 → 数据管理 → 导出数据」。\n\n" +
+                        "此操作无法撤销，确定继续吗？")
+                .setPositiveButton("我已了解，继续删除", (dialog, which) -> {
+                    promptUserAuthentication(() -> viewModel.deleteAccount(), () ->
+                            Toast.makeText(requireContext(), "身份验证失败，无法删除账户", Toast.LENGTH_SHORT).show());
                 })
-                .setNegativeButton("取消", (dialog, which) -> onFailure.run())
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
-    /**
-     * 完成 DeviceKey 注册（在生物识别认证成功后调用）
-     */
-    private void completeDeviceKeyEnrollment(@NonNull BiometricAuthManager authManager) {
-        if (masterPasswordForEnrollment == null) {
-            android.util.Log.e("AccountSecurity", "主密码未保存，无法完成 DeviceKey 注册");
-            requireActivity().runOnUiThread(() -> {
-                Toast.makeText(requireContext(), "启用生物识别失败：未找到主密码",
-                    Toast.LENGTH_SHORT).show();
-            });
-            return;
-        }
-
-        // 在后台线程执行
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            try {
-
-                // 获取盐值（从 crypto_prefs）
-
-                // 完成 DeviceKey 注册
-                boolean success = backendService.completeBiometricEnrollmentWithPassword(
-                    masterPasswordForEnrollment);
-
-                // 清除保存的主密码
-                masterPasswordForEnrollment = null;
-
-                requireActivity().runOnUiThread(() -> {
-                    if (success) {
-                        // 更新 SecurityConfig
-                        securityConfig.setBiometricEnabled(true);
-                        binding.switchBiometric.setChecked(true);
-
-                        android.util.Log.d("AccountSecurity",
-                            "生物识别已启用（新架构，DeviceKey 路径已初始化）");
-                        Toast.makeText(requireContext(), "生物识别已启用",
-                            Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(requireContext(),
-                            "启用生物识别失败：DeviceKey 注册失败",
-                            Toast.LENGTH_SHORT).show();
-                    }
-                });
-
-            } catch (Exception e) {
-                masterPasswordForEnrollment = null;
-                requireActivity().runOnUiThread(() -> {
-                    android.util.Log.e("AccountSecurity",
-                        "完成 DeviceKey 注册异常", e);
-                    Toast.makeText(requireContext(),
-                        "启用生物识别失败: " + e.getMessage(),
-                        Toast.LENGTH_SHORT).show();
-                });
-            }
-        });
-    }
+    // ========== User Authentication Prompt ==========
 
     /**
-     * 完成 DeviceKey 注册（使用会话中的 DataKey）
-     *
-     * 当用户已通过主密码验证（DataKey 在内存中）时调用此方法
-     * 无需重复输入主密码，直接使用会话中的 DataKey 完成生物识别注册
-     *
-     * @param authManager 生物识别管理器
+     * Prompt user for authentication (biometric or password).
+     * Platform-boundary exception: Fragment hosts BiometricPrompt.
      */
-    private void completeDeviceKeyEnrollmentWithDataKey(@NonNull BiometricAuthManager authManager) {
-
-        if (!backendService.isUnlocked()) {
-            android.util.Log.e("AccountSecurity", "会话中的 DataKey 不可用，无法完成 DeviceKey 注册");
-            requireActivity().runOnUiThread(() -> {
-                Toast.makeText(requireContext(), "启用生物识别失败：会话已过期",
-                    Toast.LENGTH_SHORT).show();
-            });
-            return;
-        }
-
-        // 在后台线程执行
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            try {
-
-                // 获取盐值（从 crypto_prefs）
-
-                // 使用 DataKey 直接完成 DeviceKey 注册
-                boolean success = backendService.completeBiometricEnrollmentWithSessionDataKey();
-
-                requireActivity().runOnUiThread(() -> {
-                    if (success) {
-                        // 更新 SecurityConfig
-                        securityConfig.setBiometricEnabled(true);
-                        binding.switchBiometric.setChecked(true);
-
-                        android.util.Log.d("AccountSecurity",
-                            "生物识别已启用（使用会话中的 DataKey，无需重复输入主密码）");
-                        Toast.makeText(requireContext(), "生物识别已启用",
-                            Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(requireContext(),
-                            "启用生物识别失败：DeviceKey 注册失败",
-                            Toast.LENGTH_SHORT).show();
-                    }
-                });
-
-            } catch (Exception e) {
-                requireActivity().runOnUiThread(() -> {
-                    android.util.Log.e("AccountSecurity",
-                        "完成 DeviceKey 注册异常（使用会话 DataKey）", e);
-                    Toast.makeText(requireContext(),
-                        "启用生物识别失败: " + e.getMessage(),
-                        Toast.LENGTH_SHORT).show();
-                });
-            }
-        });
-    }
-
-    /**
-     * 从 SharedPreferences 获取盐值
-     */
-    private String getSaltFromPrefs() {
-        try {
-            android.content.SharedPreferences cryptoPrefs =
-                requireContext().getSharedPreferences("crypto_prefs", Context.MODE_PRIVATE);
-            String salt = cryptoPrefs.getString("master_salt", null);
-            if (salt == null) {
-                throw new IllegalStateException("盐值未找到，请确保已正确初始化应用");
-            }
-            return salt;
-        } catch (Exception e) {
-            android.util.Log.e("AccountSecurity", "获取盐值失败", e);
-            throw new RuntimeException("无法获取盐值", e);
-        }
-    }
-
-    /**
-     * 只使用生物识别验证身份（用于启用生物识别功能）
-     * @param onSuccess 验证成功回调
-     * @param onFailure 验证失败回调
-     */
-    private void showBiometricOnlyAuthentication(Runnable onSuccess, Runnable onFailure) {
+    private void promptUserAuthentication(@Nullable Runnable onSuccess, @Nullable Runnable onFailure) {
         com.ttt.safevault.security.BiometricAuthHelper biometricHelper =
-            new com.ttt.safevault.security.BiometricAuthHelper(
-                (androidx.fragment.app.FragmentActivity) requireActivity());
+                new com.ttt.safevault.security.BiometricAuthHelper(
+                        (androidx.fragment.app.FragmentActivity) requireActivity());
         biometricHelper.authenticate(new com.ttt.safevault.security.BiometricAuthHelper.BiometricAuthCallback() {
             @Override
             public void onSuccess() {
-                if (onSuccess != null) {
-                    requireActivity().runOnUiThread(onSuccess);
-                }
+                if (onSuccess != null) requireActivity().runOnUiThread(onSuccess);
             }
 
             @Override
             public void onFailure(String error) {
-                if (onFailure != null) {
-                    requireActivity().runOnUiThread(() -> {
-                        Toast.makeText(requireContext(), "生物识别验证失败: " + error, Toast.LENGTH_SHORT).show();
-                        onFailure.run();
-                    });
-                }
+                requireActivity().runOnUiThread(() ->
+                        showPasswordAuthenticationDialog(onSuccess, onFailure));
             }
 
             @Override
             public void onCancel() {
-                if (onFailure != null) {
-                    requireActivity().runOnUiThread(onFailure);
-                }
+                if (onFailure != null) requireActivity().runOnUiThread(onFailure);
             }
         });
     }
 
-    /**
-     * 提示用户验证身份
-     * @param onSuccess 验证成功回调
-     * @param onFailure 验证失败回调
-     */
-    private void promptUserAuthentication(Runnable onSuccess, Runnable onFailure) {
-        // 如果已经启用了生物识别，优先使用生物识别验证
-        if (securityConfig.isBiometricEnabled()) {
-            com.ttt.safevault.security.BiometricAuthHelper biometricHelper =
-                new com.ttt.safevault.security.BiometricAuthHelper(
-                    (androidx.fragment.app.FragmentActivity) requireActivity());
-            biometricHelper.authenticate(new com.ttt.safevault.security.BiometricAuthHelper.BiometricAuthCallback() {
-                @Override
-                public void onSuccess() {
-                    if (onSuccess != null) {
-                        requireActivity().runOnUiThread(onSuccess);
-                    }
-                }
-
-                @Override
-                public void onFailure(String error) {
-                    // 生物识别失败，回退到主密码验证
-                    requireActivity().runOnUiThread(() -> showPasswordAuthenticationDialog(onSuccess, onFailure));
-                }
-
-                @Override
-                public void onCancel() {
-                    if (onFailure != null) {
-                        requireActivity().runOnUiThread(onFailure);
-                    }
-                }
-            });
-        } else {
-            // 未启用生物识别，使用主密码验证
-            showPasswordAuthenticationDialog(onSuccess, onFailure);
-        }
-    }
-
-    /**
-     * 显示主密码验证对话框
-     * @param onSuccess 验证成功回调
-     * @param onFailure 验证失败回调
-     */
-    private void showPasswordAuthenticationDialog(Runnable onSuccess, Runnable onFailure) {
-        // 使用自定义布局，包含密码可见性切换
-        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
+    private void showPasswordAuthenticationDialog(@Nullable Runnable onSuccess, @Nullable Runnable onFailure) {
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
         com.google.android.material.textfield.TextInputLayout passwordLayout =
-            dialogView.findViewById(R.id.passwordLayout);
+                dialogView.findViewById(R.id.passwordLayout);
         com.google.android.material.textfield.TextInputEditText passwordInput =
-            dialogView.findViewById(R.id.passwordInput);
+                dialogView.findViewById(R.id.passwordInput);
 
-        // 确保初始状态正确：密码隐藏，闭眼图标
-        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
         passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility));
 
-        // 设置密码可见性切换
         passwordLayout.setEndIconOnClickListener(v -> {
-            // 切换密码可见性
             int selection = passwordInput.getSelectionEnd();
             int currentInputType = passwordInput.getInputType();
-            int variation = currentInputType & android.text.InputType.TYPE_MASK_VARIATION;
+            int variation = currentInputType & android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;
 
             if (variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD) {
-                // 当前是密码状态，切换为可见
-                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                        android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
                 passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility_off));
             } else {
-                // 当前是可见状态，切换为密码
-                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
                 passwordLayout.setEndIconDrawable(requireContext().getDrawable(R.drawable.ic_visibility));
             }
-            // 保持光标位置
             passwordInput.setSelection(selection);
         });
 
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("验证身份")
-                .setMessage("为了安全起见，请验证您的身份以启用生物识别")
+                .setMessage("为了安全起见，请验证您的身份")
                 .setView(dialogView)
                 .setPositiveButton("验证", (dialog, which) -> {
                     String password = passwordInput.getText().toString();
                     if (password.isEmpty()) {
                         Toast.makeText(requireContext(), "密码不能为空", Toast.LENGTH_SHORT).show();
-                        if (onFailure != null) {
-                            onFailure.run();
-                        }
+                        if (onFailure != null) onFailure.run();
                         return;
                     }
 
-                    // 调用后端服务验证密码
-                    try {
-                        boolean authenticated = backendService.unlock(password);
-                        if (authenticated) {
-                            if (onSuccess != null) {
-                                onSuccess.run();
-                            }
-                        } else {
-                            Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
-                            if (onFailure != null) {
-                                onFailure.run();
-                            }
-                        }
-                    } catch (Exception e) {
-                        Toast.makeText(requireContext(), "验证时发生错误: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        if (onFailure != null) {
-                            onFailure.run();
-                        }
+                    boolean authenticated = viewModel.verifyPassword(password);
+                    if (authenticated) {
+                        if (onSuccess != null) onSuccess.run();
+                    } else {
+                        Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
+                        if (onFailure != null) onFailure.run();
                     }
                 })
                 .setNegativeButton("取消", (dialog, which) -> {
-                    if (onFailure != null) {
-                        onFailure.run();
-                    }
+                    if (onFailure != null) onFailure.run();
                 })
                 .show();
     }
 
-    /**
-     * 应用截图设置到所有Activity
-     */
-    private void applyScreenshotSettings() {
-        boolean screenshotAllowed = securityConfig.isScreenshotAllowed();
-        int flags = screenshotAllowed ? 0 : android.view.WindowManager.LayoutParams.FLAG_SECURE;
+    // ========== Screenshot Settings ==========
 
-        // 通知所有正在运行的Activity更新截图设置
-        // 这里通过发送广播或者直接更新当前Activity
+    private void applyScreenshotSettings() {
+        boolean screenshotAllowed = viewModel.isScreenshotAllowed();
         if (getActivity() != null) {
             getActivity().runOnUiThread(() -> {
                 getActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
@@ -1096,53 +661,31 @@ public class AccountSecurityFragment extends BaseFragment {
         }
     }
 
-    /**
-     * 显示导出数据对话框
-     */
-    private void showExportDataDialog() {
-        // 验证身份
-        promptUserAuthentication(() -> {
-            // 验证成功，执行导出
-            performExportData();
-        }, null);
-    }
+    // ========== Export/Import Data ==========
 
-    /**
-     * 执行数据导出
-     */
     private void performExportData() {
-        // 检查存储权限
         if (android.os.Build.VERSION.SDK_INT >= 23) {
             if (requireContext().checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                // 请求权限
-                requestPermissions(
-                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    1001);
+                requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1001);
                 return;
             }
         }
 
-        // 显示现代化加载对话框
         com.ttt.safevault.utils.LoadingDialog loadingDialog =
                 com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在导出数据...");
 
         new android.os.Handler().post(() -> {
             try {
-
-                // 生成导出文件路径
                 String fileName = "safevault_backup_" +
                         new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
                                 .format(new java.util.Date()) + ".svault";
 
-                // 使用应用外部存储目录
                 java.io.File exportDir = new java.io.File(requireContext().getExternalFilesDir(null), "backups");
-                if (!exportDir.exists()) {
-                    exportDir.mkdirs();
-                }
+                if (!exportDir.exists()) exportDir.mkdirs();
                 java.io.File exportFile = new java.io.File(exportDir, fileName);
 
-                boolean success = backendService.exportData(exportFile.getAbsolutePath());
+                boolean success = viewModel.exportData(exportFile.getAbsolutePath());
 
                 requireActivity().runOnUiThread(() -> {
                     loadingDialog.dismiss();
@@ -1174,34 +717,13 @@ public class AccountSecurityFragment extends BaseFragment {
         });
     }
 
-    /**
-     * 显示导入数据对话框
-     */
-    private void showImportDataDialog() {
-        // 验证身份
-        promptUserAuthentication(() -> {
-            // 验证成功，选择文件
-            selectImportFile();
-        }, null);
-    }
-
-    /**
-     * 选择导入文件
-     */
     private void selectImportFile() {
-        // 创建文件选择器
         android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
         intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
-
-        // 创建文件选择器（只显示 .svault 文件）
-        android.content.Intent chooser = android.content.Intent.createChooser(intent, "选择备份文件");
-        startActivityForResult(chooser, 1002);
+        startActivityForResult(android.content.Intent.createChooser(intent, "选择备份文件"), 1002);
     }
 
-    /**
-     * 处理文件选择结果
-     */
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -1209,10 +731,8 @@ public class AccountSecurityFragment extends BaseFragment {
         if (requestCode == 1002 && resultCode == android.app.Activity.RESULT_OK && data != null) {
             android.net.Uri uri = data.getData();
             if (uri != null) {
-                // 获取文件路径
                 String filePath = getFilePathFromUri(uri);
                 if (filePath != null) {
-                    // 显示导入预览和确认对话框
                     showImportConfirmDialog(filePath);
                 } else {
                     Toast.makeText(requireContext(), "无法获取文件路径", Toast.LENGTH_SHORT).show();
@@ -1221,12 +741,8 @@ public class AccountSecurityFragment extends BaseFragment {
         }
     }
 
-    /**
-     * 从 Uri 获取文件路径
-     */
     private String getFilePathFromUri(android.net.Uri uri) {
         try {
-            // 尝试使用 content resolver 获取文件路径
             String[] projection = {android.provider.OpenableColumns.DISPLAY_NAME};
             android.database.Cursor cursor = requireContext().getContentResolver()
                     .query(uri, projection, null, null, null);
@@ -1237,14 +753,10 @@ public class AccountSecurityFragment extends BaseFragment {
                     String fileName = cursor.getString(nameIndex);
                     cursor.close();
 
-                    // 创建临时文件
                     java.io.File tempDir = new java.io.File(requireContext().getCacheDir(), "import");
-                    if (!tempDir.exists()) {
-                        tempDir.mkdirs();
-                    }
+                    if (!tempDir.exists()) tempDir.mkdirs();
                     java.io.File tempFile = new java.io.File(tempDir, fileName);
 
-                    // 复制文件内容
                     java.io.InputStream inputStream = requireContext().getContentResolver().openInputStream(uri);
                     java.io.FileOutputStream outputStream = new java.io.FileOutputStream(tempFile);
 
@@ -1253,49 +765,34 @@ public class AccountSecurityFragment extends BaseFragment {
                     while ((length = inputStream.read(buffer)) > 0) {
                         outputStream.write(buffer, 0, length);
                     }
-
                     outputStream.close();
                     inputStream.close();
-
                     return tempFile.getAbsolutePath();
                 }
                 cursor.close();
             }
         } catch (Exception e) {
-            android.util.Log.e("AccountSecurityFragment", "获取文件路径失败", e);
+            Log.e(TAG, "获取文件路径失败", e);
         }
         return null;
     }
 
-    /**
-     * 显示导入确认对话框
-     */
     private void showImportConfirmDialog(String filePath) {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("确认导入")
-                .setMessage("即将从备份文件导入数据。\n\n" +
-                        "注意：这将覆盖现有的密码数据。\n\n" +
-                        "是否继续？")
-                .setPositiveButton("导入", (dialog, which) -> {
-                    performImportData(filePath);
-                })
+                .setMessage("即将从备份文件导入数据。\n\n注意：这将覆盖现有的密码数据。\n\n是否继续？")
+                .setPositiveButton("导入", (dialog, which) -> performImportData(filePath))
                 .setNegativeButton("取消", null)
                 .show();
     }
 
-    /**
-     * 执行数据导入
-     */
     private void performImportData(String filePath) {
-        // 显示现代化加载对话框
         com.ttt.safevault.utils.LoadingDialog loadingDialog =
                 com.ttt.safevault.utils.LoadingDialog.show(requireContext(), "正在导入数据...");
 
         new android.os.Handler().post(() -> {
             try {
-
-                boolean success = backendService.importData(filePath);
-
+                boolean success = viewModel.importData(filePath);
                 requireActivity().runOnUiThread(() -> {
                     loadingDialog.dismiss();
                     if (success) {
@@ -1303,10 +800,7 @@ public class AccountSecurityFragment extends BaseFragment {
                                 .setTitle("导入成功")
                                 .setMessage("数据已成功导入。")
                                 .setPositiveButton("确定", (d, w) -> {
-                                    // 返回首页刷新数据
-                                    if (getActivity() != null) {
-                                        getActivity().recreate();
-                                    }
+                                    if (getActivity() != null) getActivity().recreate();
                                 })
                                 .show();
                     } else {
@@ -1330,155 +824,58 @@ public class AccountSecurityFragment extends BaseFragment {
         });
     }
 
-    @Override
-    public void onDestroyView() {
-        super.onDestroyView();
-        binding = null;
-    }
+    // ========== Key Version Display ==========
 
-    /**
-     * 更新密钥版本状态显示
-     */
-    private void updateKeyVersionStatus() {
-        try {
-            String keyVersion = backendService.getKeyVersion();
-            boolean hasMigratedToV3 = backendService.hasMigratedToV3();
+    private void updateKeyVersionDisplay(@NonNull AccountSecurityViewModel.KeyVersionInfo info) {
+        if (binding == null) return;
 
-            if (keyVersion != null) {
-                String versionText;
-                String summaryText;
-                int statusColor;
+        if (info.version != null) {
+            String versionText;
+            String summaryText;
+            int statusColor;
 
-                if ("v3".equals(keyVersion)) {
-                    // v3.0 版本
-                    if (hasMigratedToV3) {
-                        // 真正的迁移用户
-                        versionText = "v3.0 (X25519)";
-                        summaryText = "已从 RSA 迁移到 X25519";
-                        statusColor = android.graphics.Color.parseColor("#4CAF50"); // 绿色
-                    } else {
-                        // 新用户，直接使用 v3.0
-                        versionText = "v3.0 (X25519)";
-                        summaryText = "已使用最新加密算法";
-                        statusColor = android.graphics.Color.parseColor("#4CAF50"); // 绿色
-                    }
-                } else {
-                    // v2.0 版本，未迁移
-                    versionText = "v2.0 (RSA)";
-                    summaryText = "建议迁移到 X25519 以获得更好的性能和安全性";
-                    statusColor = android.graphics.Color.parseColor("#FF9800"); // 橙色
-                }
-
-                binding.tvKeyVersionValue.setText(versionText);
-                binding.tvKeyVersionValue.setTextColor(statusColor);
-                binding.tvKeyVersionSummary.setText(summaryText);
+            if ("v3".equals(info.version)) {
+                versionText = "v3.0 (X25519)";
+                summaryText = info.hasMigratedToV3
+                        ? "已从 RSA 迁移到 X25519"
+                        : "已使用最新加密算法";
+                statusColor = android.graphics.Color.parseColor("#4CAF50");
             } else {
-                binding.tvKeyVersionValue.setText("未知");
-                binding.tvKeyVersionSummary.setText("密钥信息未找到");
+                versionText = "v2.0 (RSA)";
+                summaryText = "建议迁移到 X25519 以获得更好的性能和安全性";
+                statusColor = android.graphics.Color.parseColor("#FF9800");
             }
-        } catch (Exception e) {
-            android.util.Log.e("AccountSecurity", "获取密钥版本失败", e);
-            binding.tvKeyVersionValue.setText("错误");
-            binding.tvKeyVersionSummary.setText("无法获取密钥信息");
-        }
-    }
 
-    /**
-     * 显示密钥迁移信息对话框
-     */
-    private void showKeyMigrationInfo() {
-        boolean hasMigratedToV3 = backendService.hasMigratedToV3();
-        String keyVersion = backendService.getKeyVersion();
-
-        String title, message, positiveButton, negativeButton;
-
-        if (hasMigratedToV3) {
-            // 已迁移到 v3.0
-            title = "加密算法已是最新版本";
-            message = "您当前使用的是 X25519/Ed25519 (v3.0) 加密算法，这是目前最先进的密码分享加密方案。\n\n" +
-                     "优势：\n" +
-                     "• 比 RSA 快 10-100 倍\n" +
-                     "• 密钥体积更小（32 字节 vs 256 字节）\n" +
-                     "• 支持前向保密\n" +
-                     "• 行业标准算法（Signal、WhatsApp 使用）";
-            positiveButton = "确定";
-            negativeButton = null;
+            binding.tvKeyVersionValue.setText(versionText);
+            binding.tvKeyVersionValue.setTextColor(statusColor);
+            binding.tvKeyVersionSummary.setText(summaryText);
         } else {
-            // 未迁移，需要引导迁移
-            title = "升级加密算法";
-            message = "检测到您当前使用 RSA (v2.0) 加密算法。\n\n" +
-                     "升级到 X25519/Ed25519 (v3.0) 可以获得：\n" +
-                     "• 更快的加密速度（快 10-100 倍）\n" +
-                     "• 更小的密钥体积（节省存储空间）\n" +
-                     "• 更高的安全性（前向保密）\n" +
-                     "• 更好的兼容性（行业标准算法）\n\n" +
-                     "迁移过程安全可靠，您的 RSA 密钥将被保留以确保与旧版本的兼容性。";
-            positiveButton = "开始迁移";
-            negativeButton = "稍后";
+            binding.tvKeyVersionValue.setText("未知");
+            binding.tvKeyVersionSummary.setText("密钥信息未找到");
         }
-
-        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(requireContext())
-                .setTitle(title)
-                .setMessage(message)
-                .setPositiveButton(positiveButton, (dialog, which) -> {
-                    if (!hasMigratedToV3) {
-                        // 启动迁移 Activity
-                        startKeyMigration();
-                    }
-                });
-
-        if (negativeButton != null) {
-            builder.setNegativeButton(negativeButton, null);
-        }
-
-        builder.show();
     }
 
-    /**
-     * 启动密钥迁移 Activity
-     */
-    private void startKeyMigration() {
-        android.util.Log.d("AccountSecurity", "=== startKeyMigration() 开始 ===");
-        try {
-            // 获取会话信息（如果已登录）
-            boolean sessionUnlocked = backendService.isUnlocked();
-            android.util.Log.d("AccountSecurity", "sessionUnlocked = " + sessionUnlocked);
+    // ========== Key Migration ==========
 
-            if (!sessionUnlocked) {
-                // 未登录，需要先验证密码
-                android.util.Log.d("AccountSecurity", "会话未解锁，显示密码验证对话框");
+    private void startKeyMigration() {
+        try {
+            if (!viewModel.isSessionReadyForMigration()) {
                 showPasswordVerificationForMigration();
                 return;
             }
 
-            // 已登录，直接启动迁移
-            android.util.Log.d("AccountSecurity", "会话已解锁，准备启动 KeyMigrationActivity");
             android.content.Intent intent = new android.content.Intent(
                     requireContext(), KeyMigrationActivity.class);
-            android.util.Log.d("AccountSecurity", "Intent 已创建: " + intent);
-
-            // 从会话获取主密码和盐值（如果可用）
-            // 注意：出于安全考虑，主密码不应该在会话中明文存储
-            // 这里需要实现更安全的方式来传递认证信息
-
-            // 暂时使用简化版本，实际应该通过其他方式传递认证信息
-            android.util.Log.d("AccountSecurity", "准备调用 startActivity");
             requireContext().startActivity(intent);
-            android.util.Log.d("AccountSecurity", "startActivity 调用成功");
 
         } catch (Exception e) {
-            android.util.Log.e("AccountSecurity", "启动密钥迁移失败", e);
+            Log.e(TAG, "启动密钥迁移失败", e);
             Toast.makeText(requireContext(), "启动迁移失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
-    /**
-     * 显示密码验证对话框（用于密钥迁移）
-     */
     private void showPasswordVerificationForMigration() {
-        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
-        com.google.android.material.textfield.TextInputLayout passwordLayout =
-                dialogView.findViewById(R.id.passwordLayout);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_password_input, null);
         com.google.android.material.textfield.TextInputEditText passwordInput =
                 dialogView.findViewById(R.id.passwordInput);
 
@@ -1493,27 +890,24 @@ public class AccountSecurityFragment extends BaseFragment {
                         return;
                     }
 
-                    // 验证密码
-
-                    try {
-                        boolean authenticated = backendService.unlock(password);
-                        if (authenticated) {
-                            // 密码验证成功，启动迁移
-                            android.content.Intent intent = new android.content.Intent(
-                                    requireContext(), KeyMigrationActivity.class);
-                            intent.putExtra("master_password", password);
-                            // 获取盐值
-                            String salt = getSaltFromPrefs();
-                            intent.putExtra("salt_base64", salt);
-                            requireContext().startActivity(intent);
-                        } else {
-                            Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
-                        }
-                    } catch (Exception e) {
-                        Toast.makeText(requireContext(), "验证时发生错误: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    boolean authenticated = viewModel.verifyPassword(password);
+                    if (authenticated) {
+                        android.content.Intent intent = new android.content.Intent(
+                                requireContext(), KeyMigrationActivity.class);
+                        requireContext().startActivity(intent);
+                    } else {
+                        Toast.makeText(requireContext(), "密码错误，验证失败", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    // ========== Lifecycle ==========
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        binding = null;
     }
 }

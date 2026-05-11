@@ -670,6 +670,12 @@ public class BackendServiceImpl implements BackendService {
         return (int) (timeoutMillis / 1000); // 转换为秒
     }
 
+    @Override
+    public boolean shouldLockByBackgroundTimeout(android.content.Context context) {
+        sessionGuard.setSecurityConfig(context);
+        return sessionGuard.shouldLockBySessionTimeout(getBackgroundTime());
+    }
+
     // ==================== 云端分享相关 ====================
 
     @Override

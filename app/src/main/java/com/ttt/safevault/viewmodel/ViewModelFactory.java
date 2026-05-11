@@ -64,6 +64,9 @@ public class ViewModelFactory extends ViewModelProvider.AndroidViewModelFactory 
         if (modelClass.isAssignableFrom(SyncSettingsViewModel.class)) {
             return (T) new SyncSettingsViewModel(application);
         }
+        if (modelClass.isAssignableFrom(AccountSecurityViewModel.class)) {
+            return (T) new AccountSecurityViewModel(application);
+        }
         throw new IllegalArgumentException("Unknown ViewModel class: " + modelClass.getName());
     }
 }
