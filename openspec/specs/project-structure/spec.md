@@ -49,6 +49,11 @@ The repository MUST document that the backend is managed by the root SafeVault r
 - **THEN** they can determine that root Git status is the authoritative status for Android, backend, documentation, and OpenSpec changes
 - **AND** they do not treat `server/` as a nested Git repository
 
+#### Scenario: Old backend remote is referenced
+- **WHEN** maintainers encounter the previous `safevault-backend` remote repository
+- **THEN** they can determine that it is not the active development remote after migration
+- **AND** they can delete, archive, or ignore it according to repository-owner preference after the monorepo migration is verified
+
 ### Requirement: Backend Documentation Routing
 The repository MUST define a strict routing rule for backend-related documentation across `docs/backend/`, `docs/api/`, and `server/docs/`.
 
@@ -161,3 +166,35 @@ Backend boundary refactors MUST preserve API and database behavior unless a sepa
 #### Scenario: Database migrations are present
 - **WHEN** backend structural refactor work is performed
 - **THEN** existing Flyway migration files are not rewritten and any schema change is deferred to a separate proposal
+
+### Requirement: Canonical Runtime Directory Layout
+The repository MUST use lower-case runtime root directories for the Android client and Spring Boot backend.
+
+#### Scenario: Maintainer locates runtime projects
+- **WHEN** a maintainer inspects the repository root
+- **THEN** the Android client is located under `android/`
+- **AND** the Spring Boot backend is located under `server/`
+- **AND** cross-project documentation and OpenSpec state remain outside those runtime roots
+
+#### Scenario: Android build entrypoint is needed
+- **WHEN** a maintainer needs to run Android Gradle commands
+- **THEN** the documented working directory is `android/`
+- **AND** the Android `app` module remains available below that runtime root
+
+#### Scenario: Backend build entrypoint is needed
+- **WHEN** a maintainer needs to run backend Maven commands
+- **THEN** the documented working directory is `server/`
+- **AND** backend-local deployment and operations files remain available below that runtime root
+
+### Requirement: Snapshot Backend Import
+The repository MUST treat the backend as a snapshot-imported part of the root repository after the layout migration.
+
+#### Scenario: Backend files are changed after migration
+- **WHEN** backend files under `server/` are modified
+- **THEN** the root SafeVault Git repository tracks those changes directly
+- **AND** maintainers do not need to perform a second backend repository commit
+
+#### Scenario: Legacy backend remote is considered
+- **WHEN** maintainers need the old backend repository after migration
+- **THEN** documentation identifies it as retired or externally historical
+- **AND** active development continues in the root SafeVault repository
