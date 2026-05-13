@@ -1,15 +1,15 @@
 # Generated Artifacts and Safe Cleanup Policy
 
-Last updated: 2026-05-06
+Last updated: 2026-05-13
 
 ## Generated Directories
 
-- Root/Android generated outputs:
-  - `.gradle/`
-  - `build/`
-  - `app/build/`
+- Android generated outputs:
+  - `android/.gradle/`
+  - `android/build/`
+  - `android/app/build/`
 - Backend generated outputs:
-  - `safevault-backend/target/`
+  - `server/target/`
 
 ## Required Handling
 
@@ -27,4 +27,4 @@ Last updated: 2026-05-06
 ## Verification Guidance
 
 - Documentation/layout-only changes should not depend on deleting generated directories.
-- Before and after refactor batches, verify Git status in root and backend repos separately.
+- Before and after refactor batches, verify root Git status.

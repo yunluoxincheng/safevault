@@ -1,0 +1,649 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App name -->
+    <string name="app_name">SafeVault</string>
+
+    <!-- Login screen -->
+    <string name="unlock_safevault">解锁 SafeVault</string>
+    <string name="set_master_password">设置主密码</string>
+    <string name="enter_master_password">输入主密码</string>
+    <string name="email">邮箱</string>
+    <string name="master_password">主密码</string>
+    <string name="confirm_master_password">确认主密码</string>
+    <string name="unlock">解锁</string>
+    <string name="initialize">初始化</string>
+    <string name="use_biometric">使用生物识别</string>
+
+    <!-- Password list -->
+    <string name="password_list_title">密码列表</string>
+    <string name="no_passwords">暂无密码</string>
+    <string name="add_first_password">添加您的第一个密码</string>
+    <string name="add_first_password_button">添加密码</string>
+    <string name="add_first_password_button_description">点击添加您的第一个密码</string>
+    <string name="add_password">添加密码</string>
+    <string name="empty_state_icon_description">空状态图标</string>
+    <string name="no_search_results">未找到匹配的密码</string>
+
+    <!-- Tags -->
+    <string name="all_tags">全部</string>
+    <string name="tags">标签</string>
+    <string name="add_tag">添加标签</string>
+    <string name="tag_hint">输入标签名</string>
+
+    <!-- Password details/edit -->
+    <string name="title">标题</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="url">网址</string>
+    <string name="notes">备注</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+    <string name="share">分享</string>
+    <string name="save_password">保存密码</string>
+    <string name="copied">已复制</string>
+    <string name="copy_password">复制密码</string>
+    <string name="new_password">新建密码</string>
+    <string name="password_details">密码详情</string>
+
+    <!-- Password generator -->
+    <string name="generate_password">生成密码</string>
+    <string name="password_length">密码长度</string>
+    <string name="character_types">字符类型</string>
+    <string name="uppercase_letters">大写字母</string>
+    <string name="lowercase_letters">小写字母</string>
+    <string name="numbers">数字</string>
+    <string name="symbols">特殊字符</string>
+    <string name="regenerate">重新生成</string>
+    <string name="use_password">使用密码</string>
+
+    <!-- Password strength -->
+
+    <!-- Menu items -->
+    <string name="search">搜索</string>
+
+    <!-- Settings -->
+    <string name="security_settings">安全设置</string>
+    <string name="app_version">版本 3.7.0</string>
+
+    <!-- Colors -->
+    <string name="loading_overlay_background">#80000000</string>
+    <string name="strength_weak">#F44336</string>
+    <string name="strength_medium">#FF9800</string>
+    <string name="strength_strong">#4CAF50</string>
+
+    <!-- Loading -->
+    <string name="loading_indicator_description">正在加载</string>
+    <string name="loading_default_message">请稍候...</string>
+    <string name="loading_passwords">正在加载密码...</string>
+    <string name="saving_password">正在保存密码...</string>
+    <string name="deleting_password">正在删除密码...</string>
+    <string name="authenticating">正在验证...</string>
+
+    <!-- Password visibility -->
+    <string name="show_password">显示密码</string>
+    <string name="hide_password">隐藏密码</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_passwords">密码库</string>
+    <string name="nav_generator">生成器</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- Modernized UI strings -->
+    <string name="website_icon_description">网站图标</string>
+    <string name="more_options">更多选项</string>
+    <string name="clear_search">清除搜索</string>
+    <string name="search_hint">搜索密码…</string>
+    <string name="no_search_results_description">尝试使用不同的关键词</string>
+
+    <!-- ========== 设置页面增强 ========== -->
+
+    <!-- 主设置页面 -->
+    <string name="account_security">账户安全</string>
+    <string name="appearance_settings">外观</string>
+    <string name="about">关于</string>
+
+    <!-- 账户安全设置 -->
+    <string name="session_lock">会话锁定</string>
+    <string name="session_lock_immediately">立即锁定</string>
+    <string name="session_lock_1_minute">1分钟后</string>
+    <string name="session_lock_5_minutes">5分钟后</string>
+    <string name="session_lock_15_minutes">15分钟后</string>
+    <string name="session_lock_30_minutes">30分钟后</string>
+    <string name="session_lock_never">从不</string>
+    <string name="biometric_unlock">生物识别解锁</string>
+    <string name="biometric_unlock_summary">使用指纹或面部识别快速解锁</string>
+    <string name="allow_screenshot">允许截图</string>
+    <string name="allow_screenshot_summary">允许在应用内截取屏幕（需要验证身份）</string>
+    <string name="screenshot_enabled">已允许截图</string>
+    <string name="screenshot_disabled">已禁止截图</string>
+    <string name="enable_screenshot_confirm">启用截图</string>
+    <string name="enable_screenshot_message">启用截图后，应用内的敏感信息可能会被截获。您确定要启用吗？</string>
+    <string name="pin_code">PIN码</string>
+    <string name="pin_code_summary">使用PIN码快速解锁应用</string>
+    <string name="change_master_password">更改主密码</string>
+    <string name="logout">注销登录</string>
+    <string name="logout_summary">清除敏感数据并返回登录</string>
+    <string name="delete_account">删除账户</string>
+    <string name="delete_account_summary">永久删除所有数据，此操作不可撤销</string>
+    <string name="logout_confirm_title">确认注销</string>
+    <string name="logout_confirm_message">确定要注销登录吗？您需要重新输入主密码才能访问账户。</string>
+    <string name="delete_account_warning">警告：此操作将永久删除您的账户和所有数据，且无法恢复。</string>
+    <string name="delete_account_confirm_1">确认删除账户</string>
+    <string name="delete_account_confirm_2">这将删除所有本地和云端数据。请输入\"DELETE\"以确认。</string>
+    <string name="type_delete">输入 DELETE</string>
+    <string name="account_deleted">账户已删除</string>
+    <string name="logged_out">已注销登录</string>
+
+    <!-- PIN码设置 -->
+    <string name="enter_pin">输入PIN码</string>
+    <string name="confirm_pin">确认PIN码</string>
+    <string name="pin_mismatch">PIN码不匹配</string>
+    <string name="pin_length_error">PIN码必须是4-20位数字</string>
+    <string name="verify_current_pin">验证当前PIN码</string>
+    <string name="verify_master_password">验证主密码</string>
+    <string name="enter_new_pin">输入新PIN码</string>
+    <string name="pin_enabled">PIN码已启用</string>
+    <string name="pin_removed">PIN码已移除</string>
+    <string name="pin_changed">PIN码已更改</string>
+
+    <!-- 主密码更改 -->
+    <string name="current_password">当前主密码</string>
+    <string name="new_master_password">新主密码</string>
+    <string name="confirm_new_password">确认新主密码</string>
+    <string name="password_changed">主密码已更改</string>
+    <string name="password_change_error">密码更改失败</string>
+    <string name="incorrect_password">密码错误</string>
+    <string name="passwords_do_not_match">密码不匹配</string>
+    <string name="weak_password_warning">密码强度较弱，建议使用更长或更复杂的密码</string>
+
+
+
+    <!-- 外观设置 -->
+    <string name="theme">主题</string>
+    <string name="theme_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="dynamic_color">动态颜色</string>
+    <string name="dynamic_color_summary">使用系统壁纸配色（Android 12+）</string>
+    <string name="language">语言</string>
+    <string name="language_current">简体中文</string>
+    <string name="language_coming_soon">即将推出</string>
+
+    <!-- 关于页面 -->
+    <string name="app_info">应用信息</string>
+    <string name="open_source_licenses">开源许可证</string>
+    <string name="privacy_policy">隐私政策</string>
+    <string name="terms_of_service">用户协议</string>
+    <string name="help_and_support">帮助与支持</string>
+    <string name="user_guide">使用指南</string>
+    <string name="faq">常见问题</string>
+    <string name="report_problem">反馈问题</string>
+    <string name="contact_us">联系我们</string>
+    <string name="project_info">项目信息</string>
+    <string name="security_notice">安全声明</string>
+    <string name="security_notice_text">SafeVault 采用端到端加密保护您的数据。主密码和加密密钥仅存储在您的设备上，我们无法访问您的密码信息。</string>
+    <string name="check_for_updates">检查更新</string>
+    <string name="already_up_to_date">已是最新版本</string>
+    <string name="update_available">有新版本可用</string>
+    <string name="version">版本</string>
+    <string name="build">构建</string>
+    <string name="report_issue_title">反馈问题</string>
+    <string name="report_issue_message">请描述您遇到的问题：</string>
+
+    <!-- 对话框通用 -->
+    <string name="confirm">确认</string>
+    <string name="cancel">取消</string>
+    <string name="ok">确定</string>
+    <string name="close">关闭</string>
+    <string name="error">错误</string>
+    <string name="success">成功</string>
+    <string name="warning">警告</string>
+
+    <!-- ========== 密码分享功能 ========== -->
+
+    <!-- 分享配置 -->
+    <string name="share_password">分享密码</string>
+    <string name="share_to">分享给</string>
+    <string name="offline_share">离线分享（二维码）</string>
+    <string name="direct_share">直接分享</string>
+    <string name="share_options">分享选项</string>
+    <string name="expire_time">有效期</string>
+    <string name="allow_save_to_local">允许保存到本地</string>
+    <string name="revocable">可撤销</string>
+
+    <!-- 分享结果 -->
+    <string name="share_result">分享结果</string>
+    <string name="share_success">分享创建成功</string>
+    <string name="qr_code">二维码</string>
+    <string name="scan_qr_code_to_receive">让对方扫描二维码接收分享</string>
+    <string name="share_code">分享码</string>
+    <string name="share_password_label">分享密码</string>
+    <string name="share_password_hint">请告知对方此密码</string>
+    <string name="copy_code">复制分享码</string>
+    <string name="copy_share_password">复制分享密码</string>
+    <string name="done">完成</string>
+
+    <!-- 接收分享 -->
+    <string name="receive_share">接收分享</string>
+    <string name="sharer">分享者</string>
+    <string name="password_info">密码信息</string>
+    <string name="share_info">分享信息</string>
+    <string name="save_to_local">保存到本地</string>
+    <string name="reject">拒绝</string>
+    <string name="show">显示</string>
+    <string name="hide">隐藏</string>
+    <string name="enter_share_password">输入分享密码</string>
+    <string name="share_password_required">此分享需要密码</string>
+    <string name="wrong_share_password">分享密码错误</string>
+
+
+    <!-- 分享历史 -->
+    <string name="share_history">分享</string>
+    <string name="share_history_title">分享历史</string>
+    <string name="view_share_history_summary">查看我创建和接收的分享</string>
+    <string name="my_shares">我分享的</string>
+    <string name="received_shares">我接收的</string>
+    <string name="no_shares">暂无分享</string>
+    <string name="view_details">查看详情</string>
+    <string name="revoke_share">撤销分享</string>
+    <string name="share_status_pending">等待接收</string>
+    <string name="share_status_active">活跃</string>
+    <string name="share_status_expired">已过期</string>
+    <string name="share_status_revoked">已撤销</string>
+    <string name="share_status_accepted">已接收</string>
+
+    <!-- 二维码扫描 -->
+    <string name="scan_qr_code">扫描二维码</string>
+    <string name="scan_to_receive_share">扫描二维码接收分享</string>
+    <string name="invalid_qr_code">无效的二维码</string>
+    <string name="scan_contact_instructions">1. 让对方打开\&quot;我的身份码\&quot;页面\n2. 扫描对方的身份QR码\n3. 添加备注后即可保存</string>
+
+    <!-- 传输方式 -->
+    <string name="transmission_method">传输方式</string>
+    <string name="qr_code_transmission">二维码</string>
+    <string name="bluetooth">蓝牙</string>
+    <string name="bluetooth_transmission">蓝牙</string>
+    <string name="nfc">近场通信</string>
+    <string name="nfc_transmission">NFC</string>
+    <string name="cloud_transmission">云端链接</string>
+    <string name="bluetooth_share_hint">选择蓝牙后，将显示附近可用的已配对设备</string>
+    
+    <!-- 蓝牙传输 -->
+    <string name="bluetooth_transfer">蓝牙传输</string>
+    <string name="select_bluetooth_device">选择蓝牙设备</string>
+    <string name="paired_devices">已配对设备</string>
+    <string name="no_paired_devices">没有已配对的蓝牙设备</string>
+    <string name="bluetooth_not_available">蓝牙不可用</string>
+    <string name="bluetooth_not_enabled">蓝牙未开启</string>
+    <string name="enable_bluetooth">开启蓝牙</string>
+    <string name="bluetooth_permission_required">需要蓝牙权限</string>
+    <string name="grant_bluetooth_permission">授予权限</string>
+    <string name="bluetooth_connecting">正在连接…</string>
+    <string name="bluetooth_connected">已连接</string>
+    <string name="bluetooth_sending">正在发送…</string>
+    <string name="bluetooth_send_success">发送成功</string>
+    <string name="bluetooth_send_failed">发送失败</string>
+    <string name="bluetooth_receiving">正在接收…</string>
+    <string name="bluetooth_receive_success">接收成功</string>
+    <string name="bluetooth_receive_failed">接收失败</string>
+    <string name="waiting_for_receiver">等待接收方连接…</string>
+    <string name="start_listening">开始监听</string>
+    <string name="stop_listening">停止监听</string>
+    <string name="bluetooth_device_not_found">找不到设备</string>
+    
+    <!-- NFC传输 -->
+    <string name="nfc_transfer">NFC传输</string>
+    <string name="nfc_not_available">NFC不可用</string>
+    <string name="nfc_not_enabled">NFC未开启</string>
+    <string name="enable_nfc">开启NFC</string>
+    <string name="nfc_write_mode">请将设备靠近NFC标签写入数据</string>
+    <string name="nfc_read_mode">请将设备靠近NFC标签读取数据</string>
+    <string name="nfc_tap_to_share">轻触分享</string>
+    <string name="nfc_tap_device">请将两台设备背面靠近</string>
+    <string name="nfc_writing">正在写入NFC标签…</string>
+    <string name="nfc_write_success">写入成功</string>
+    <string name="nfc_write_failed">写入失败</string>
+    <string name="nfc_reading">正在读取NFC数据…</string>
+    <string name="nfc_read_success">读取成功</string>
+    <string name="nfc_read_failed">读取失败</string>
+    <string name="nfc_tag_not_writable">NFC标签不可写入</string>
+    <string name="nfc_tag_too_small">NFC标签容量不足</string>
+    <string name="nfc_tap_hint">轻触设备以传输数据</string>
+    <string name="nfc_ready">就绪，请靠近NFC设备</string>
+    <string name="nfc_hint">选择NFC后，将设备靠近进行传输</string>
+    <string name="cloud_hint">选择云端后，将生成分享链接可通过任何方式分享</string>
+
+    <!-- 传输方式分享标题 -->
+    <string name="qr_code_share">二维码分享</string>
+    <string name="bluetooth_share">蓝牙分享</string>
+    <string name="nfc_share">NFC分享</string>
+
+    <!-- 云端传输 -->
+    <string name="cloud_share">云端分享</string>
+    <string name="copy_link">复制链接</string>
+    <string name="share_link">分享链接</string>
+    <string name="link_copied">链接已复制</string>
+    <string name="share_via">分享链接至</string>
+    <string name="cloud_share_placeholder_hint">云端分享功能需要服务器支持，当前为占位实现</string>
+    <string name="cloud_link_info">可通过微信、邮件等方式分享此链接</string>
+
+
+    <!-- ========== 自动填充功能 ========== -->
+
+    <!-- 自动填充服务 -->
+    <string name="autofill_service_name">SafeVault 自动填充</string>
+    <string name="autofill_service">自动填充服务</string>
+    <string name="autofill_service_description">为网站和应用程序自动填充用户名和密码</string>
+    <string name="autofill_service_enabled">已启用</string>
+    <string name="autofill_service_disabled">未启用</string>
+    <string name="autofill_enable">启用自动填充</string>
+    <string name="autofill_go_to_settings">前往系统设置</string>
+    <string name="autofill_unlock_safevault">解锁 SafeVault</string>
+    <string name="autofill_open_safevault">打开 SafeVault</string>
+    <string name="autofill_no_credentials">没有匹配的凭据</string>
+    <string name="autofill_vault_locked">密码库已锁定</string>
+    <string name="autofill_open_vault">转到我的密码库</string>
+    <string name="autofill_select_credential">选择密码</string>
+    <string name="autofill_no_credentials_for_site">此网站/应用暂无保存的密码</string>
+    <string name="autofill_add_new_credential">添加新密码</string>
+
+    <!-- 自动填充保存凭据 -->
+    <string name="autofill_save_credential">保存凭据</string>
+    <string name="autofill_save_success">凭据已保存</string>
+    <string name="autofill_save_failed">保存失败</string>
+    <string name="autofill_duplicate_credential_warning">该凭据已存在，仍然可以保存</string>
+    <string name="error_app_locked">应用已锁定，请先解锁</string>
+    <string name="error_username_required">用户名不能为空</string>
+    <string name="error_password_required">密码不能为空</string>
+    <string name="checking">检查中...</string>
+    <string name="saving">保存中...</string>
+    
+    <!-- 提示文本 -->
+    <string name="hint_title">标题</string>
+    <string name="hint_username">用户名</string>
+    <string name="hint_password">密码</string>
+    <string name="hint_website">网站/应用</string>
+    <string name="hint_notes">备注（可选）</string>
+    
+    <!-- 按钮 -->
+    <string name="button_save">保存</string>
+    <string name="button_cancel">取消</string>
+
+    <!-- ========== 云端分享功能 ========== -->
+    
+    <!-- 用户认证 -->
+    <string name="cloud_login">云端登录</string>
+    <string name="cloud_register">注册账号</string>
+    <string name="local_unlock">本地解锁</string>
+    <string name="display_name">显示名称</string>
+    <string name="register_account">注册</string>
+    <string name="login_account">登录</string>
+    <string name="register">注册</string>
+    <string name="login">登录</string>
+    <string name="switch_to_register">没有账号？注册</string>
+    <string name="switch_to_login">已有账号？登录</string>
+    <string name="username_password_required">请输入用户名和密码</string>
+    <string name="display_name_required">请输入显示名称</string>
+    <string name="already_have_account">已有账号？登录</string>
+    <string name="no_account_yet">还没有账号？注册</string>
+    <string name="login_success">登录成功</string>
+    <string name="register_success">注册成功</string>
+    <string name="login_failed">登录失败</string>
+    <string name="register_failed">注册失败</string>
+    <string name="cloud_logout">登出云端</string>
+    <string name="cloud_logged_in">已登录云端</string>
+    <string name="cloud_not_logged_in">未登录云端</string>
+    
+    <!-- 分享类型 -->
+    <string name="share_type_direct">直接分享</string>
+    <string name="share_type_user_to_user">分享给用户</string>
+    <string name="share_type_nearby">附近用户</string>
+    <string name="share_method">分享方式</string>
+    <string name="select_share_method">选择分享方式</string>
+    <string name="cloud_direct">云端直接</string>
+    <string name="cloud_user">指定用户</string>
+    <string name="cloud_nearby">附近用户</string>
+    <string name="cloud_direct_hint">生成一个云端分享链接，任何人都可以通过链接访问</string>
+    <string name="cloud_user_hint">直接分享给指定的用户</string>
+    <string name="cloud_nearby_hint">分享给附近的用户</string>
+    <string name="cloud_share_options">云端分享选项</string>
+    <string name="target_user_id">目标用户ID</string>
+    <string name="please_login_cloud_first">请先登录云端账号</string>
+    <string name="please_enter_user_id">请输入用户ID</string>
+    <string name="please_select_nearby_user">请选择附近用户</string>
+    
+    <!-- 附近发现 -->
+    <string name="nearby_users">附近用户</string>
+    <string name="discovering_nearby">搜索附近用户...</string>
+    <string name="no_nearby_users">附近没有用户</string>
+    <string name="refresh_nearby">刷新</string>
+    <string name="distance_meters">%d米</string>
+    <string name="online">在线</string>
+    <string name="offline">离线</string>
+    <string name="location_permission_required">需要位置权限</string>
+    <string name="location_permission_required_message">需要位置权限才能搜索附近用户</string>
+    <string name="permission_required">需要权限</string>
+    <string name="cannot_get_location">无法获取位置</string>
+    <string name="location_error">位置错误</string>
+    <string name="user_avatar">用户头像</string>
+    <string name="grant_location_permission">授予位置权限</string>
+    <string name="search_radius">搜索半径</string>
+    <string name="radius_100m">100米</string>
+    <string name="radius_500m">500米</string>
+    <string name="radius_1km">1公里</string>
+    <string name="radius_5km">5公里</string>
+    
+    <!-- 分享权限 -->
+    <string name="share_permission">分享权限</string>
+    <string name="allow_view">允许查看</string>
+    <string name="create_share">创建分享</string>
+    <string name="select_user">选择用户</string>
+    <string name="share_created">分享已创建</string>
+    <string name="share_failed">分享失败</string>
+    
+    <!-- 分享通知 -->
+    <string name="new_share_notification">新分享</string>
+    <string name="share_notification_title">%s 分享了一个密码</string>
+    <string name="share_revoked_notification">分享已撤销</string>
+    <string name="share_revoked_notification_title">分享已被撤销</string>
+    
+    <!-- 错误提示 -->
+    <string name="error_network">网络错误</string>
+    <string name="error_server">服务器错误</string>
+    <string name="error_permission_denied">权限被拒绝</string>
+    <string name="error_share_expired">分享已过期</string>
+    <string name="error_share_revoked">分享已被撤销</string>
+    <string name="error_invalid_share">无效的分享</string>
+    <string name="error_title">错误</string>
+    <string name="retry">重试</string>
+
+    <!-- 数据同步 -->
+    <string name="sync_conflict_title">检测到数据冲突</string>
+    <string name="sync_conflict_message">云端数据版本：%1$d\n本地数据版本：%2$d\n\n请选择同步方式：</string>
+    <string name="sync_use_cloud">使用云端数据（覆盖本地）</string>
+    <string name="sync_use_local">保留本地数据（覆盖云端）</string>
+    <string name="sync_cancel">取消</string>
+
+    <!-- ========== 数据导出/导入功能 ========== -->
+
+    <!-- 导出功能 -->
+    <string name="export_data">导出数据</string>
+    <string name="export_data_summary">将密码数据导出为加密文件</string>
+    <string name="export_success">导出成功</string>
+    <string name="export_failed">导出失败</string>
+    <string name="export_progress">正在导出…</string>
+    <string name="export_complete">导出完成</string>
+    <string name="export_file_saved">文件已保存至: %s</string>
+    <string name="export_password_description">设置一个用于加密导出文件的密码。导出的文件将使用此密码加密，确保只有知道密码的人才能访问。</string>
+    <string name="export_password_warning">重要：请妥善保管导出密码。丢失密码将无法恢复备份文件中的数据。</string>
+    <string name="export_confirm">开始导出</string>
+
+    <!-- 导入功能 -->
+    <string name="import_data">导入数据</string>
+    <string name="import_data_summary">从加密文件导入密码数据</string>
+    <string name="import_success">导入成功</string>
+    <string name="import_failed">导入失败</string>
+    <string name="import_progress">正在导入…</string>
+    <string name="import_complete">导入完成</string>
+    <string name="import_items_count">已导入 %d 条密码</string>
+
+    <!-- 导出/导入设置 -->
+    <string name="data_management">数据管理</string>
+    <string name="backup_settings_title">备份与还原</string>
+    <string name="backup_settings_description">导出或导入加密的密码数据</string>
+    <string name="select_backup_file">选择备份文件</string>
+    <string name="backup_files">备份文件 (*.vault)</string>
+    <string name="no_backup_files_found">未找到备份文件</string>
+    <string name="invalid_backup_file">无效的备份文件</string>
+    <string name="backup_file_corrupted">备份文件已损坏</string>
+    <string name="backup_password_required">需要输入备份密码</string>
+    <string name="enter_backup_password">输入备份密码</string>
+    <string name="backup_password_hint">用于加密备份文件的密码</string>
+    <string name="confirm_backup_password">确认备份密码</string>
+    <string name="set_backup_password">设置备份密码</string>
+    <string name="use_master_password_as_backup">使用主密码作为备份密码</string>
+    <string name="import_warning">导入警告</string>
+    <string name="import_warning_message">导入数据将覆盖现有密码。是否继续？</string>
+    <string name="import_merge_option">合并选项</string>
+    <string name="import_merge">合并到现有数据</string>
+    <string name="import_replace">替换现有数据</string>
+
+    <!-- 备份信息 -->
+    <string name="backup_info">备份信息</string>
+    <string name="backup_time">备份时间</string>
+    <string name="backup_item_count">密码数量</string>
+    <string name="backup_device">备份设备</string>
+    <string name="backup_version">备份版本</string>
+    <string name="backup_file_name">文件名</string>
+
+    <!-- 冲突处理对话框 -->
+    <string name="import_conflict_strategy">冲突处理策略</string>
+    <string name="conflict_strategy_skip">跳过</string>
+    <string name="conflict_strategy_skip_desc">保留现有条目，仅导入新条目</string>
+    <string name="conflict_strategy_override">覆盖</string>
+    <string name="conflict_strategy_override_desc">用备份文件覆盖现有条目</string>
+    <string name="conflict_strategy_merge">合并</string>
+    <string name="conflict_strategy_merge_desc">为冲突条目生成新ID并导入</string>
+    <string name="import_new_items">新条目</string>
+    <string name="import_conflict_items">冲突条目</string>
+    <string name="import_confirm">开始导入</string>
+
+    <!-- ========== Phase 4: UI/UX 改进 ========== -->
+
+    <!-- 传输进度 -->
+    <string name="transferring">正在传输…</string>
+    <string name="sending">正在发送…</string>
+    <string name="receiving">正在接收…</string>
+    <string name="transfer_progress">传输进度: %d%%</string>
+
+    <!-- 重复凭据对话框 -->
+    <string name="duplicate_credential_title">检测到重复凭据</string>
+    <string name="duplicate_credential_message">已存在相同网站和用户名的密码：\n标题: %s\n用户名: %s\n是否覆盖现有凭据？</string>
+    <string name="button_overwrite">覆盖</string>
+    <string name="credential_overwritten">凭据已覆盖</string>
+
+    <!-- ========== 联系人功能 ========== -->
+
+    <!-- 底部导航 -->
+    <string name="nav_contacts">联系人</string>
+
+    <!-- 联系人页面 -->
+    <string name="contacts_title">我的联系人</string>
+    <string name="add_contact">添加联系人</string>
+    <string name="scan_contact">扫描联系人</string>
+    <string name="my_identity">我的身份码</string>
+    <string name="no_contacts">暂无联系人\n点击下方按钮添加</string>
+
+    <!-- 联系人详情 -->
+    <string name="contact_details">联系人详情</string>
+    <string name="edit_note">编辑备注</string>
+    <string name="delete_contact">删除联系人</string>
+    <string name="delete_contact_confirm">确定要删除这个联系人吗？</string>
+
+    <!-- 导航 -->
+    <string name="navigate_next">下一页</string>
+    <string name="contact_share">联系人分享</string>
+
+    <!-- 扫描设备 -->
+    <string name="scan_devices">扫描设备</string>
+    <string name="scanning">正在扫描…</string>
+    <string name="pair_device">配对设备</string>
+    <string name="device_paired">已配对</string>
+    <string name="device_not_paired">未配对</string>
+    <string name="scan_new_devices">扫描新设备</string>
+    <string name="bluetooth_discovery_started">开始扫描设备</string>
+    <string name="bluetooth_discovery_failed">扫描失败</string>
+    <string name="select_device">选择设备</string>
+
+    <!-- ========== 好友详情/聊天界面 ========== -->
+    <string name="friend_detail_title">联系人详情</string>
+    <string name="no_shares_with_contact">暂无分享记录</string>
+    <string name="start_sharing_passwords">开始与TA分享密码</string>
+    <string name="view_identity_code">查看身份码</string>
+    <string name="view">查看</string>
+    <string name="share_detail_title">分享详情</string>
+    <string name="share_password_detail">密码详情</string>
+    <string name="share_time">分享时间</string>
+    <string name="share_expire_time">过期时间</string>
+    <string name="share_permission_detail">权限</string>
+    <string name="can_view">可查看</string>
+    <string name="can_save">可保存</string>
+    <string name="is_revocable">可撤销</string>
+    <string name="never_expires">永不过期</string>
+    <string name="expired">已过期</string>
+    <string name="revoked">已撤销</string>
+    <string name="copy">复制</string>
+    <string name="revoke">撤销</string>
+    <string name="save">保存</string>
+    <string name="password_copied">密码已复制</string>
+    <string name="share_revoked_success">分享已撤销</string>
+    <string name="share_revoked_failed">撤销分享失败</string>
+    <string name="confirm_revoke_share">确认撤销分享</string>
+    <string name="confirm_revoke_share_message">撤销后，TA将无法再访问此密码。确定要撤销吗？</string>
+    <string name="no_sent_shares">还没有分享过密码</string>
+    <string name="no_received_shares">还没有收到分享</string>
+    <string name="start_sharing_hint">从密码详情页点击分享按钮开始</string>
+    <string name="wait_for_shares_hint">当别人分享给你时，会在这里显示</string>
+    <string name="confirm_save_share_message">确定要将此密码保存到你的密码库吗？</string>
+    <string name="save_to_local_coming_soon">此功能即将推出</string>
+    <string name="coming_soon">即将推出</string>
+
+    <!-- ========== 密码选择对话框 ========== -->
+    <string name="select_password_to_share">选择要分享的密码</string>
+
+    <!-- ========== 云端同步功能 ========== -->
+
+    <!-- 云端同步 -->
+    <string name="cloud_sync">云端同步</string>
+    <string name="sync_settings_description">管理云端同步设置</string>
+    <string name="sync_enabled">自动同步密码到云端</string>
+    <string name="sync_interval">同步间隔</string>
+    <string name="wifi_only_sync">仅 WiFi 下同步</string>
+    <string name="wifi_only_sync_summary">节省移动数据流量</string>
+    <string name="manual_sync">立即同步</string>
+    <string name="sync_status">同步状态</string>
+    <string name="last_sync">最后同步</string>
+    <string name="client_version">本地版本</string>
+    <string name="server_version">云端版本</string>
+    <string name="never_synced">从未同步</string>
+    <string name="syncing">同步中…</string>
+    <string name="sync_success">同步成功</string>
+    <string name="sync_failed">同步失败</string>
+    <string name="sync_conflict">检测到冲突</string>
+    <string name="sync_offline">离线模式</string>
+    <string name="sync_just_now">刚刚</string>
+    <string name="sync_minutes_ago">%d 分钟前</string>
+    <string name="sync_hours_ago">%d 小时前</string>
+    <string name="sync_days_ago">%d 天前</string>
+    <string name="sync_interval_30_minutes">30 分钟</string>
+    <string name="sync_interval_1_hour">1 小时</string>
+    <string name="sync_interval_2_hours">2 小时</string>
+    <string name="sync_interval_4_hours">4 小时</string>
+    <string name="sync_interval_manual_only">仅手动同步</string>
+    <string name="select_sync_interval">选择同步间隔</string>
+    <string name="keep_local">保留本地版本</string>
+    <string name="keep_server">保留云端版本</string>
+    <string name="conflict_detected">检测到冲突</string>
+    <string name="conflict_message">本地和云端都有修改，请选择保留哪个版本</string>
+
+</resources>

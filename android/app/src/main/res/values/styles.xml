@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         MODERN TEXT INPUT LAYOUT STYLES
+         ======================================== -->
+
+    <!-- 现代化输入框基础样式 - 大圆角、更好的间距 -->
+    <style name="Widget.Material3.TextInputLayout.OutlinedBox.Modern" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxCornerRadiusTopStart">20dp</item>
+        <item name="boxCornerRadiusTopEnd">20dp</item>
+        <item name="boxCornerRadiusBottomStart">20dp</item>
+        <item name="boxCornerRadiusBottomEnd">20dp</item>
+        <item name="boxStrokeWidth">2dp</item>
+        <item name="boxStrokeWidthFocused">3dp</item>
+        <item name="boxBackgroundColor">?attr/colorSurfaceVariant</item>
+        <item name="hintTextColor">?attr/colorPrimary</item>
+        <item name="android:textColorHint">?attr/colorOnSurfaceVariant</item>
+        <item name="prefixTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="suffixTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="errorTextColor">?attr/colorError</item>
+        <item name="errorIconTint">?attr/colorError</item>
+        <item name="counterTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="counterOverflowTextColor">?attr/colorError</item>
+        <item name="helperTextTextAppearance">@style/TextAppearance.SafeVault.HelperText</item>
+        <item name="hintTextAppearance">@style/TextAppearance.SafeVault.HintText</item>
+        <item name="endIconTint">?attr/colorOnSurfaceVariant</item>
+        <item name="startIconTint">?attr/colorPrimary</item>
+    </style>
+
+    <!-- 紧凑型输入框 - 用于表单内部 -->
+    <style name="Widget.Material3.TextInputLayout.OutlinedBox.Modern.Compact" parent="Widget.Material3.TextInputLayout.OutlinedBox.Modern">
+        <item name="boxCornerRadiusTopStart">16dp</item>
+        <item name="boxCornerRadiusTopEnd">16dp</item>
+        <item name="boxCornerRadiusBottomStart">16dp</item>
+        <item name="boxCornerRadiusBottomEnd">16dp</item>
+    </style>
+
+    <!-- 带图标的输入框样式 -->
+    <style name="Widget.Material3.TextInputLayout.OutlinedBox.Modern.WithIcon" parent="Widget.Material3.TextInputLayout.OutlinedBox.Modern">
+        <item name="startIconScaleType">centerInside</item>
+    </style>
+
+    <!-- 密码输入框样式 -->
+    <style name="Widget.Material3.TextInputLayout.OutlinedBox.Modern.Password" parent="Widget.Material3.TextInputLayout.OutlinedBox.Modern.WithIcon">
+        <item name="endIconMode">password_toggle</item>
+        <item name="endIconTint">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <!-- 紧凑型密码输入框样式 -->
+    <style name="Widget.Material3.TextInputLayout.OutlinedBox.Modern.Compact.Password" parent="Widget.Material3.TextInputLayout.OutlinedBox.Modern.Compact">
+        <item name="endIconMode">password_toggle</item>
+        <item name="endIconTint">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <!-- ========================================
+         MODERN BUTTON STYLES
+         ======================================== -->
+
+    <!-- 现代化主要按钮 - 大圆角、增强视觉效果 -->
+    <style name="Widget.Material3.Button.Modern" parent="Widget.Material3.Button">
+        <item name="android:height">56dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="cornerRadius">20dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="iconPadding">12dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="android:insetTop">4dp</item>
+        <item name="android:insetBottom">4dp</item>
+        <item name="elevation">2dp</item>
+    </style>
+
+    <!-- 小号主要按钮 -->
+    <style name="Widget.Material3.Button.Modern.Small" parent="Widget.Material3.Button.Modern">
+        <item name="android:height">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 现代化轮廓按钮 -->
+    <style name="Widget.Material3.Button.OutlinedButton.Modern" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:height">56dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="cornerRadius">20dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="strokeWidth">2dp</item>
+        <item name="iconPadding">12dp</item>
+        <item name="iconGravity">textStart</item>
+        <item name="android:insetTop">4dp</item>
+        <item name="android:insetBottom">4dp</item>
+    </style>
+
+    <!-- 小号轮廓按钮 -->
+    <style name="Widget.Material3.Button.OutlinedButton.Modern.Small" parent="Widget.Material3.Button.OutlinedButton.Modern">
+        <item name="android:height">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- 现代化文本按钮 -->
+    <style name="Widget.Material3.Button.TextButton.Modern" parent="Widget.Material3.Button.TextButton">
+        <item name="android:height">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="iconPadding">8dp</item>
+        <item name="android:insetTop">4dp</item>
+        <item name="android:insetBottom">4dp</item>
+    </style>
+
+    <!-- 现代化图标按钮 - 用于浮动操作 -->
+    <style name="Widget.Material3.Button.IconButton.Modern" parent="Widget.Material3.Button.IconButton">
+        <item name="android:width">48dp</item>
+        <item name="android:height">48dp</item>
+        <item name="cornerRadius">14dp</item>
+        <item name="iconSize">24dp</item>
+        <item name="iconTint">?attr/colorOnPrimary</item>
+        <item name="backgroundTint">?attr/colorPrimaryContainer</item>
+    </style>
+
+    <!-- FAB 样式 -->
+    <style name="Widget.Material3.FloatingActionButton.Modern" parent="Widget.Material3.FloatingActionButton.Primary">
+        <item name="fabCustomSize">64dp</item>
+        <item name="maxImageSize">32dp</item>
+    </style>
+
+    <!-- ========================================
+         TEXT APPEARANCE STYLES
+         ======================================== -->
+
+    <style name="TextAppearance.SafeVault.HelperText" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="TextAppearance.SafeVault.HintText" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- ========================================
+         CARD STYLES
+         ======================================== -->
+
+    <style name="Widget.Material3.CardView.Modern" parent="Widget.Material3.CardView.Elevated">
+        <item name="cardCornerRadius">24dp</item>
+        <item name="cardElevation">8dp</item>
+        <item name="contentPadding">20dp</item>
+    </style>
+
+    <style name="Widget.Material3.CardView.Modern.Flat" parent="Widget.Material3.CardView.Outlined">
+        <item name="cardCornerRadius">20dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">?attr/colorOutline</item>
+        <item name="contentPadding">16dp</item>
+    </style>
+
+    <!-- ========================================
+         HIGH CONTRAST VARIANTS
+         ======================================== -->
+
+    <style name="Widget.Material3.Button.OutlinedButton.Modern.HighContrast" parent="Widget.Material3.Button.OutlinedButton.Modern">
+        <item name="strokeColor">?attr/colorPrimary</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="rippleColor">?attr/colorPrimary</item>
+    </style>
+
+    <style name="Widget.Material3.Button.TextButton.Modern.HighContrast" parent="Widget.Material3.Button.TextButton.Modern">
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="rippleColor">?attr/colorPrimary</item>
+    </style>
+</resources>

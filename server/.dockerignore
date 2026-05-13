@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Local environment secrets
+.env
+.env.*
+!.env.example
+
+# Maven build output
+target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# Deployment artifacts
+scripts/deploy/
+docs/deployment/
+
+# Documentation
+README.md
+HELP.md
+openspec/

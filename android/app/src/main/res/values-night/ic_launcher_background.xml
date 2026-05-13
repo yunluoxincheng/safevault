@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 使用白色背景确保启动时图标清晰可见 -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

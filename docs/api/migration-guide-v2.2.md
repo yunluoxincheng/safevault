@@ -73,7 +73,7 @@ Flyway 会自动执行以下迁移脚本：
 **手动执行迁移（推荐）：**
 
 ```bash
-cd safevault-backend
+cd server
 ./mvnw flyway:migrate
 ```
 

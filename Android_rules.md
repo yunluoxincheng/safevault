@@ -37,6 +37,6 @@ This project is currently a Java/XML Android app. These rules override older gen
 
 ## Verification
 
-- Unit tests: `.\gradlew.bat test`.
-- Build check: `.\gradlew.bat :app:assembleDebug`.
+- Unit tests: from `android/`, run `./gradlew test`.
+- Build check: from `android/`, run `./gradlew :app:assembleDebug`.
 - Instrumented tests require a connected emulator/device and should be run only when relevant.

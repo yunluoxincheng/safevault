@@ -7,9 +7,9 @@ This folder is for backend documentation that is meaningful only in the full Saf
 - Backend service/module ownership across the whole project
 - Android-to-backend integration architecture
 - Cross-component architecture decisions
-- Repository-boundary decisions that involve both root and backend repositories
+- Repository-boundary decisions that involve both Android and backend
 
-## Keep in `safevault-backend/docs/`
+## Keep in `server/docs/`
 
 - Deployment/runbook docs executed from backend working directory
 - Maven/Spring profile commands bound to backend repository workflows
@@ -26,5 +26,6 @@ If the same topic appears in multiple places, keep one canonical file and add a 
 
 ## Current Backend-Local Canonical Files
 
-- `safevault-backend/docs/deployment/server-deployment.md`
-- `safevault-backend/docs/modularization-plan.md`
+- `server/docs/deployment/server-deployment.md`
+- `server/docs/modularization-plan.md`
+- `server/docs/service-boundaries.md`

@@ -4,9 +4,9 @@ Use this checklist to verify the core vault flow against a local backend.
 
 ## Prerequisites
 
-- [ ] PostgreSQL and Redis running (`docker-compose up -d postgres redis` from `safevault-backend/`)
-- [ ] Backend running (`.\mvnw.cmd spring-boot:run` from `safevault-backend/`)
-- [ ] Android debug APK installed on device/emulator (`.\gradlew.bat :app:assembleDebug`)
+- [ ] PostgreSQL and Redis running (`docker compose up -d postgres redis` from `server/`)
+- [ ] Backend running (`./mvnw spring-boot:run` from `server/`)
+- [ ] Android debug APK installed on device/emulator (`./gradlew :app:assembleDebug` from `android/`)
 
 ## Test Cases
 
@@ -86,14 +86,13 @@ WHERE table_name = 'user_vaults' AND column_name LIKE '%password%';
 
 ## Verification Commands
 
-```powershell
-# Android unit tests
-.\gradlew.bat test
+```bash
+# Android unit tests (from android/)
+./gradlew test
 
-# Android compile
-.\gradlew.bat :app:assembleDebug
+# Android compile (from android/)
+./gradlew :app:assembleDebug
 
-# Backend tests
-cd safevault-backend
-.\mvnw.cmd test
+# Backend tests (from server/)
+./mvnw test
 ```

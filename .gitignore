@@ -8,16 +8,37 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
-/build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
 .gradle-local/
-openspec/
 .claude/
-safevault-backend/
+.codex/
+.agents/
 task.md
+build/
+.idea/
+*.log
+
+# Android generated (under android/)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Backend generated (under server/)
+server/target/
+server/.m2repo/
+server/.m2-local/
+server/.maven-wrapper-home/
+server/.mvn/wrapper/maven-wrapper.jar
+server/.env
+server/.env.local
+server/.kilo/
+
+# Legacy local directory (kept for manual cleanup)
+safevault-backend/
 
 # Git worktrees
 .worktrees/

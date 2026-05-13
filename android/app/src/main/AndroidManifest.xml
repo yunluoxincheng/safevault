@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 权限声明 -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- 相机权限（用于二维码扫描） -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- 蓝牙权限 -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Android 12+ 蓝牙权限 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- 写入外部存储权限（用于自动填充调试日志） -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+
+    <!-- 位置权限（用于附近用户发现） -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- 通知权限（Android 13+） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 前台服务权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- 相机功能要求（可选） -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
+    <!-- 注意：NFC 功能已移除，因为 Android 10+ 不支持点对点传输 -->
+
+    <application
+        android:name=".core.SafeVaultApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SafeVault"
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:targetApi="31">
+
+        <!-- 登录页面 -->
+        <activity
+            android:name=".ui.LoginActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.SafeVault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 注册页面 -->
+        <activity
+            android:name=".ui.RegisterActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 主页面 -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustNothing"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 分享功能相关页面 -->
+        <activity
+            android:name=".ui.share.ShareActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <activity
+            android:name=".ui.share.ReceiveShareActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar">
+            <!-- 处理分享链接 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="safevault" android:host="share" />
+            </intent-filter>
+        </activity>
+        
+        <activity
+            android:name=".ui.share.ScanQRCodeActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+        
+        <activity
+            android:name=".ui.share.BluetoothReceiveActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- QR码分享 -->
+        <activity
+            android:name=".ui.share.QRShareActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 蓝牙分享 -->
+        <activity
+            android:name=".ui.share.BluetoothShareActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 分享历史页面 -->
+        <activity
+            android:name=".ui.share.ShareHistoryActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 安全码验证详情页面 -->
+        <activity
+            android:name=".ui.share.SafetyNumberDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 联系人管理相关页面 -->
+        <activity
+            android:name=".ui.share.ContactListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <activity
+            android:name=".ui.share.MyIdentityActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <activity
+            android:name=".ui.share.ScanContactActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 好友请求列表页面 -->
+        <activity
+            android:name=".ui.friend.FriendRequestListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 联系人搜索页面 -->
+        <activity
+            android:name=".ui.friend.ContactSearchActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustNothing"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 好友详情/聊天页面 -->
+        <activity
+            android:name=".ui.friend.FriendDetailActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- FileProvider用于分享文件 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- ========== 自动填充服务 ========== -->
+        
+        <!-- AutofillService -->
+        <service
+            android:name=".autofill.SafeVaultAutofillService"
+            android:exported="true"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service_configuration" />
+        </service>
+        
+        <!-- AutofillSaveActivity -->
+        <activity
+            android:name=".ui.autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- AutofillSaveAuthActivity (认证后跳转到 AutofillSaveActivity) -->
+        <activity
+            android:name=".ui.autofill.AutofillSaveAuthActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- AutofillCredentialSelectorActivity (密码选择页面) -->
+        <activity
+            android:name=".ui.autofill.AutofillCredentialSelectorActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+        <!-- 分享通知服务 -->
+        <service
+            android:name=".service.ShareNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 分享通知接收器 -->
+        <receiver
+            android:name=".receiver.ShareNotificationReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ttt.safevault.action.OPEN_SHARE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 认证状态接收器 -->
+        <receiver
+            android:name=".receiver.AuthReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ttt.safevault.action.TOKEN_EXPIRED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 密钥迁移页面 -->
+        <activity
+            android:name=".ui.KeyMigrationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.SafeVault.NoActionBar" />
+
+    </application>
+
+</manifest>

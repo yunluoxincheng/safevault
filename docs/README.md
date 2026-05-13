@@ -21,7 +21,7 @@ This directory is the canonical documentation home for SafeVault.
 
 ## Routing Rules
 
-- Backend-local deployment/runbook docs that require backend working directory commands belong in `safevault-backend/docs/`.
+- Backend-local deployment/runbook docs that require backend working directory commands belong in `server/docs/`.
 - Cross-repository backend ownership/architecture docs belong in `docs/backend/`.
 - API endpoints, sync behavior, schema notes, and contract-level behavior belong in `docs/api/`.
 

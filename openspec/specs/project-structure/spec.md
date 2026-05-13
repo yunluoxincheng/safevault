@@ -42,18 +42,19 @@ Large documentation reorganizations MUST be inventory-driven before files are mo
 - **THEN** the migration record classifies it before promotion, rewrite, archival, or removal
 
 ### Requirement: Nested Backend Repository Policy
-The repository MUST document how the root project relates to the nested `safevault-backend/` Git repository.
+The repository MUST document that the backend is managed by the root SafeVault repository after the layout migration, and that the previous nested `safevault-backend/` Git repository is no longer an active development boundary.
 
 #### Scenario: Backend repository status is needed
 - **WHEN** maintainers prepare root or backend refactor work
-- **THEN** they can determine whether backend changes require root Git actions, backend Git actions, or both
+- **THEN** they can determine that root Git status is the authoritative status for Android, backend, documentation, and OpenSpec changes
+- **AND** they do not treat `server/` as a nested Git repository
 
 ### Requirement: Backend Documentation Routing
-The repository MUST define a strict routing rule for backend-related documentation across `docs/backend/`, `docs/api/`, and `safevault-backend/docs/`.
+The repository MUST define a strict routing rule for backend-related documentation across `docs/backend/`, `docs/api/`, and `server/docs/`.
 
 #### Scenario: Backend-local operational documentation is classified
 - **WHEN** documentation depends on backend-only working directory commands, Spring profiles, Maven, Docker Compose, deployment, or environment configuration
-- **THEN** its canonical home is `safevault-backend/docs/`
+- **THEN** its canonical home is `server/docs/`
 
 #### Scenario: Cross-repository backend architecture documentation is classified
 - **WHEN** documentation explains backend ownership, architecture, or Android-to-backend integration in the context of the full SafeVault project

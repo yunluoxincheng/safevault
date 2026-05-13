@@ -10,12 +10,12 @@ This reorganization focuses on structure clarity only:
 
 ## Current Topology
 
-SafeVault is a mono-repo with two runtime parts:
+SafeVault is a monorepo with two runtime parts:
 
-- `app`: Android native client (Java, MVVM)
-- `safevault-backend`: Spring Boot backend
+- `android/`: Android native client (Java, MVVM)
+- `server/`: Spring Boot backend
 
-Both parts are already separated at the repository level, but package responsibilities were not explicitly documented at package scope.
+Both parts share the root SafeVault Git repository. Package responsibilities are documented at package scope.
 
 ## Reorganization Actions
 
@@ -67,7 +67,7 @@ Introduced `com.ttt.safevault.core` for bootstrap-level structure:
 
 ## Target Responsibility Split
 
-### Android (`app`)
+### Android (`android/`)
 
 - `ui`: screen composition and interaction only
 - `viewmodel`: state orchestration and user-intent handling
@@ -76,7 +76,7 @@ Introduced `com.ttt.safevault.core` for bootstrap-level structure:
 - `security` + `crypto`: key lifecycle and cryptographic primitives
 - `network`: transport, token, and API contracts
 
-### Backend (`safevault-backend`)
+### Backend (`server/`)
 
 - `controller`: HTTP boundary
 - `service`: use-case logic

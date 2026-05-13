@@ -1,0 +1,29 @@
+id: refactor-android-security-boundaries
+schema: spec-driven
+status: proposed
+created: 2026-05-08
+artifacts:
+  - id: proposal
+    path: proposal.md
+    status: done
+  - id: design
+    path: design.md
+    status: done
+    dependencies:
+      - proposal
+  - id: tasks
+    path: tasks.md
+    status: done
+    dependencies:
+      - proposal
+      - design
+  - id: project-structure-spec
+    path: specs/project-structure/spec.md
+    status: done
+    dependencies:
+      - proposal
+      - design
+apply:
+  requires:
+    - tasks
+    - project-structure-spec

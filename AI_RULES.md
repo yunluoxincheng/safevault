@@ -36,7 +36,6 @@ This file is a short companion to `AGENTS.md`. If rules conflict, prefer `AGENTS
 
 ## Testing
 
-- Android: `.\gradlew.bat test`; compile-sensitive changes: `.\gradlew.bat :app:assembleDebug`.
-- Backend: run `.\mvnw.cmd test` from `safevault-backend/`.
+- Android: from `android/`, run `./gradlew test`; compile-sensitive changes: `./gradlew :app:assembleDebug`.
+- Backend: from `server/`, run `./mvnw test`.
 - OpenSpec changes: `openspec validate <change-id> --strict`.
-

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${lang}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${appName} + ' - 验证邮箱'">SafeVault - 验证邮箱</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px 30px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 64px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .message {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            color: #4CAF50;
+        }
+
+        .error {
+            color: #F44336;
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+            border-radius: 4px;
+        }
+
+        .info-box.success {
+            border-left-color: #4CAF50;
+            background: #e8f5e9;
+        }
+
+        .info-box.error {
+            border-left-color: #F44336;
+            background: #ffebee;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #999;
+            font-size: 12px;
+        }
+
+        .countdown {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 15px 0;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .logo {
+                font-size: 48px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <img src="/api/static/images/safevault_icon_email.png" width="90" height="80" alt="SafeVault" style="border-radius: 12px;">
+        </div>
+        <h1 th:text="${appName}">SafeVault</h1>
+        <p class="subtitle" th:text="${appDescription}">安全的密码管理器</p>
+
+        <!-- 加载状态 -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p class="loading-text">正在验证您的邮箱...</p>
+        </div>
+
+        <!-- 验证成功 -->
+        <div id="success" class="hidden">
+            <div class="status-icon success">✓</div>
+            <h2 style="color: #4CAF50; margin-bottom: 15px;">验证成功！</h2>
+            <p class="message">您的邮箱已成功验证。</p>
+            <div class="info-box success">
+                <p><strong>邮箱：</strong><span id="success-email"></span></p>
+                <p><strong>用户名：</strong><span id="success-username"></span></p>
+            </div>
+            <p class="message">现在可以返回 SafeVault 应用继续设置密码。</p>
+            <div class="countdown" id="countdown"></div>
+            <div class="info-box">
+                <p><strong>下一步：</strong></p>
+                <p>1. 打开 SafeVault 应用</p>
+                <p>2. 应用会自动检测到验证已完成</p>
+                <p>3. 设置您的主密码</p>
+            </div>
+        </div>
+
+        <!-- 验证失败 -->
+        <div id="error" class="hidden">
+            <div class="status-icon error">✗</div>
+            <h2 style="color: #F44336; margin-bottom: 15px;">验证失败</h2>
+            <p class="message" id="error-message"></p>
+            <div class="info-box error">
+                <p><strong>可能的原因：</strong></p>
+                <p>• 验证链接已过期（10分钟有效期）</p>
+                <p>• 验证链接已被使用</p>
+                <p>• 验证链接格式错误</p>
+            </div>
+            <a href="javascript:void(0)" class="btn" onclick="window.location.reload()">重新尝试</a>
+            <div class="info-box">
+                <p><strong>提示：</strong>如果问题持续存在，请返回应用重新发送验证邮件。</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>SafeVault - 安全的密码管理器</p>
+        </div>
+    </div>
+
+    <script>
+        // 从 URL 参数中获取 token
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        const token = getUrlParameter('token') || '';
+        const apiUrl = '/api/v1/auth/verify-email';
+        let countdownSeconds = 5;
+
+        if (!token) {
+            console.error('Token not found in URL');
+            showError('验证令牌缺失，请重新获取验证邮件');
+        }
+
+        // 自动验证
+        async function verifyEmail() {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token: token })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(result);
+                } else {
+                    showError(result.message || '验证失败，请重试');
+                }
+            } catch (error) {
+                console.error('验证请求失败:', error);
+                showError('网络错误，请检查网络连接后重试');
+            }
+        }
+
+        function showSuccess(result) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('success').classList.remove('hidden');
+
+            document.getElementById('success-email').textContent = result.email || '未知';
+            document.getElementById('success-username').textContent = result.username || '未知';
+
+            startCountdown();
+        }
+
+        function showError(message) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+            document.getElementById('error-message').textContent = message;
+        }
+
+        function startCountdown() {
+            const countdownEl = document.getElementById('countdown');
+
+            const interval = setInterval(() => {
+                countdownEl.textContent = `将在 ${countdownSeconds} 秒后自动关闭此页面`;
+                countdownSeconds--;
+
+                if (countdownSeconds < 0) {
+                    clearInterval(interval);
+                    countdownEl.textContent = '您可以关闭此页面了';
+                    // 尝试关闭页面（可能被浏览器阻止）
+                    try {
+                        window.close();
+                    } catch (e) {
+                        // 忽略关闭失败
+                    }
+                }
+            }, 1000);
+        }
+
+        // 页面加载时执行验证
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                verifyEmail();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

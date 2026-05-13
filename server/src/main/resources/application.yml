@@ -1,0 +1,132 @@
+spring:
+  application:
+    name: safevault-backend
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: true  # 将日期序列化为时间戳
+    time-zone: GMT+8
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+
+  mail:
+    host: smtpdm.aliyun.com
+    port: 465
+    username: verify@mail.safevaultapp.top
+    password: ${MAIL_PASSWORD}
+    from: verify@mail.safevaultapp.top
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      database: 0
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  ssl:
+    enabled: false
+    key-store: classpath:keystore.p12
+    key-store-password: ${KEYSTORE_PASSWORD}
+    key-store-type: PKCS12
+    key-alias: safevault
+
+# JWT Configuration
+# 安全加固第三阶段：使用 RS256 非对称加密
+jwt:
+  rsa:
+    private-key: ${JWT_RSA_PRIVATE_KEY}
+    public-key: ${JWT_RSA_PUBLIC_KEY}
+  access-token-expiration: 900000  # 15 minutes in milliseconds
+  refresh-token-expiration: 604800000  # 7 days in milliseconds
+
+# API Documentation
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# N8N Email Service Configuration (已废弃，改为直接使用 SMTP)
+app:
+  base-url: ${APP_BASE_URL:https://server.safevaultapp.top/api}
+  n8n:
+    webhook-url: frp-hat.com:49475
+
+# Spring Mail Configuration (阿里云邮件推送)
+
+# Email Verification Configuration
+email:
+  verification:
+    token-expiration-minutes: 10
+    pending-user-expiration-minutes: 30  # 待验证用户在 Redis 中的过期时间
+
+# Registration Status Tracking Configuration
+registration:
+  cleanup-timeout-minutes: 5  # 注册超时时间（分钟），默认5分钟
+  cleanup-scheduled-enabled: true  # 是否启用定时清理任务
+  cleanup-scheduled-interval-ms: 300000  # 定时清理任务执行间隔（毫秒），默认5分钟
+
+# Password Hash Configuration
+# 支持通过环境变量配置 Argon2id 参数
+security:
+  password-hash:
+    # 密码哈希算法：argon2id（推荐）或 pbkdf2（向后兼容）
+    algorithm: ${PASSWORD_HASH_ALGORITHM:argon2id}
+    # Argon2id 参数配置（通过环境变量可覆盖）
+    argon2:
+      # 时间成本（迭代次数）: 环境变量 ARGON2_TIME_COST，默认 3
+      time-cost: ${ARGON2_TIME_COST:3}
+      # 内存成本（KB）: 环境变量 ARGON2_MEMORY_COST，默认 131072 (128MB)
+      memory-cost: ${ARGON2_MEMORY_COST:131072}
+      # 并行度（线程数）: 环境变量 ARGON2_PARALLELISM，默认 4
+      parallelism: ${ARGON2_PARALLELISM:4}
+      # 输出长度（字节）: 环境变量 ARGON2_OUTPUT_LENGTH，默认 32
+      output-length: ${ARGON2_OUTPUT_LENGTH:32}
+      # 盐值长度（字节）: 环境变量 ARGON2_SALT_LENGTH，默认 16
+      salt-length: ${ARGON2_SALT_LENGTH:16}
+
+# Redis Configuration
+
+# Logging
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.ttt.safevaultbackend: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

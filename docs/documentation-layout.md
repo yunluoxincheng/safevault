@@ -1,6 +1,6 @@
-﻿# SafeVault Documentation Layout Baseline
+# SafeVault Documentation Layout Baseline
 
-Last updated: 2026-05-07
+Last updated: 2026-05-13
 
 ## 1. Canonical Documentation Homes
 
@@ -13,7 +13,7 @@ Last updated: 2026-05-07
 - `docs/operations/`: deployment, migration, rollback, and maintenance runbooks.
 - `docs/plans/`: implementation plans, historical decisions, and archived planning notes.
 - `docs/changelog/`: release and migration changelogs.
-- `safevault-backend/docs/`: backend-local operations that must stay with backend repository workflow.
+- `server/docs/`: backend-local operations that must stay with backend working directory commands.
 - `openspec/`: proposed and archived specification-driven changes.
 
 ## 2. Root Markdown Inventory (Audience and Freshness)
@@ -48,41 +48,41 @@ Last updated: 2026-05-07
 - Legacy root documents: preserved only in `docs/plans/legacy-root-docs/`.
 - User docs: `docs/user-guide/`, `docs/faq/`, and `docs/USER-DOCS-INDEX.md`.
 
-### `safevault-backend/docs/`
+### `server/docs/`
 
-- `safevault-backend/docs/deployment/server-deployment.md`
-- `safevault-backend/docs/modularization-plan.md`
-- `safevault-backend/docs/service-boundaries.md`
+- `server/docs/deployment/server-deployment.md`
+- `server/docs/modularization-plan.md`
+- `server/docs/service-boundaries.md`
 
 These stay backend-local because they assume backend working directory commands and backend repo ownership.
 
 ## 4. Backend Documentation Routing Rule
 
-- Place backend-local deployment/build/runtime-operation docs in `safevault-backend/docs/`.
+- Place backend-local deployment/build/runtime-operation docs in `server/docs/`.
 - Place cross-repository backend architecture/ownership docs in `docs/backend/`.
 - Place stable API contracts and schema-facing docs in `docs/api/`.
 - If overlap exists, keep one canonical file and place a short pointer in non-canonical locations.
 
-## 5. Nested Backend Git Policy
+## 5. Monorepo Repository Policy
 
-Current state on 2026-05-07:
+Current state on 2026-05-13:
 
-- Root repo tracks `safevault-backend` as a gitlink (mode `160000`).
-- `safevault-backend/` is an independent nested Git repository with its own commits.
+- The root SafeVault repository tracks both `android/` and `server/` directly.
+- `server/` is not a nested Git repository; root Git is the single source of truth.
+- The previous `safevault-backend/` nested Git repository is retired.
 
 Workflow guidance:
 
-- Root-wide documentation and Android work: commit in root repo.
-- Backend code or backend-local docs: commit in backend repo.
-- When backend HEAD changes, root repo records gitlink update in a separate root commit.
-- Review/CI should check both root and backend git status.
+- All changes (Android, backend, docs, OpenSpec) commit in the root repository.
+- Android commands run from `android/`.
+- Backend commands run from `server/`.
 
 ## 6. Generated/Build Directory and Safe Cleanup Policy
 
 Generated/build directories currently observed:
 
-- Root/Android: `.gradle/`, `build/`, `app/build/`
-- Backend: `safevault-backend/target/`
+- Android: `android/.gradle/`, `android/build/`, `android/app/build/`
+- Backend: `server/target/`
 
 Policy:
 

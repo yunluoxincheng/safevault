@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- RSA 公钥 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RSA 公钥 (v2.0)"
+        android:textAppearance="?attr/textAppearanceLabelSmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_rsa_public_key"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="不存在"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:fontFamily="monospace"
+        android:padding="8dp"
+        android:background="?attr/colorSurfaceVariant"
+        android:layout_marginBottom="12dp" />
+
+    <!-- X25519 公钥 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="X25519 公钥 (v3.0)"
+        android:textAppearance="?attr/textAppearanceLabelSmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_x25519_public_key"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="不存在"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:fontFamily="monospace"
+        android:padding="8dp"
+        android:background="?attr/colorSurfaceVariant"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Ed25519 公钥 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Ed25519 公钥 (v3.0)"
+        android:textAppearance="?attr/textAppearanceLabelSmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/tv_ed25519_public_key"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="不存在"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:fontFamily="monospace"
+        android:padding="8dp"
+        android:background="?attr/colorSurfaceVariant"
+        android:layout_marginBottom="12dp" />
+
+    <!-- 提示 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="公钥用于加密和签名验证，可以安全地分享给其他用户。私钥已加密存储，不会在此显示。"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+</LinearLayout>

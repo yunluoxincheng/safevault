@@ -1,6 +1,6 @@
 # SafeVault 自动填充实现说明
 
-本文档描述 `app/src/main/java/com/ttt/safevault/autofill/` 包下的**完整自动填充实现**：从系统 `AutofillService` 回调、AssistStructure 解析、凭据匹配、`FillResponse`/`Dataset` 构建，到与 `BackendService`、UI Activity 的衔接。为便于端到端理解，文末简要列出 **Manifest / XML / 设置页 / `ui.autofill`** 等外部依赖；核心算法与数据流均以 `autofill` 包为准。
+本文档描述 `android/app/src/main/java/com/ttt/safevault/autofill/` 包下的**完整自动填充实现**：从系统 `AutofillService` 回调、AssistStructure 解析、凭据匹配、`FillResponse`/`Dataset` 构建，到与 `BackendService`、UI Activity 的衔接。为便于端到端理解，文末简要列出 **Manifest / XML / 设置页 / `ui.autofill`** 等外部依赖；核心算法与数据流均以 `autofill` 包为准。
 
 ---
 
@@ -306,4 +306,4 @@ flowchart TB
 
 ---
 
-*文档版本：与仓库 `autofill` 包源码同步整理；路径以 `app/src/main/java/com/ttt/safevault/autofill/` 为准。*
+*文档版本：与仓库 `autofill` 包源码同步整理；路径以 `android/app/src/main/java/com/ttt/safevault/autofill/` 为准。*

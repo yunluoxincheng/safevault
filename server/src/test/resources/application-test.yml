@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:safevault_test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  mail:
+    host: localhost
+    port: 2525
+    username: test
+    password: test
+    from: test@example.com
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+
+server:
+  ssl:
+    enabled: false
+
+jwt:
+  rsa:
+    private-key: MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCs94pipKdamr4UV8omiiuGoWy0H4iG+OSe61sB7H1eu1bUq4BQYquQw9Hy/nlLh/S7GUs8oD3C2Knf0vI6WnPoPAnndso+3vgpWBczoDJuJ9cUbgJX8qGpYMQMWkdQNlzTDwjHhaEVaVCWn/X5GcYKk8CZnHTLnnyktesJuEesSS2XDhziINmxTjYvxoBKpMeHlzam8czFfn0josnifjuz7TzhHfRHppTC4oMMhixIwLmBpHZaNci1jiPPpiT3RmF+BkfYSQU7IPhimfvdWDxxenQBYGmgg5Levn+gRqIZuP/hPBGy8CBtxJZsj9Qtx5q43qfXuKY7GUFeHVdPXg4tAgMBAAECggEADUaI7Ht1l9aW07y4OIne1NwTbztuBmlYh2+012U1ayhcU1bgHUCxfoXfxEjZT52IAGCXiHfxEuvVFVIywsf6APSzZZIAbF+/MtHUIrjUiLq4lJTBS8rviFlJECdRYBFIFxqejSJ5w7OxWoTnrhPsbMKR5Ahg44GkJfKLhL5hi+dyVZl271HRkYiYseSPqJT+rhF06kG+ynKRsgEo1JFx5kMt69kBlh0RN4cjWEXxw9mytHsx0UtncGwnXckHIH+2V0tP0K2o3Mxghk0yLqDPOiHPXZwbM4kOkktOK2hE8RXAd6n0yxQOz2kEE5B4o79ZLvn0aC5PVdvc9XXwhdsUCQKBgQDyIV29BQ8d2GjX2+bZOkxsOEyCrZSz0ndE5uYInrFHg/sFGYrnIWspR4LOFdTUzWu7N+PYNi69zjyNPYD1RtMunlVkwWXT9i/tQVqnIzZq45Oh33rcSuMRYJ/qswbDduBuz2ifS/gLKXzCLwBNEJ4KKSSgiBXidkSgVkghPFZu+QKBgQC23/PkTe4pFNG6krs9Xfv6xyky5G8U7Wlcb5rFQcSO2w44qQ33q5mWEz+QwdmrOr2+HVgeGdq8c38mG3DdlnW+Oqj68S9YLgOzaNop1ji+v26gdKbDVG9Oq4kkeGiwn3F1GoHahUrZvD7/6n23oUiC+jtbCYTA5tjjT89xsJrB1QKBgEhLjiGSESFoLGXHUvYpYgguByo9idjnTpVUG/sW5vfjgF/VcJPydnyszXGbMyEW9MPBvFYiV3J00b+aTZbuvr98pyKeXDkdmNHOYbLl4Kmpqbr7b0O3WHUn1JfPPIXASOLNKv/lPvqWOJoCTqS0AXwnLLiB6YbkqTj2ijLiQSyBAoGAMsvqVxQ+fzLFPunbEKS2hWYkz3ocUNfRWFe3yesGyheWz65FrvH/a2xVT8RIzgM3CUPlYhcUZxw9yTv+Ec7lTb3Fik7MM9Y0OPV7A/v5LyLFe9RrLf6aHGQRaAv6KHVhcoG2aBh2PhzH8xYTbZpjJd6T9imismJtBFb67D19/zECgYEA8CCR4HuOFAqbhZiz23PbpiLWjGrXBsBwwsitiKRMHwMNstJ4lctqw7IturjvZlVfGGu/7IoBnAFwY3JHZxLJVfC+gDo8xSfeIoW64Xz75CLFDkRyF1x3hE/KQxTnY+VUmSqTRA+K1Kvp3GDvCSl/PT+GnUObn0CwICvHJdwsmAU=
+    public-key: MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArPeKYqSnWpq+FFfKJoorhqFstB+IhvjknutbAex9XrtW1KuAUGKrkMPR8v55S4f0uxlLPKA9wtip39LyOlpz6DwJ53bKPt74KVgXM6AybifXFG4CV/KhqWDEDFpHUDZc0w8Ix4WhFWlQlp/1+RnGCpPAmZx0y558pLXrCbhHrEktlw4c4iDZsU42L8aASqTHh5c2pvHMxX59I6LJ4n47s+084R30R6aUwuKDDIYsSMC5gaR2WjXItY4jz6Yk90ZhfgZH2EkFOyD4Ypn73Vg8cXp0AWBpoIOS3r5/oEaiGbj/4TwRsvAgbcSWbI/ULceauN6n17imOxlBXh1XT14OLQIDAQAB
+  access-token-expiration: 900000
+  refresh-token-expiration: 604800000
+
+registration:
+  cleanup-scheduled-enabled: false

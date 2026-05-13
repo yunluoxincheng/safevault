@@ -6,8 +6,8 @@
 
 SafeVault is a course final project for an Android password manager. The repository contains two runtime parts:
 
-- `app/`: native Android client for password management, account/security UI, autofill, vault sync, contact/friend flows, QR/Bluetooth/cloud password sharing, and local security controls.
-- `safevault-backend/`: Spring Boot backend for account/auth, email verification, vault sync metadata, contact sharing, WebSocket notifications, PostgreSQL persistence, Redis-backed transient state, token revocation, and API documentation.
+- `android/`: native Android client for password management, account/security UI, autofill, vault sync, contact/friend flows, QR/Bluetooth/cloud password sharing, and local security controls.
+- `server/`: Spring Boot backend for account/auth, email verification, vault sync metadata, contact sharing, WebSocket notifications, PostgreSQL persistence, Redis-backed transient state, token revocation, and API documentation.
 
 Security-sensitive work must assume password entries, master passwords, tokens, verification codes, private keys, vault payloads, share packets, and crypto salts/tags are sensitive.
 
@@ -18,16 +18,16 @@ Security-sensitive work must assume password entries, master passwords, tokens, 
 
 ## Current Repository Topology
 
-- `app/src/main/java/com/ttt/safevault/`: Android source. Top-level packages currently include `ui`, `viewmodel`, `model`, `service`, `service/manager`, `network`, `security`, `crypto`, `data`, `sync`, `autofill`, `adapter`, `dto`, `core`, and helpers.
-- `app/src/main/res/`: XML layouts, drawables, navigation graph, menus, values, raw certs, and autofill/security XML resources.
-- `safevault-backend/src/main/java/org/ttt/safevaultbackend/`: backend source. Main packages include `controller`, `service`, `repository`, `entity`, `security`, `dto`, `config`, `websocket`, `annotation`, `aspect`, `exception`, `modules`, and `util`.
-- `safevault-backend/src/main/resources/db/migration/`: Flyway migrations, currently V1 through V26 with gaps from removed/legacy versions.
+- `android/app/src/main/java/com/ttt/safevault/`: Android source. Top-level packages currently include `ui`, `viewmodel`, `model`, `service`, `service/manager`, `network`, `security`, `crypto`, `data`, `sync`, `autofill`, `adapter`, `dto`, `core`, and helpers.
+- `android/app/src/main/res/`: XML layouts, drawables, navigation graph, menus, values, raw certs, and autofill/security XML resources.
+- `server/src/main/java/org/ttt/safevaultbackend/`: backend source. Main packages include `controller`, `service`, `repository`, `entity`, `security`, `dto`, `config`, `websocket`, `annotation`, `aspect`, `exception`, `modules`, and `util`.
+- `server/src/main/resources/db/migration/`: Flyway migrations, currently V1 through V26 with gaps from removed/legacy versions.
 - `docs/`: main project documentation.
-- `safevault-backend/docs/`: backend-specific deployment and modularization documentation.
+- `server/docs/`: backend-specific deployment and modularization documentation.
 - `openspec/specs/`: current behavior/spec truth.
 - `openspec/changes/`: proposed or historical changes.
 
-`safevault-backend/` has its own nested `.git` directory. Check both root and backend Git status before interpreting changes.
+The root SafeVault repository is the single source of truth. Android commands run from `android/`, backend commands run from `server/`.
 
 ## Current Architecture Conventions
 
@@ -61,8 +61,8 @@ Backend dependency direction:
 
 ## Verification Expectations
 
-- Android: `.\gradlew.bat test` and, for compile-sensitive changes, `.\gradlew.bat :app:assembleDebug`.
-- Backend: from `safevault-backend/`, run `.\mvnw.cmd test`.
+- Android: from `android/`, run `./gradlew test` and, for compile-sensitive changes, `./gradlew :app:assembleDebug`.
+- Backend: from `server/`, run `./mvnw test`.
 - OpenSpec: validate new changes with `openspec validate <change-id> --strict`.
 - Documentation-only changes usually do not require full builds, but must keep `task.md` updated.
 
@@ -81,9 +81,9 @@ Backend dependency direction:
 - Backend documentation routing is now explicit:
   - cross-repository backend architecture in `docs/backend/`
   - API contracts and schema docs in `docs/api/`
-  - backend-local deployment/runbooks in `safevault-backend/docs/`
+  - backend-local deployment/runbooks in `server/docs/`
 - Generated/build directory and cleanup guidance is tracked in `docs/operations/generated-artifacts-policy.md`.
-- `safevault-backend/` remains a nested Git repository tracked by root as a gitlink; both repos require separate status checks during refactor work.
+- The repository uses a monorepo layout: `android/` and `server/` are tracked by the root SafeVault Git repository.
 
 ## Legacy Notes
 

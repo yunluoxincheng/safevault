@@ -1,0 +1,55 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/safevault
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  h2:
+    console:
+      enabled: false
+
+  flyway:
+    enabled: true
+
+  # Spring Mail Configuration (开发环境 - 阿里云邮件推送)
+  # 端口 25: STARTTLS (推荐), 端口 465: SSL, 端口 80: 非加密
+  mail:
+    host: smtpdm.aliyun.com
+    port: 25
+    username: verify@mail.safevaultapp.top
+    password: ${MAIL_PASSWORD}
+    from: verify@mail.safevaultapp.top
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+        debug: true  # 开发环境开启邮件调试
+
+# Logging for development
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    org.ttt.safevaultbackend: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# N8N Webhook URL (已废弃，改为直接使用 SMTP)
+app:
+  n8n:
+    webhook-url: https://frp-hat.com:49475/webhook-test/c12455a4-de54-4a60-8f5d-5b1684bc880b
+
