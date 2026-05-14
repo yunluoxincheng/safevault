@@ -529,7 +529,11 @@ public class BackendServiceImpl implements BackendService {
 
     @Override
     public void logout() {
-        accountManager.logout();
+        // 清除内存中的会话主密码
+        accountManager.clearSessionMasterPassword();
+        // 状态转换到 LOGGED_OUT（清除 DataKey + 状态更新）
+        sessionGuard.transitionToLoggedOut();
+        Log.i(TAG, "已登出（状态→LOGGED_OUT）");
     }
 
     @Override
@@ -554,8 +558,8 @@ public class BackendServiceImpl implements BackendService {
             }
             Log.d(TAG, "Local password data deleted");
 
-            // 2. 清除会话
-            sessionGuard.clear();
+            // 2. 清除会话并重置状态
+            sessionGuard.resetState();
 
             // 3. 清除生物识别数据
             secureKeyStorage.clearBiometricData();

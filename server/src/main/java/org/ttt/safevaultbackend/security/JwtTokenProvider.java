@@ -14,6 +14,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * JWT Token 提供者
@@ -104,19 +105,65 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 生成刷新令牌
-     * 安全加固第三阶段：使用 RS256 签名
+     * 生成刷新令牌（带 jti 和 family claim）
      */
-    public String generateRefreshToken(String userId) {
+    public String generateRefreshToken(String userId, String jti, String family) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + refreshTokenExpiration);
 
         return Jwts.builder()
                 .subject(userId)
+                .claim("jti", jti)
+                .claim("family", family)
+                .claim("type", "refresh")
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(privateKey, Jwts.SIG.RS256)
                 .compact();
+    }
+
+    /**
+     * 生成新的 jti
+     */
+    public String generateJti() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /**
+     * 从 refresh token 提取 jti
+     */
+    public String getJtiFromToken(String token) {
+        Claims claims = parseClaims(token);
+        return claims != null ? claims.get("jti", String.class) : null;
+    }
+
+    /**
+     * 从 refresh token 提取 family
+     */
+    public String getFamilyFromToken(String token) {
+        Claims claims = parseClaims(token);
+        return claims != null ? claims.get("family", String.class) : null;
+    }
+
+    /**
+     * 检查 token 是否为 refresh 类型
+     */
+    public boolean isRefreshToken(String token) {
+        Claims claims = parseClaims(token);
+        if (claims == null) return false;
+        return "refresh".equals(claims.get("type", String.class));
+    }
+
+    private Claims parseClaims(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(publicKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /**

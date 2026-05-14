@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.ttt.safevaultbackend.entity.RevokedToken;
+import org.ttt.safevaultbackend.repository.RefreshTokenRecordRepository;
 import org.ttt.safevaultbackend.repository.RevokedTokenRepository;
 import org.ttt.safevaultbackend.security.JwtTokenProvider;
 
@@ -24,6 +25,7 @@ import java.util.Base64;
 public class TokenRevokeService {
 
     private final RevokedTokenRepository revokedTokenRepository;
+    private final RefreshTokenRecordRepository refreshTokenRecordRepository;
     private final JwtTokenProvider tokenProvider;
 
     /**
@@ -116,6 +118,12 @@ public class TokenRevokeService {
             log.info("清理过期的撤销记录: count={}", deleted);
         } catch (Exception e) {
             log.error("清理过期撤销记录失败", e);
+        }
+        try {
+            int deleted = refreshTokenRecordRepository.deleteExpiredRecords(LocalDateTime.now());
+            log.info("清理过期的 refresh token 记录: count={}", deleted);
+        } catch (Exception e) {
+            log.error("清理过期 refresh token 记录失败", e);
         }
     }
 

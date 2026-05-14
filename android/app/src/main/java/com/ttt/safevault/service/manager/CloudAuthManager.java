@@ -157,11 +157,13 @@ public class CloudAuthManager {
             String deviceId = getDeviceId();
 
             if (userId != null && !userId.isEmpty()) {
-                // 构建注销请求
+                // 构建注销请求（包含 refresh token 用于服务端撤销 family）
+                String refreshToken = tokenManager.getRefreshToken();
                 com.ttt.safevault.dto.request.LogoutRequest request =
                     com.ttt.safevault.dto.request.LogoutRequest.builder()
                         .deviceId(deviceId)
                         .timestamp(System.currentTimeMillis())
+                        .refreshToken(refreshToken)
                         .build();
 
                 // 调用后端注销 API

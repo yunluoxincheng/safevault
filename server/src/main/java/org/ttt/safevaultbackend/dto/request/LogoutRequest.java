@@ -19,4 +19,6 @@ public class LogoutRequest {
     private String deviceId;
 
     private Long timestamp;
+
+    private String refreshToken;
 }

@@ -14,6 +14,7 @@ import java.util.function.Supplier;
  *
  * 职责：
  * - 管理 DataKey 的内存缓存（会话解锁态）
+ * - 管理会话状态（6 状态有限状态机）
  * - 提供会话状态查询
  * - 安全清除敏感数据
  * - 会话锁定检查（基于后台时间）
@@ -23,23 +24,16 @@ import java.util.function.Supplier;
  * - 会话锁定只通过后台时间判断，不在应用内倒计时
  * - 统一的会话状态管理和安全边界
  *
- * 会话锁定机制（基于后台时间）：
- * - 立即锁定模式：应用进入后台即锁定（timeoutMs == 0）
- * - 超时锁定模式：后台超过设定时间后锁定
- * - 从不锁定：不锁定
+ * 状态机:
+ * UNINITIALIZED → UNLOCKED (注册直达)
+ * UNINITIALIZED → REGISTERED (异常路径)
+ * REGISTERED → LOGGED_IN / UNLOCKED
+ * LOGGED_IN → UNLOCKED / LOGGED_OUT
+ * UNLOCKED → LOCKED / LOGGED_OUT
+ * LOCKED → UNLOCKED / LOGGED_OUT
+ * LOGGED_OUT → LOGGED_IN / UNLOCKED
  *
- * 会话生命周期：
- * ┌─────────────────────────────────────────┐
- * │  主密码验证成功 → DataKey 进入内存        │
- * │       ↓                                  │
- * │  会话解锁态 (unlocked = true)            │
- * │       ↓                                  │
- * │  应用进入后台超过设定时间 → 清除 DataKey  │
- * │       ↓                                  │
- * │  会话锁定态 (unlocked = false)           │
- * └─────────────────────────────────────────┘
- *
- * @since SafeVault 3.8.0 (合并 CryptoSession 功能)
+ * @since SafeVault 3.9.0 (添加会话状态机)
  */
 public class SessionGuard {
     private static final String TAG = "SessionGuard";
@@ -51,8 +45,11 @@ public class SessionGuard {
     @Nullable
     private SensitiveData<byte[]> dataKey;
 
-    /** 会话解锁状态 */
+    /** 会话解锁状态（向后兼容，由 currentState 驱动） */
     private volatile boolean unlocked;
+
+    /** 当前会话状态 */
+    private volatile SessionState currentState;
 
     /** SecurityConfig 引用（用于获取会话锁定超时设置） */
     private SecurityConfig securityConfig;
@@ -60,7 +57,8 @@ public class SessionGuard {
     private SessionGuard() {
         this.dataKey = null;
         this.unlocked = false;
-        Log.i(TAG, "SessionGuard 初始化");
+        this.currentState = SessionState.UNINITIALIZED;
+        Log.i(TAG, "SessionGuard 初始化, state=UNINITIALIZED");
     }
 
     /**
@@ -267,6 +265,17 @@ public class SessionGuard {
         this.dataKey = new SensitiveData<>(keyBytes);
         this.unlocked = true;
 
+        // 状态机：根据当前状态决定转换目标
+        SessionState state = this.currentState;
+        if (state == SessionState.UNINITIALIZED) {
+            this.currentState = SessionState.UNLOCKED;
+            Log.i(TAG, "状态转换: UNINITIALIZED → UNLOCKED (registration_unlock)");
+        } else if (state == SessionState.LOGGED_IN || state == SessionState.LOCKED
+                || state == SessionState.REGISTERED || state == SessionState.LOGGED_OUT) {
+            this.currentState = SessionState.UNLOCKED;
+            Log.i(TAG, "状态转换: " + state + " → UNLOCKED (unlock)");
+        }
+
         Log.i(TAG, "会话已解锁（DataKey 已使用 SensitiveData 包装）");
     }
 
@@ -283,6 +292,12 @@ public class SessionGuard {
         }
 
         unlocked = false;
+
+        // 状态机：UNLOCKED → LOCKED
+        if (currentState == SessionState.UNLOCKED) {
+            currentState = SessionState.LOCKED;
+            Log.i(TAG, "状态转换: UNLOCKED → LOCKED (clear)");
+        }
 
         Log.i(TAG, "会话已清除（DataKey 已通过 SensitiveData 安全清零）");
     }
@@ -304,6 +319,103 @@ public class SessionGuard {
     public void lockSession() {
         lock();
         Log.i(TAG, "会话已锁定（通过 SessionGuard）");
+    }
+
+    // ========== 状态机管理 ==========
+
+    /**
+     * 获取当前会话状态
+     */
+    @NonNull
+    public SessionState getCurrentState() {
+        return currentState;
+    }
+
+    /**
+     * 状态转换（带校验）
+     *
+     * @param newState 目标状态
+     * @param reason   转换原因（用于日志）
+     * @throws IllegalStateException 如果转换不合法
+     */
+    private void transitionTo(@NonNull SessionState newState, @NonNull String reason) {
+        SessionState oldState = this.currentState;
+        if (!oldState.canTransitionTo(newState)) {
+            Log.e(TAG, "非法状态转换: " + oldState + " → " + newState + " (" + reason + ")");
+            throw new IllegalStateException(
+                    "非法状态转换: " + oldState + " → " + newState + " (" + reason + ")");
+        }
+        this.currentState = newState;
+        // 同步 unlocked 标志（向后兼容）
+        this.unlocked = (newState == SessionState.UNLOCKED);
+        Log.i(TAG, "状态转换: " + oldState + " → " + newState + " (" + reason + ")");
+    }
+
+    /**
+     * 注册成功后转换到 UNLOCKED 状态
+     * 仅在 UNINITIALIZED 状态时可调用
+     */
+    public void transitionToUnlockedFromRegistration() {
+        if (dataKey == null || dataKey.isClosed()) {
+            Log.e(TAG, "transitionToUnlockedFromRegistration: DataKey 未加载");
+            throw new IllegalStateException("DataKey 未加载，无法转换到 UNLOCKED");
+        }
+        transitionTo(SessionState.UNLOCKED, "registration");
+    }
+
+    /**
+     * 注册成功但 JWT 获取失败，转换到 REGISTERED 状态
+     */
+    public void transitionToRegistered() {
+        transitionTo(SessionState.REGISTERED, "registered_no_jwt");
+    }
+
+    /**
+     * 登录成功后转换到 LOGGED_IN 状态
+     */
+    public void transitionToLoggedIn() {
+        if (currentState == SessionState.UNLOCKED) {
+            // 已处于 UNLOCKED 状态（如注册后），不需要降级到 LOGGED_IN
+            Log.d(TAG, "transitionToLoggedIn: 当前已是 UNLOCKED，跳过");
+            return;
+        }
+        transitionTo(SessionState.LOGGED_IN, "login_success");
+    }
+
+    /**
+     * 解锁后转换到 UNLOCKED 状态
+     */
+    public void transitionToUnlocked() {
+        if (dataKey == null || dataKey.isClosed()) {
+            Log.e(TAG, "transitionToUnlocked: DataKey 未加载");
+            throw new IllegalStateException("DataKey 未加载，无法转换到 UNLOCKED");
+        }
+        transitionTo(SessionState.UNLOCKED, "datakey_loaded");
+    }
+
+    /**
+     * 登出时转换到 LOGGED_OUT 状态
+     */
+    public void transitionToLoggedOut() {
+        if (dataKey != null) {
+            dataKey.close();
+            dataKey = null;
+        }
+        unlocked = false;
+        transitionTo(SessionState.LOGGED_OUT, "logout");
+    }
+
+    /**
+     * 重置为 UNINITIALIZED 状态（本地保险库清除后）
+     */
+    public void resetState() {
+        if (dataKey != null) {
+            dataKey.close();
+            dataKey = null;
+        }
+        unlocked = false;
+        currentState = SessionState.UNINITIALIZED;
+        Log.i(TAG, "状态重置: → UNINITIALIZED");
     }
 
     /**
@@ -342,11 +454,7 @@ public class SessionGuard {
      */
     @NonNull
     public String getSessionInfo() {
-        if (isUnlocked()) {
-            return "会话已解锁";
-        } else {
-            return "会话未解锁";
-        }
+        return "state=" + currentState + ", unlocked=" + isUnlocked();
     }
 
     /**

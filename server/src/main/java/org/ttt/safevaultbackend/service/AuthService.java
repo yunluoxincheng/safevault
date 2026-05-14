@@ -183,12 +183,17 @@ public class AuthService {
     }
 
     /**
-     * 刷新令牌
+     * 刷新令牌（带轮换和重用检测）
      */
     public AuthResponse refreshToken(String refreshToken) {
-        // 验证刷新令牌
+        // 验证刷新令牌签名和过期时间
         if (!tokenProvider.validateToken(refreshToken)) {
             throw new BusinessException("INVALID_REFRESH_TOKEN", "无效的刷新令牌");
+        }
+
+        // 检查是否为 refresh 类型
+        if (!tokenProvider.isRefreshToken(refreshToken)) {
+            throw new BusinessException("INVALID_REFRESH_TOKEN", "非刷新令牌类型");
         }
 
         // 获取用户ID
@@ -199,15 +204,31 @@ public class AuthService {
             throw new ResourceNotFoundException("User", "userId", userId);
         }
 
-        // 生成新的访问令牌
-        AuthTokenIssuer.IssuedTokens tokens = authTokenIssuer.issueTokens(userId);
+        // 执行轮换（包含重用检测）
+        AuthTokenIssuer.RotationResult result = authTokenIssuer.rotateRefreshToken(refreshToken, userId);
 
-        return AuthResponse.builder()
-                .userId(userId)
-                .accessToken(tokens.accessToken())
-                .refreshToken(tokens.refreshToken())
-                .expiresIn(tokens.expiresInSeconds())
-                .build();
+        switch (result.status()) {
+            case "REUSE_DETECTED":
+                log.warn("检测到 refresh token 重用: userId={}, revoked {} tokens", userId, result.revokedCount());
+                throw new BusinessException("TOKEN_REUSE_DETECTED", "检测到令牌重用，已撤销所有关联令牌");
+
+            case "REVOKED":
+            case "TOKEN_NOT_FOUND":
+            case "INVALID_TOKEN":
+                throw new BusinessException("INVALID_REFRESH_TOKEN", "刷新令牌无效或已撤销");
+
+            case "SUCCESS":
+                AuthTokenIssuer.IssuedTokens tokens = result.tokens();
+                return AuthResponse.builder()
+                        .userId(userId)
+                        .accessToken(tokens.accessToken())
+                        .refreshToken(tokens.refreshToken())
+                        .expiresIn(tokens.expiresInSeconds())
+                        .build();
+
+            default:
+                throw new BusinessException("REFRESH_FAILED", "令牌刷新失败");
+        }
     }
 
     /**
@@ -938,6 +959,31 @@ public class AuthService {
                 );
             } catch (Exception e) {
                 log.warn("撤销令牌失败，但继续注销流程: userId={}, deviceId={}", userId, request.getDeviceId(), e);
+            }
+        }
+
+        // 撤销 refresh token family（从请求体中的 refreshToken 提取 family）
+        String refreshToken = request.getRefreshToken();
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            try {
+                // 归属校验：确认 token 类型为 refresh 且 subject 匹配当前用户
+                if (!tokenProvider.isRefreshToken(refreshToken)) {
+                    log.warn("logout 提供的 token 不是 refresh 类型，跳过 family 撤销: userId={}", userId);
+                } else {
+                    String tokenUserId = tokenProvider.getUserIdFromToken(refreshToken);
+                    if (!userId.equals(tokenUserId)) {
+                        log.warn("logout 提供的 refresh token 归属不匹配: authenticatedUser={}, tokenUser={}, 跳过 family 撤销",
+                                userId, tokenUserId);
+                    } else {
+                        String family = tokenProvider.getFamilyFromToken(refreshToken);
+                        if (family != null) {
+                            int revoked = authTokenIssuer.revokeFamily(family);
+                            log.info("撤销 refresh token family: userId={}, family={}, count={}", userId, family, revoked);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("撤销 refresh token family 失败，但继续注销流程: userId={}", userId, e);
             }
         }
 
