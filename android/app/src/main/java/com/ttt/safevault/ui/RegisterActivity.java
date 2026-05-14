@@ -20,9 +20,7 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
-import com.ttt.safevault.model.BackendService;
 import com.ttt.safevault.model.PasswordStrength;
-import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
 
@@ -61,8 +59,6 @@ public class RegisterActivity extends AppCompatActivity {
 
     // ViewModel
     private AuthViewModel authViewModel;
-    private AuthSessionManager authSessionManager;
-    private BackendService backendService;
 
     // 状态标志
     private boolean isStepOne = true; // 是否为第一步（邮箱验证）
@@ -93,15 +89,13 @@ public class RegisterActivity extends AppCompatActivity {
         } else {
             getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         }
-        authSessionManager = new AuthSessionManager(this);
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
-
-        // 清除之前的验证状态（用户点击"注册"意味着开始新的注册流程）
-        authSessionManager.clearEmailVerificationStatus();
 
         // 初始化ViewModel
         ViewModelProvider.Factory factory = new ViewModelFactory(getApplication());
         authViewModel = new ViewModelProvider(this, factory).get(AuthViewModel.class);
+
+        // 清除之前的验证状态（用户点击"注册"意味着开始新的注册流程）
+        authViewModel.clearEmailVerificationStatus();
 
         initViews();
         setupObservers();
@@ -200,6 +194,23 @@ public class RegisterActivity extends AppCompatActivity {
                 updateLoadingState(isLoading);
             }
         });
+
+        // 观察完成注册响应
+        authViewModel.getCompleteRegistrationResponse().observe(this, response -> {
+            if (progressBar != null) {
+                progressBar.setVisibility(View.GONE);
+            }
+            if (continueButton != null) {
+                continueButton.setEnabled(true);
+            }
+
+            if (response != null && response.getSuccess()) {
+                authViewModel.saveLastLoginEmail(registeredEmail);
+                authViewModel.clearEmailVerificationStatus();
+                showMessage("注册成功！正在前往登录界面...");
+                new android.os.Handler().postDelayed(() -> navigateToLogin(), 1000);
+            }
+        });
     }
 
     private void setupClickListeners() {
@@ -225,7 +236,7 @@ public class RegisterActivity extends AppCompatActivity {
         // 返回登录
         backToLoginText.setOnClickListener(v -> {
             // 清除验证状态（用户取消注册流程）
-            authSessionManager.clearEmailVerificationStatus();
+            authViewModel.clearEmailVerificationStatus();
             finish();
         });
 
@@ -522,8 +533,7 @@ public class RegisterActivity extends AppCompatActivity {
         }
 
         // 先检查本地保险库是否已存在
-        BackendService backendService = this.backendService;
-        if (backendService.isInitialized()) {
+        if (authViewModel.isVaultInitialized()) {
             // 本地保险库已存在，显示对话框让用户选择
             showVaultExistsDialog(password);
             return;
@@ -544,7 +554,7 @@ public class RegisterActivity extends AppCompatActivity {
                     "选择\"取消\"将返回，您可以使用现有账户登录。")
             .setPositiveButton("重置并继续", (dialog, which) -> {
                 // 重置本地保险库
-                boolean reset = backendService.resetLocalVault();
+                boolean reset = authViewModel.resetLocalVault();
                 if (reset) {
                     // 重置成功，继续注册
                     performCompleteRegistration(password);
@@ -564,7 +574,6 @@ public class RegisterActivity extends AppCompatActivity {
      * 执行完成注册
      */
     private void performCompleteRegistration(String password) {
-        // 显示进度提示
         if (progressBar != null) {
             progressBar.setVisibility(View.VISIBLE);
         }
@@ -572,49 +581,7 @@ public class RegisterActivity extends AppCompatActivity {
             continueButton.setEnabled(false);
         }
 
-        // 在后台线程执行注册完成
-        new android.os.Handler().post(() -> {
-            try {
-                // 调用后端服务完成注册
-                com.ttt.safevault.dto.response.CompleteRegistrationResponse response =
-                        backendService.completeRegistration(registeredEmail, registeredUsername, password);
-
-                // 注册成功
-                runOnUiThread(() -> {
-                    if (progressBar != null) {
-                        progressBar.setVisibility(View.GONE);
-                    }
-                    if (continueButton != null) {
-                        continueButton.setEnabled(true);
-                    }
-
-                    // 保存邮箱到 TokenManager
-                    authSessionManager.saveLastLoginEmail(registeredEmail);
-
-                    // 清除验证状态
-                    authSessionManager.clearEmailVerificationStatus();
-
-                    showMessage("注册成功！正在前往登录界面...");
-
-                    // 延迟跳转到登录界面
-                    new android.os.Handler().postDelayed(() -> {
-                        navigateToLogin();
-                    }, 1000);
-                });
-
-            } catch (Exception e) {
-                // 注册失败
-                runOnUiThread(() -> {
-                    if (progressBar != null) {
-                        progressBar.setVisibility(View.GONE);
-                    }
-                    if (continueButton != null) {
-                        continueButton.setEnabled(true);
-                    }
-                    showError("注册失败: " + e.getMessage());
-                });
-            }
-        });
+        authViewModel.completeRegistration(registeredEmail, registeredUsername, password);
     }
 
     /**
@@ -742,7 +709,7 @@ public class RegisterActivity extends AppCompatActivity {
 
         // 第一步：停止轮询并清除验证状态
         stopVerificationPolling();
-        authSessionManager.clearEmailVerificationStatus();
+        authViewModel.clearEmailVerificationStatus();
 
         super.onBackPressed();
     }

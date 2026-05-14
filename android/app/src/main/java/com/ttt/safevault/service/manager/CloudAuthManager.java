@@ -43,6 +43,13 @@ public class CloudAuthManager {
      * 用户注册
      */
     public com.ttt.safevault.dto.response.AuthResponse register(String username, String password, String displayName) {
+        return registerWithDeviceKey(username, displayName);
+    }
+
+    /**
+     * 设备密钥注册（无 password 参数的明确接口）
+     */
+    public com.ttt.safevault.dto.response.AuthResponse registerWithDeviceKey(String username, String displayName) {
         try {
             // 获取设备ID和公钥
             String deviceId = getDeviceId();
@@ -72,6 +79,13 @@ public class CloudAuthManager {
      * 用户登录
      */
     public com.ttt.safevault.dto.response.AuthResponse login(String username, String password) {
+        return loginWithDeviceKey();
+    }
+
+    /**
+     * 设备密钥登录（使用已保存的 userId + 设备签名，无需参数）
+     */
+    public com.ttt.safevault.dto.response.AuthResponse loginWithDeviceKey() {
         try {
             // 获取保存的userId和设备ID
             String userId = tokenManager.getUserId();
@@ -300,6 +314,181 @@ public class CloudAuthManager {
             Log.e(TAG, "Failed to complete registration", e);
             throw new RuntimeException("注册完成失败: " + e.getMessage());
         }
+    }
+
+    // ========== Email Authentication Facades ==========
+
+    public com.ttt.safevault.dto.response.EmailRegistrationResponse registerWithEmail(String email, String username) {
+        try {
+            return retrofitClient.getAuthServiceApi()
+                .registerWithEmail(new com.ttt.safevault.dto.request.EmailRegistrationRequest(email, username))
+                .blockingFirst();
+        } catch (Exception e) {
+            Log.e(TAG, "Email registration failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public com.ttt.safevault.dto.response.VerifyEmailResponse verifyEmail(String verificationToken) {
+        try {
+            return retrofitClient.getAuthServiceApi()
+                .verifyEmail(new com.ttt.safevault.dto.request.VerifyEmailRequest(verificationToken))
+                .blockingFirst();
+        } catch (Exception e) {
+            Log.e(TAG, "Email verification failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public com.ttt.safevault.dto.response.EmailRegistrationResponse resendVerificationEmail(String email) {
+        try {
+            return retrofitClient.getAuthServiceApi()
+                .resendVerification(new com.ttt.safevault.dto.request.ResendVerificationRequest(email))
+                .blockingFirst();
+        } catch (Exception e) {
+            Log.e(TAG, "Resend verification failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public com.ttt.safevault.dto.response.VerificationStatusResponse checkVerificationStatus(String email) {
+        try {
+            return retrofitClient.getAuthServiceApi()
+                .checkVerificationStatus(email)
+                .blockingFirst();
+        } catch (Exception e) {
+            Log.e(TAG, "Verification status check failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public com.ttt.safevault.dto.response.EmailLoginResponse loginWithEmail(String email, String masterPassword) {
+        try {
+            String deviceId = getDeviceId();
+            if (deviceId == null) {
+                throw new RuntimeException("设备ID获取失败");
+            }
+
+            com.ttt.safevault.dto.response.LoginPrecheckResponse precheckResponse =
+                retrofitClient.getAuthServiceApi()
+                    .loginPrecheck(new com.ttt.safevault.dto.request.LoginPrecheckRequest(email))
+                    .blockingFirst();
+
+            String nonce = precheckResponse.getNonce();
+            String passwordVerifier = precheckResponse.getPasswordVerifier();
+            String signature = generateSignatureWithVerifier(email, deviceId, nonce, passwordVerifier);
+
+            String deviceName = getDeviceName();
+            String deviceType = "android";
+            String osVersion = "Android " + android.os.Build.VERSION.RELEASE;
+
+            com.ttt.safevault.dto.response.EmailLoginResponse response = retrofitClient.getAuthServiceApi()
+                .loginByEmail(new com.ttt.safevault.dto.request.LoginByEmailRequest(
+                    email, deviceId, deviceName, signature, nonce, deviceType, osVersion))
+                .blockingFirst();
+
+            if (response != null) {
+                tokenManager.saveTokens(response.getUserId(), response.getAccessToken(), response.getRefreshToken());
+                Log.d(TAG, "Email login success: " + response.getUserId());
+            }
+
+            return response;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            Log.e(TAG, "Email login failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public com.ttt.safevault.dto.response.AuthResponse refreshCurrentToken() {
+        String refreshToken = tokenManager.getRefreshToken();
+        if (refreshToken == null) {
+            throw new RuntimeException("无刷新Token");
+        }
+        return refreshToken(refreshToken);
+    }
+
+    public com.ttt.safevault.dto.response.AuthResponse loginByUsername(String username) {
+        try {
+            String deviceId = getDeviceId();
+            if (deviceId == null) {
+                throw new RuntimeException("设备ID获取失败");
+            }
+
+            long timestamp = System.currentTimeMillis();
+            String signature = generateSignature(username, deviceId, timestamp);
+
+            com.ttt.safevault.dto.response.AuthResponse response = retrofitClient.getAuthServiceApi()
+                .loginByUsername(new com.ttt.safevault.dto.request.LoginByUsernameRequest(username, signature, timestamp))
+                .blockingFirst();
+
+            if (response != null) {
+                tokenManager.saveTokens(response);
+                Log.d(TAG, "Login by username success: " + response.getUserId());
+            }
+
+            return response;
+        } catch (Exception e) {
+            Log.e(TAG, "Login by username failed", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    public String getUserId() {
+        return tokenManager.getUserId();
+    }
+
+    public String getStoredRefreshToken() {
+        return tokenManager.getRefreshToken();
+    }
+
+    // ========== Session State Accessors ==========
+
+    public String getLastLoginEmail() {
+        return tokenManager.getLastLoginEmail();
+    }
+
+    public void saveLastLoginEmail(String email) {
+        tokenManager.saveLastLoginEmail(email);
+    }
+
+    public void clearEmailVerificationStatus() {
+        tokenManager.clearEmailVerificationStatus();
+    }
+
+    public void saveEmailLoginInfo(String email, String username, String displayName) {
+        tokenManager.saveEmailLoginInfo(email, username, displayName);
+    }
+
+    private String generateSignatureWithVerifier(String email, String deviceId, String nonce, String passwordVerifier) {
+        try {
+            byte[] derivedKeyBytes = Base64.getDecoder().decode(passwordVerifier);
+            String data = email + deviceId + nonce;
+            byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(derivedKeyBytes, "HmacSHA256");
+            mac.init(secretKey);
+            byte[] signatureBytes = mac.doFinal(dataBytes);
+            return Base64.getEncoder().encodeToString(signatureBytes);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to generate signature with passwordVerifier", e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    private String getDeviceName() {
+        String manufacturer = android.os.Build.MANUFACTURER;
+        String model = android.os.Build.MODEL;
+        if (model.startsWith(manufacturer)) {
+            return capitalize(model);
+        }
+        return capitalize(manufacturer) + " " + model;
+    }
+
+    private String capitalize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1);
     }
 
     /**

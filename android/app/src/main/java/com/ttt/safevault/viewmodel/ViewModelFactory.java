@@ -59,7 +59,7 @@ public class ViewModelFactory extends ViewModelProvider.AndroidViewModelFactory 
             return (T) new ShareHistoryViewModel(application, backendService);
         }
         if (modelClass.isAssignableFrom(AuthViewModel.class)) {
-            return (T) new AuthViewModel(application);
+            return (T) new AuthViewModel(application, backendService);
         }
         if (modelClass.isAssignableFrom(SyncSettingsViewModel.class)) {
             return (T) new SyncSettingsViewModel(application);

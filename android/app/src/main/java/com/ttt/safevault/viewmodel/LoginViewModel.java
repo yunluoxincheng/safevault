@@ -10,7 +10,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.security.BiometricAuthHelper;
+import com.ttt.safevault.security.biometric.AuthError;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 
 import java.util.concurrent.ExecutorService;
@@ -210,6 +210,39 @@ public class LoginViewModel extends AndroidViewModel {
     public LiveData<Boolean> biometricUnlockResult = _biometricUnlockResult;
     public LiveData<String> biometricUnlockError = _biometricUnlockError;
 
+    // ========== Biometric Error Classification ==========
+
+    public static class BiometricErrorEvent {
+        public final String type;
+        public final String message;
+
+        BiometricErrorEvent(String type, String message) {
+            this.type = type;
+            this.message = message;
+        }
+    }
+
+    private final MutableLiveData<BiometricErrorEvent> _biometricErrorEvent = new MutableLiveData<>();
+    public LiveData<BiometricErrorEvent> biometricErrorEvent = _biometricErrorEvent;
+
+    public void handleBiometricFailure(AuthError error, String message) {
+        if (error == AuthError.DEBOUNCED) {
+            _biometricErrorEvent.postValue(new BiometricErrorEvent("debounced", message));
+        } else if (error == AuthError.BIOMETRIC_CHANGED || error == AuthError.KEYSTORE_INVALIDATED) {
+            _biometricErrorEvent.postValue(new BiometricErrorEvent("changed", null));
+        } else {
+            _biometricErrorEvent.postValue(new BiometricErrorEvent("error", message));
+        }
+    }
+
+    public void handleBiometricChanged() {
+        _biometricErrorEvent.postValue(new BiometricErrorEvent("changed", null));
+    }
+
+    public void handleFallbackToPassword() {
+        _biometricErrorEvent.postValue(new BiometricErrorEvent("fallback", null));
+    }
+
     /**
      * 完成生物识别解锁：恢复 DataKey 到 SessionGuard。
      * 在 BiometricPrompt 成功回调中调用。
@@ -234,6 +267,62 @@ public class LoginViewModel extends AndroidViewModel {
      */
     public boolean shouldShowBiometricLogin() {
         return backendService != null && backendService.shouldShowBiometricLogin();
+    }
+
+    private boolean biometricAutoTriggered = false;
+
+    /**
+     * 判断是否应自动触发生物识别（仅在首次且可用时触发一次）。
+     */
+    public boolean shouldAutoTriggerBiometric() {
+        if (biometricAutoTriggered) return false;
+        if (!shouldShowBiometricLogin()) return false;
+        biometricAutoTriggered = true;
+        return true;
+    }
+
+    // ========== Session Management Facades (for LoginActivity) ==========
+
+    public String getLastLoginEmail() {
+        return backendService.getLastLoginEmail();
+    }
+
+    public void saveLastLoginEmail(String email) {
+        backendService.saveLastLoginEmail(email);
+    }
+
+    public void saveEmailLoginInfo(String email, String username, String displayName) {
+        backendService.saveEmailLoginInfo(email, username, displayName);
+    }
+
+    public void clearEmailVerificationStatus() {
+        backendService.clearEmailVerificationStatus();
+    }
+
+    // ========== Vault Operation Facades (for LoginActivity cloud login) ==========
+
+    public boolean isVaultInitialized() {
+        return backendService.isInitialized();
+    }
+
+    public boolean unlockVault(String password) {
+        return backendService.unlock(password);
+    }
+
+    public boolean initializeVault(String password) {
+        return backendService.initialize(password);
+    }
+
+    public void setSessionPassword(String password) {
+        backendService.setSessionMasterPassword(password);
+    }
+
+    public com.ttt.safevault.dto.DeviceRecoveryResult recoverDevice(String email, String password) {
+        return backendService.recoverDeviceData(email, password);
+    }
+
+    public String getSessionPassword() {
+        return backendService.getMasterPassword();
     }
 
     @Override

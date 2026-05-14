@@ -25,13 +25,10 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.ttt.safevault.R;
-import com.ttt.safevault.model.BackendService;
-import com.ttt.safevault.security.BiometricAuthHelper;
 import com.ttt.safevault.security.biometric.BiometricAuthManager;
 import com.ttt.safevault.security.biometric.AuthCallback;
 import com.ttt.safevault.security.biometric.AuthError;
 import com.ttt.safevault.security.biometric.AuthScenario;
-import com.ttt.safevault.service.manager.AuthSessionManager;
 import com.ttt.safevault.viewmodel.AuthViewModel;
 import com.ttt.safevault.viewmodel.LoginViewModel;
 import com.ttt.safevault.viewmodel.ViewModelFactory;
@@ -61,18 +58,13 @@ public class LoginActivity extends AppCompatActivity {
     // ViewModel
     private AuthViewModel authViewModel;
     private LoginViewModel loginViewModel;
-    private AuthSessionManager authSessionManager;
-    private BackendService backendService;
 
     // 状态标志
     private boolean isPasswordVisible = false;
-    private boolean fromAutofill = false;  // 是否从自动填充跳转过来
-    private boolean fromAutofillSave = false;  // 是否从自动填充保存跳转过来
-    private boolean biometricAutoTriggered = false;  // 是否已自动触发生物识别
+    private boolean fromAutofill = false;
+    private boolean fromAutofillSave = false;
 
-    // 生物识别认证助手（保留用于基础检查）
-    private BiometricAuthHelper biometricAuthHelper;
-    // 生物识别认证管理器（新架构）
+    // 生物识别认证管理器（platform-boundary adapter：BiometricPrompt requires FragmentActivity）
     private BiometricAuthManager biometricAuthManager;
 
     @Override
@@ -102,8 +94,6 @@ public class LoginActivity extends AppCompatActivity {
         ViewModelProvider.Factory factory = new ViewModelFactory(getApplication());
         authViewModel = new ViewModelProvider(this, factory).get(AuthViewModel.class);
         loginViewModel = new ViewModelProvider(this, factory).get(LoginViewModel.class);
-        authSessionManager = new AuthSessionManager(this);
-        backendService = com.ttt.safevault.core.ServiceLocator.getInstance().getBackendService();
 
         initViews();
         setupObservers();
@@ -132,7 +122,7 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         // 预填充上次登录的邮箱
-        String lastEmail = authSessionManager.getLastLoginEmail();
+        String lastEmail = loginViewModel.getLastLoginEmail();
         if (emailInput != null && lastEmail != null && !lastEmail.isEmpty()) {
             emailInput.setText(lastEmail);
         }
@@ -190,7 +180,7 @@ public class LoginActivity extends AppCompatActivity {
         // 注册账号链接
         registerText.setOnClickListener(v -> {
             // 清除验证状态（开始新的注册流程）
-            authSessionManager.clearEmailVerificationStatus();
+            loginViewModel.clearEmailVerificationStatus();
 
             Intent intent = new Intent(this, RegisterActivity.class);
             startActivity(intent);
@@ -327,7 +317,7 @@ public class LoginActivity extends AppCompatActivity {
         }
 
         // 保存邮箱到本地（下次自动填充）
-        authSessionManager.saveLastLoginEmail(email);
+        loginViewModel.saveLastLoginEmail(email);
 
         // 调用云端登录
         authViewModel.loginWithEmail(email, password);
@@ -353,22 +343,22 @@ public class LoginActivity extends AppCompatActivity {
             // 保存邮箱登录信息到 TokenManager（包括 displayName 和 username）
             String responseUsername = response.getUsername();
             String responseDisplayName = response.getDisplayName();
-            authSessionManager.saveEmailLoginInfo(email, responseUsername, responseDisplayName);
+            loginViewModel.saveEmailLoginInfo(email, responseUsername, responseDisplayName);
             android.util.Log.d(TAG, "用户信息已保存 - email: " + email + ", username: " + responseUsername + ", displayName: " + responseDisplayName);
 
             // 检查用户是否已初始化（老用户使用 unlock，新用户使用 initialize）
-            boolean isInitialized = backendService.isInitialized();
+            boolean isInitialized = loginViewModel.isVaultInitialized();
             android.util.Log.d(TAG, "用户已初始化状态: " + isInitialized);
 
             boolean unlockSuccess;
             if (isInitialized) {
                 // 老用户：使用 unlock()，保持原有盐值
                 android.util.Log.d(TAG, "老用户登录，使用 unlock() 保持原有盐值");
-                unlockSuccess = backendService.unlock(password);
+                unlockSuccess = loginViewModel.unlockVault(password);
             } else {
                 // 新用户：使用 initialize()，生成新盐值
                 android.util.Log.d(TAG, "新用户登录，使用 initialize() 生成新盐值");
-                unlockSuccess = backendService.initialize(password);
+                unlockSuccess = loginViewModel.initializeVault(password);
             }
 
             if (!unlockSuccess) {
@@ -386,7 +376,7 @@ public class LoginActivity extends AppCompatActivity {
 
             // 保存会话密码到 AccountManager（通过 BackendServiceImpl）
             // 注意：SafeVault 3.4.0 不再保存密码到生物识别存储
-            backendService.setSessionMasterPassword(password);
+            loginViewModel.setSessionPassword(password);
             android.util.Log.d(TAG, "会话密码已保存到 AccountManager（仅内存）");
 
             // 老设备登录，执行云端数据同步
@@ -417,7 +407,7 @@ public class LoginActivity extends AppCompatActivity {
             @Override
             protected com.ttt.safevault.dto.DeviceRecoveryResult doInBackground(Void... voids) {
                 try {
-                    return backendService.recoverDeviceData(email, masterPassword);
+                    return loginViewModel.recoverDevice(email, masterPassword);
                 } catch (Exception e) {
                     android.util.Log.e(TAG, "设备数据恢复失败", e);
                     return com.ttt.safevault.dto.DeviceRecoveryResult.failure(e.getMessage(), null);
@@ -428,8 +418,8 @@ public class LoginActivity extends AppCompatActivity {
             protected void onPostExecute(com.ttt.safevault.dto.DeviceRecoveryResult result) {
                 if (result.isSuccess()) {
                     android.util.Log.d(TAG, "设备数据恢复成功");
-                    // 保存会话密码到内存（通过 BackendService）
-                    backendService.setSessionMasterPassword(masterPassword);
+                    // 保存会话密码到内存（通过 LoginViewModel）
+                    loginViewModel.setSessionPassword(masterPassword);
                     // 恢复成功后，继续执行数据同步
                     handleCloudDataSync();
                     // 导航到主页
@@ -482,7 +472,7 @@ public class LoginActivity extends AppCompatActivity {
      * 仅记录日志，不阻塞登录。用户可通过手动同步触发密码认证。
      */
     private void tryAttemptSyncAfterBiometricUnlock() {
-        String masterPassword = backendService.getMasterPassword();
+        String masterPassword = loginViewModel.getSessionPassword();
         if (masterPassword != null && !masterPassword.isEmpty()) {
             android.util.Log.d(TAG, "生物识别解锁后主密码可用，尝试同步");
             handleCloudDataSync();
@@ -551,41 +541,21 @@ public class LoginActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(@NonNull AuthError error, @NonNull String message, boolean canRetry) {
-                runOnUiThread(() -> {
-                    // 处理防抖动错误 - 使用轻量级 Toast
-                    if (error == AuthError.DEBOUNCED) {
-                        Toast.makeText(LoginActivity.this, message, Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    // 处理生物识别变更
-                    if (error == AuthError.BIOMETRIC_CHANGED || error == AuthError.KEYSTORE_INVALIDATED) {
-                        showBiometricChangedDialog();
-                        return;
-                    }
-
-                    // 其他错误显示错误提示
-                    showError(message);
-                });
+                loginViewModel.handleBiometricFailure(error, message);
             }
 
             @Override
             public void onCancel() {
-                // 用户取消认证，不做处理
             }
 
             @Override
             public void onBiometricChanged() {
-                // 生物识别信息已变更
-                runOnUiThread(() -> showBiometricChangedDialog());
+                loginViewModel.handleBiometricChanged();
             }
 
             @Override
             public void onFallbackToPassword() {
-                // 降级到主密码，提示用户
-                runOnUiThread(() -> {
-                    Toast.makeText(LoginActivity.this, "请使用主密码解锁", Toast.LENGTH_SHORT).show();
-                });
+                loginViewModel.handleFallbackToPassword();
             }
         });
     }
@@ -608,7 +578,6 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void initBiometricAuth() {
-        biometricAuthHelper = new BiometricAuthHelper(this);
         biometricAuthManager = BiometricAuthManager.getInstance(this);
         checkAndRequestBiometricPermission();
     }
@@ -644,9 +613,8 @@ public class LoginActivity extends AppCompatActivity {
         // 检查并更新生物识别按钮的可见性
         updateBiometricButtonVisibility();
 
-        // 自动触发生物识别（如果支持且未触发过）
-        if (biometricButton != null && biometricButton.getVisibility() == View.VISIBLE && !biometricAutoTriggered) {
-            biometricAutoTriggered = true;
+        // 自动触发生物识别（由 LoginViewModel 决定是否应触发）
+        if (loginViewModel.shouldAutoTriggerBiometric()) {
             performBiometricAuthentication();
         }
     }
@@ -682,6 +650,24 @@ public class LoginActivity extends AppCompatActivity {
         loginViewModel.biometricUnlockError.observe(this, error -> {
             if (error != null && !error.isEmpty()) {
                 showError(error);
+            }
+        });
+
+        loginViewModel.biometricErrorEvent.observe(this, event -> {
+            if (event == null) return;
+            switch (event.type) {
+                case "debounced":
+                    Toast.makeText(this, event.message, Toast.LENGTH_SHORT).show();
+                    break;
+                case "changed":
+                    showBiometricChangedDialog();
+                    break;
+                case "fallback":
+                    Toast.makeText(this, "请使用主密码解锁", Toast.LENGTH_SHORT).show();
+                    break;
+                case "error":
+                    showError(event.message);
+                    break;
             }
         });
     }

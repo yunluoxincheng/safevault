@@ -2,9 +2,7 @@
 
 ## Purpose
 Define maintainable package-boundary and structure documentation requirements for SafeVault repository refactors.
-
 ## Requirements
-
 ### Requirement: Package Boundary Documentation
 The repository MUST define package-boundary intent for each runtime root package using package-level documentation files.
 
@@ -94,6 +92,19 @@ Android structural refactors MUST preserve the dependency direction `ui -> viewm
 #### Scenario: Core bootstrap entry points are normalized
 - **WHEN** application bootstrap or core service-location classes are adjusted for boundary consistency
 - **THEN** only one canonical package path remains for each bootstrap entry point, and compatibility wrappers are removed after call sites migrate
+
+#### Scenario: Auth Activity direct service access is removed
+- **WHEN** LoginActivity or RegisterActivity directly instantiates AuthSessionManager, accesses ServiceLocator, or holds a BackendService field
+- **THEN** the Activity receives all service access through its ViewModel and does not construct or locate service objects itself
+
+#### Scenario: Auth ViewModel does not import low-level network or crypto classes
+- **WHEN** AuthViewModel or LoginViewModel directly imports TokenManager, SecureKeyStorageManager, Argon2KeyDerivationManager, or RetrofitClient
+- **THEN** the refactor routes that access through BackendService or an existing manager facade, and the ViewModel no longer holds low-level imports
+
+#### Scenario: Biometric auth orchestration is owned by ViewModel
+- **WHEN** LoginActivity directly instantiates BiometricAuthHelper or BiometricAuthManager, or decides biometric eligibility and trigger timing
+- **THEN** LoginActivity only hosts the BiometricPrompt as a platform adapter and forwards callback results to LoginViewModel
+- **AND** LoginViewModel owns biometric eligibility, trigger decision, and unlock completion
 
 ### Requirement: Android Security Boundary Refactor
 Android security-boundary refactors MUST preserve the dependency direction `ui -> viewmodel -> model/service -> (network|security|crypto|data)` and MUST keep Activities and Fragments from directly orchestrating key-storage, session, biometric, or crypto internals unless the class is an explicit Android platform-boundary adapter.
@@ -198,3 +209,4 @@ The repository MUST treat the backend as a snapshot-imported part of the root re
 - **WHEN** maintainers need the old backend repository after migration
 - **THEN** documentation identifies it as retired or externally historical
 - **AND** active development continues in the root SafeVault repository
+

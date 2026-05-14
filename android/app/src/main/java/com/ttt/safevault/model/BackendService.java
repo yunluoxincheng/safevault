@@ -477,6 +477,40 @@ public interface BackendService {
     com.ttt.safevault.dto.response.CompleteRegistrationResponse completeRegistration(
             String email, String username, String masterPassword);
 
+    // ========== 邮箱认证 Facade 方法 ==========
+
+    com.ttt.safevault.dto.response.EmailRegistrationResponse registerWithEmail(String email, String username);
+
+    com.ttt.safevault.dto.response.VerifyEmailResponse verifyEmail(String verificationToken);
+
+    com.ttt.safevault.dto.response.EmailRegistrationResponse resendVerificationEmail(String email);
+
+    com.ttt.safevault.dto.response.VerificationStatusResponse checkVerificationStatus(String email);
+
+    com.ttt.safevault.dto.response.EmailLoginResponse loginWithEmail(String email, String masterPassword);
+
+    com.ttt.safevault.dto.response.AuthResponse refreshCurrentToken();
+
+    com.ttt.safevault.dto.response.AuthResponse loginByUsername(String username);
+
+    String getCloudUserId();
+
+    String getCloudRefreshToken();
+
+    com.ttt.safevault.dto.response.AuthResponse registerWithDeviceKey(String username, String displayName);
+
+    com.ttt.safevault.dto.response.AuthResponse loginWithDeviceKey();
+
+    // ========== Session 管理 Facade ==========
+
+    String getLastLoginEmail();
+
+    void saveLastLoginEmail(String email);
+
+    void clearEmailVerificationStatus();
+
+    void saveEmailLoginInfo(String email, String username, String displayName);
+
     // ========== 新增：统一邮箱认证加密数据接口 ==========
 
     /**

@@ -621,6 +621,83 @@ public class BackendServiceImpl implements BackendService {
         return cloudAuthManager.completeRegistration(email, username, masterPassword);
     }
 
+    // ==================== 邮箱认证 Facade 方法 ====================
+
+    @Override
+    public com.ttt.safevault.dto.response.EmailRegistrationResponse registerWithEmail(String email, String username) {
+        return cloudAuthManager.registerWithEmail(email, username);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.VerifyEmailResponse verifyEmail(String verificationToken) {
+        return cloudAuthManager.verifyEmail(verificationToken);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.EmailRegistrationResponse resendVerificationEmail(String email) {
+        return cloudAuthManager.resendVerificationEmail(email);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.VerificationStatusResponse checkVerificationStatus(String email) {
+        return cloudAuthManager.checkVerificationStatus(email);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.EmailLoginResponse loginWithEmail(String email, String masterPassword) {
+        return cloudAuthManager.loginWithEmail(email, masterPassword);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.AuthResponse refreshCurrentToken() {
+        return cloudAuthManager.refreshCurrentToken();
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.AuthResponse loginByUsername(String username) {
+        return cloudAuthManager.loginByUsername(username);
+    }
+
+    @Override
+    public String getCloudUserId() {
+        return cloudAuthManager.getUserId();
+    }
+
+    @Override
+    public String getCloudRefreshToken() {
+        return cloudAuthManager.getStoredRefreshToken();
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.AuthResponse registerWithDeviceKey(String username, String displayName) {
+        return cloudAuthManager.registerWithDeviceKey(username, displayName);
+    }
+
+    @Override
+    public com.ttt.safevault.dto.response.AuthResponse loginWithDeviceKey() {
+        return cloudAuthManager.loginWithDeviceKey();
+    }
+
+    @Override
+    public String getLastLoginEmail() {
+        return cloudAuthManager.getLastLoginEmail();
+    }
+
+    @Override
+    public void saveLastLoginEmail(String email) {
+        cloudAuthManager.saveLastLoginEmail(email);
+    }
+
+    @Override
+    public void clearEmailVerificationStatus() {
+        cloudAuthManager.clearEmailVerificationStatus();
+    }
+
+    @Override
+    public void saveEmailLoginInfo(String email, String username, String displayName) {
+        cloudAuthManager.saveEmailLoginInfo(email, username, displayName);
+    }
+
     // ==================== 加密数据同步相关 ====================
 
     @Override

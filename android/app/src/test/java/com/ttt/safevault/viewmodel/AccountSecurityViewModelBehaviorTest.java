@@ -113,6 +113,21 @@ public class AccountSecurityViewModelBehaviorTest {
         @Override public boolean uploadEncryptedVaultData(String encryptedVaultData, String iv, String authTag) { return false; }
         @Override public EncryptedVaultData downloadEncryptedVaultData() { return null; }
         @Override public boolean uploadEccPublicKey(String x25519PublicKey, String ed25519PublicKey, String keyVersion) { return false; }
+        @Override public com.ttt.safevault.dto.response.EmailRegistrationResponse registerWithEmail(String email, String username) { return null; }
+        @Override public com.ttt.safevault.dto.response.VerifyEmailResponse verifyEmail(String verificationToken) { return null; }
+        @Override public com.ttt.safevault.dto.response.EmailRegistrationResponse resendVerificationEmail(String email) { return null; }
+        @Override public com.ttt.safevault.dto.response.VerificationStatusResponse checkVerificationStatus(String email) { return null; }
+        @Override public com.ttt.safevault.dto.response.EmailLoginResponse loginWithEmail(String email, String masterPassword) { return null; }
+        @Override public com.ttt.safevault.dto.response.AuthResponse refreshCurrentToken() { return null; }
+        @Override public com.ttt.safevault.dto.response.AuthResponse loginByUsername(String username) { return null; }
+        @Override public String getCloudUserId() { return null; }
+        @Override public String getCloudRefreshToken() { return null; }
+        @Override public String getLastLoginEmail() { return null; }
+        @Override public void saveLastLoginEmail(String email) {}
+        @Override public void clearEmailVerificationStatus() {}
+        @Override public void saveEmailLoginInfo(String email, String username, String displayName) {}
+        @Override public com.ttt.safevault.dto.response.AuthResponse registerWithDeviceKey(String username, String displayName) { return null; }
+        @Override public com.ttt.safevault.dto.response.AuthResponse loginWithDeviceKey() { return null; }
     }
 
     // ========== Enrollment Eligibility ==========
